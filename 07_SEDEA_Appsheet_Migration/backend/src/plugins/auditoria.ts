@@ -11,7 +11,14 @@ export type AccionAuditoria =
   | 'captura_duplicada'
   | 'export_csv'
   | 'export_pdf'
-  | 'import_padron';
+  | 'import_padron'
+  // Build 4: administracion de usuarios (nunca incluyen contrasenas).
+  | 'usuario_creado'
+  | 'usuario_editado'
+  | 'usuario_password_reset'
+  | 'usuario_activado'
+  | 'usuario_desactivado'
+  | 'password_cambiado';
 
 interface EntradaBitacora {
   usuarioId?: number | null;

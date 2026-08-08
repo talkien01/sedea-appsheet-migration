@@ -11,6 +11,12 @@ export interface PerfilUsuario {
   rol: Rol;
   regional_id: number | null;
   regional_nombre: string | null;
+  /**
+   * Build 4: el perfil viaja con el estado de la cuenta. Son opcionales para
+   * no romper las sesiones ya guardadas en IndexedDB antes de esta version.
+   */
+  debe_cambiar_password?: boolean;
+  activo?: boolean;
 }
 
 export interface RespuestaLogin {

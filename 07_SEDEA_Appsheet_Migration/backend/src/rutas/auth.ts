@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { esquemaLogin } from '@sedea/shared';
 import type { PerfilUsuario } from '@sedea/shared';
 import { consultarUna } from '../db/pool.js';
-import { errorNoAutorizado, errorValidacion } from '../plugins/errores.js';
+import { ErrorApi, errorValidacion } from '../plugins/errores.js';
 import { registrarAuditoria } from '../plugins/auditoria.js';
 
 /**
@@ -44,6 +44,7 @@ interface FilaUsuario {
   regional_id: number | null;
   regional_nombre: string | null;
   activo: boolean;
+  debe_cambiar_password: boolean;
 }
 
 export default async function rutasAuth(app: FastifyInstance): Promise<void> {
@@ -66,25 +67,33 @@ export default async function rutasAuth(app: FastifyInstance): Promise<void> {
 
     const fila = await consultarUna<FilaUsuario>(
       `SELECT u.id, u.usuario, u.nombre_completo, u.password_hash, u.rol,
-              u.regional_id, u.activo, r.nombre AS regional_nombre
+              u.regional_id, u.activo, u.debe_cambiar_password, r.nombre AS regional_nombre
          FROM usuarios u
          LEFT JOIN direcciones_regionales r ON r.id = u.regional_id
         WHERE lower(u.usuario) = lower($1)`,
       [usuario]
     );
 
-    const credencialesOk = !!fila && fila.activo && bcrypt.compareSync(password, fila.password_hash);
+    const passwordOk = !!fila && bcrypt.compareSync(password, fila.password_hash);
+    const credencialesOk = !!fila && fila.activo && passwordOk;
 
     if (!credencialesOk) {
       anotarFallo(peticion.ip);
+      // Una cuenta desactivada recibe el mismo mensaje generico que una
+      // credencial invalida: no se filtra el estado de la cuenta (Assumption 55).
+      const motivo = !fila
+        ? 'usuario_inexistente'
+        : !fila.activo
+          ? 'cuenta_desactivada'
+          : 'contrasena_incorrecta';
       await registrarAuditoria(peticion, {
         usuarioId: fila?.id ?? null,
         accion: 'login_fallido',
         entidad: 'usuario',
         entidadId: usuario,
-        detalle: { motivo: fila ? 'contrasena_incorrecta_o_inactivo' : 'usuario_inexistente' }
+        detalle: { motivo }
       });
-      throw errorNoAutorizado('Usuario o contrasena incorrectos.');
+      throw new ErrorApi(401, 'credenciales_invalidas', 'Usuario o contraseña incorrectos.');
     }
 
     const perfil: PerfilUsuario = {
@@ -93,7 +102,10 @@ export default async function rutasAuth(app: FastifyInstance): Promise<void> {
       nombre_completo: fila.nombre_completo,
       rol: fila.rol,
       regional_id: fila.regional_id,
-      regional_nombre: fila.regional_nombre
+      regional_nombre: fila.regional_nombre,
+      // Build 4: el cliente necesita saber si debe forzar el cambio.
+      debe_cambiar_password: fila.debe_cambiar_password === true,
+      activo: true
     };
 
     const token = app.jwt.sign(perfil as any);

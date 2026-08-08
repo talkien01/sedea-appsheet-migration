@@ -10,6 +10,7 @@ import { pool, esperarBaseDatos } from './db/pool.js';
 import pluginErrores from './plugins/errores.js';
 import pluginAuth from './plugins/auth.js';
 import pluginRbac from './plugins/rbac.js';
+import pluginCambioPassword from './plugins/cambioPassword.js';
 import { prepararAlmacenamiento } from './servicios/almacenamiento.js';
 import rutasSalud from './rutas/salud.js';
 import rutasAuth from './rutas/auth.js';
@@ -20,6 +21,8 @@ import rutasAuditoria from './rutas/auditoria.js';
 import rutasStaging from './rutas/staging.js';
 import rutasCorrecciones from './rutas/correcciones.js';
 import rutasEstadisticas from './rutas/estadisticas.js';
+import rutasUsuarios from './rutas/usuarios.js';
+import rutasMiCuenta from './rutas/miCuenta.js';
 
 async function construirApp() {
   const app = Fastify({
@@ -62,6 +65,8 @@ async function construirApp() {
 
   await app.register(pluginAuth);
   await app.register(pluginRbac);
+  // Build 4: guarda global del cambio de contrasena obligatorio.
+  await app.register(pluginCambioPassword);
 
   // Fotos de evidencia: requieren token (header o ?token=).
   prepararAlmacenamiento();
@@ -88,6 +93,9 @@ async function construirApp() {
   await app.register(rutasStaging);
   await app.register(rutasCorrecciones);
   await app.register(rutasEstadisticas);
+  // Build 4: administracion de usuarios y cambio de la propia contrasena.
+  await app.register(rutasUsuarios);
+  await app.register(rutasMiCuenta);
 
   return app;
 }

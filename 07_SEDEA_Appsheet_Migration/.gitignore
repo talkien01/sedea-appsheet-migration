@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.log
+media/
+pwa/dev-dist/
+.DS_Store
+Thumbs.db
+desktop.ini

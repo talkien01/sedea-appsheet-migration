@@ -1,0 +1,78 @@
+# Orquestacion de los tres servicios: base de datos PostGIS, API y PWA.
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: sedea_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sedea}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cambiame}
+      POSTGRES_DB: ${POSTGRES_DB:-sedea}
+    ports:
+      # Expuesto solo para desarrollo/diagnostico. Cerrar en produccion.
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sedea} -d ${POSTGRES_DB:-sedea}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: sedea_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-sedea}:${POSTGRES_PASSWORD:-cambiame}@db:5432/${POSTGRES_DB:-sedea}
+      JWT_SECRET: ${JWT_SECRET:-cambiame-por-un-secreto-largo}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-12h}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      STORAGE_DRIVER: local
+      MEDIA_DIR: /app/media
+      MEDIA_PUBLIC_PATH: /media
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-8}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-300}
+      SEED_ADMIN_USER: ${SEED_ADMIN_USER:-admin}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-cambiame123}
+    ports:
+      - "3000:3000"
+    volumes:
+      - media:/app/media
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  pwa:
+    build:
+      context: .
+      dockerfile: pwa/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+        VITE_APP_NOMBRE: ${VITE_APP_NOMBRE:-SEDEA Campo}
+        VITE_TILE_URL: ${VITE_TILE_URL:-https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png}
+    container_name: sedea_pwa
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  media:

@@ -1,0 +1,31 @@
+{
+  "name": "sedea-appsheet-migration",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Migracion del flujo AppSheet+Google Sheets de SEDEA Queretaro a PWA offline-first + API + PostGIS",
+  "license": "MIT",
+  "workspaces": [
+    "packages/shared",
+    "backend",
+    "pwa",
+    "scripts"
+  ],
+  "scripts": {
+    "build:shared": "npm run build -w @sedea/shared",
+    "build:backend": "npm run build:shared && npm run build -w backend",
+    "build:pwa": "npm run build:shared && npm run build -w pwa",
+    "build": "npm run build:shared && npm run build -w backend && npm run build -w pwa",
+    "dev:backend": "tsx watch backend/src/server.ts",
+    "dev:pwa": "npm run dev -w pwa",
+    "migrate": "tsx backend/src/migrar.ts",
+    "seed": "tsx backend/src/sembrar.ts",
+    "importar": "tsx scripts/importar.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

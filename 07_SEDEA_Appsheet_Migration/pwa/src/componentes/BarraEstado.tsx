@@ -80,9 +80,32 @@ export default function BarraEstado() {
           Auditoría
         </Link>
       )}
-      <Link className="boton secundario" to="/sync">
-        Sincronización
-      </Link>
+
+      {/* Depuracion y correcciones son exclusivas del editor de datos y del admin. */}
+      {perfil && (perfil.rol === 'editor_datos' || perfil.rol === 'admin') && (
+        <Link className="boton secundario" to="/depuracion" data-testid="nav-depuracion">
+          Depuración
+        </Link>
+      )}
+      {perfil && (perfil.rol === 'editor_datos' || perfil.rol === 'admin') && (
+        <Link className="boton secundario" to="/correcciones" data-testid="nav-correcciones">
+          Correcciones
+        </Link>
+      )}
+
+      {/* El dashboard es informacion agregada de gestion: el capturista no la ve. */}
+      {perfil &&
+        (perfil.rol === 'admin' || perfil.rol === 'auditor' || perfil.rol === 'editor_datos') && (
+          <Link className="boton secundario" to="/dashboard" data-testid="nav-dashboard">
+            Dashboard
+          </Link>
+        )}
+
+      {perfil && (perfil.rol === 'capturista' || perfil.rol === 'admin') && (
+        <Link className="boton secundario" to="/sync">
+          Sincronización
+        </Link>
+      )}
       <button type="button" className="secundario" onClick={() => void salir()}>
         Salir
       </button>

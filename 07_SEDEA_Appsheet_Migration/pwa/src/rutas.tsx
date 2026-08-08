@@ -1,4 +1,10 @@
 // Definicion de rutas de la aplicacion.
+// El control de acceso por rol se endurece a partir del build 2:
+//   /beneficiarios*, /sync   -> capturista, admin
+//   /auditoria*              -> auditor, admin
+//   /depuracion*             -> editor_datos, admin
+//   /correcciones*           -> editor_datos, admin
+//   /dashboard               -> admin, auditor, editor_datos
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import BarraEstado from './componentes/BarraEstado';
 import RutaProtegida from './componentes/RutaProtegida';
@@ -9,7 +15,17 @@ import FichaBeneficiario from './pantallas/FichaBeneficiario';
 import NuevaCaptura from './pantallas/NuevaCaptura';
 import Auditoria from './pantallas/Auditoria';
 import Expediente from './pantallas/Expediente';
+import Depuracion from './pantallas/Depuracion';
+import DepuracionDetalle from './pantallas/DepuracionDetalle';
+import DepuracionCatalogos from './pantallas/DepuracionCatalogos';
+import Correcciones from './pantallas/Correcciones';
+import Dashboard from './pantallas/Dashboard';
 import SinPermiso from './pantallas/SinPermiso';
+
+const CAMPO = ['capturista', 'admin'];
+const AUDITORIA = ['auditor', 'admin'];
+const DEPURACION = ['editor_datos', 'admin'];
+const GESTION = ['admin', 'auditor', 'editor_datos'];
 
 /** Layout comun: barra de estado siempre visible + contenido. */
 function Layout() {
@@ -29,10 +45,11 @@ export default function Rutas() {
       <Route path="/login" element={<Login />} />
       <Route element={<Layout />}>
         <Route path="/" element={<Navigate to="/beneficiarios" replace />} />
+
         <Route
           path="/sync"
           element={
-            <RutaProtegida>
+            <RutaProtegida roles={CAMPO}>
               <Sync />
             </RutaProtegida>
           }
@@ -40,7 +57,7 @@ export default function Rutas() {
         <Route
           path="/beneficiarios"
           element={
-            <RutaProtegida>
+            <RutaProtegida roles={CAMPO}>
               <Beneficiarios />
             </RutaProtegida>
           }
@@ -48,23 +65,24 @@ export default function Rutas() {
         <Route
           path="/beneficiarios/:id"
           element={
-            <RutaProtegida>
-              <FichaBeneficiario />
+            <RutaProtegida roles={CAMPO}>
+              <FichaBeneficiario modo="campo" />
             </RutaProtegida>
           }
         />
         <Route
           path="/beneficiarios/:id/captura"
           element={
-            <RutaProtegida>
+            <RutaProtegida roles={CAMPO}>
               <NuevaCaptura />
             </RutaProtegida>
           }
         />
+
         <Route
           path="/auditoria"
           element={
-            <RutaProtegida roles={['auditor', 'admin']}>
+            <RutaProtegida roles={AUDITORIA}>
               <Auditoria />
             </RutaProtegida>
           }
@@ -72,11 +90,63 @@ export default function Rutas() {
         <Route
           path="/auditoria/beneficiario/:id"
           element={
-            <RutaProtegida roles={['auditor', 'admin']}>
+            <RutaProtegida roles={AUDITORIA}>
               <Expediente />
             </RutaProtegida>
           }
         />
+
+        <Route
+          path="/depuracion"
+          element={
+            <RutaProtegida roles={DEPURACION}>
+              <Depuracion />
+            </RutaProtegida>
+          }
+        />
+        <Route
+          path="/depuracion/beneficiarios/:id"
+          element={
+            <RutaProtegida roles={DEPURACION}>
+              <DepuracionDetalle />
+            </RutaProtegida>
+          }
+        />
+        <Route
+          path="/depuracion/catalogos"
+          element={
+            <RutaProtegida roles={DEPURACION}>
+              <DepuracionCatalogos />
+            </RutaProtegida>
+          }
+        />
+
+        <Route
+          path="/correcciones"
+          element={
+            <RutaProtegida roles={DEPURACION}>
+              <Correcciones />
+            </RutaProtegida>
+          }
+        />
+        <Route
+          path="/correcciones/beneficiarios/:id"
+          element={
+            <RutaProtegida roles={DEPURACION}>
+              <FichaBeneficiario modo="correccion" />
+            </RutaProtegida>
+          }
+        />
+
+        <Route
+          path="/dashboard"
+          element={
+            <RutaProtegida roles={GESTION}>
+              <Dashboard />
+            </RutaProtegida>
+          }
+        />
+
         <Route path="/sin-permiso" element={<SinPermiso />} />
         <Route path="*" element={<Navigate to="/beneficiarios" replace />} />
       </Route>

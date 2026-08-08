@@ -458,3 +458,179 @@ td img.miniatura {
   margin-top: 12px;
   font-size: 0.9rem;
 }
+
+/* ==========================================================================
+   Depuracion, correcciones y dashboard (builds 2 y 3)
+   ========================================================================== */
+
+/* Badges de alerta: rojo = alta, ambar = media, verde = sin alertas. */
+.badge.alerta-alta {
+  background: #fbe9e7;
+  color: var(--rojo);
+  border: 1px solid var(--rojo);
+}
+
+.badge.alerta-media {
+  background: #fdf3e2;
+  color: var(--ambar);
+  border: 1px solid var(--ambar);
+}
+
+.badge.alerta-ninguna {
+  background: var(--verde-suave);
+  color: var(--verde);
+  border: 1px solid var(--verde);
+}
+
+td .badge {
+  display: inline-block;
+  margin: 2px 2px 2px 0;
+}
+
+/* Fila de filtros de las pantallas de gestion. */
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin: 12px 0;
+}
+
+.filtros .campo {
+  margin: 0;
+  min-width: 180px;
+}
+
+.campo-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+/* Tarjetas de metricas / resumen. */
+.tarjetas-resumen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.metrica {
+  display: flex;
+  flex-direction: column;
+  min-width: 130px;
+  padding: 12px 16px;
+  background: var(--verde-suave);
+  border-radius: var(--radio);
+  border: 1px solid var(--gris-borde);
+}
+
+.metrica-valor {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--verde);
+  line-height: 1.1;
+}
+
+.metrica-etiqueta {
+  font-size: 0.8rem;
+  color: var(--gris-medio);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.metrica-detalle {
+  font-size: 0.78rem;
+  color: var(--gris-medio);
+}
+
+/* Comparacion lado a lado de duplicados. */
+.comparador {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.comparador .candidato {
+  flex: 0 0 300px;
+  margin: 0;
+}
+
+.comparador .candidato-actual {
+  border: 2px solid var(--verde);
+}
+
+.origen-candidato {
+  font-size: 0.8rem;
+  color: var(--gris-medio);
+  text-transform: uppercase;
+}
+
+.campos-candidato {
+  margin: 8px 0 0;
+}
+
+.campos-candidato > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--gris-borde);
+}
+
+.campos-candidato dt {
+  font-size: 0.78rem;
+  color: var(--gris-medio);
+  font-weight: 600;
+}
+
+.campos-candidato dd {
+  margin: 0;
+  font-size: 0.85rem;
+  text-align: right;
+  word-break: break-word;
+}
+
+/* Un valor que no coincide entre candidatos se resalta. */
+.campos-candidato .campo-difiere {
+  background: #fdf3e2;
+}
+
+/* Campos bloqueados del formulario de correccion. */
+.campos-bloqueados {
+  border: 1px dashed var(--gris-borde);
+  border-radius: var(--radio);
+  padding: 12px;
+  margin: 12px 0;
+  background: var(--gris-fondo);
+}
+
+.campos-bloqueados legend {
+  font-weight: 700;
+  color: var(--gris-medio);
+  font-size: 0.85rem;
+  text-transform: uppercase;
+}
+
+.campos-bloqueados input {
+  background: #eceff2;
+  color: var(--gris-medio);
+}
+
+/* Contenedor de las graficas de Chart.js (necesita altura explicita). */
+.lienzo-grafica {
+  position: relative;
+  width: 100%;
+  margin: 12px 0;
+}
+
+.mensaje.exito {
+  background: var(--verde-suave);
+  color: var(--verde);
+  border: 1px solid var(--verde);
+  border-radius: var(--radio);
+  padding: 10px 12px;
+  margin: 10px 0;
+}

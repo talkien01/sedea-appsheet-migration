@@ -5,7 +5,19 @@ import { useNavigate } from 'react-router-dom';
 import { useSesion } from '../App';
 import { ErrorPeticion, NOMBRE_APP } from '../api/cliente';
 import { contarBeneficiarios, sesionVigente } from '../db/repositorios';
+import type { PerfilUsuario } from '@sedea/shared';
 import { useEstadoRed } from '../sync/estadoRed';
+
+/**
+ * Destino tras iniciar sesion segun el rol: cada perfil aterriza en su propia
+ * seccion en vez de en el padron de campo (que no todos pueden ver).
+ */
+async function destinoPorRol(perfilUsuario: PerfilUsuario | null): Promise<string> {
+  if (perfilUsuario?.rol === 'editor_datos') return '/depuracion';
+  if (perfilUsuario?.rol === 'auditor') return '/auditoria';
+  const total = await contarBeneficiarios();
+  return total === 0 ? '/sync' : '/beneficiarios';
+}
 
 export default function Login() {
   const { iniciarSesion, perfil } = useSesion();
@@ -22,8 +34,7 @@ export default function Login() {
     void (async () => {
       const sesion = await sesionVigente();
       if (sesion) {
-        const total = await contarBeneficiarios();
-        navegar(total === 0 ? '/sync' : '/beneficiarios', { replace: true });
+        navegar(await destinoPorRol(sesion.perfil), { replace: true });
       }
     })();
   }, [navegar, perfil]);
@@ -42,9 +53,8 @@ export default function Login() {
 
     setEnviando(true);
     try {
-      await iniciarSesion(usuario.trim(), password);
-      const total = await contarBeneficiarios();
-      navegar(total === 0 ? '/sync' : '/beneficiarios', { replace: true });
+      const usuarioAutenticado = await iniciarSesion(usuario.trim(), password);
+      navegar(await destinoPorRol(usuarioAutenticado), { replace: true });
     } catch (fallo) {
       if (fallo instanceof ErrorPeticion) {
         if (fallo.estado === 401) setError('Usuario o contraseña incorrectos.');

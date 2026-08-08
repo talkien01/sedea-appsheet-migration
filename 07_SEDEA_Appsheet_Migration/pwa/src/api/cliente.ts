@@ -2,10 +2,18 @@
 // adjuntar el token y traducir los errores a mensajes en espanol.
 import type {
   Beneficiario,
+  CambioCampo,
+  EntradaHistorialCorreccion,
+  FilaStagingBeneficiario,
   PaginaBeneficiarios,
+  RespuestaApoyos,
+  RespuestaAvance,
   RespuestaCatalogos,
+  RespuestaCobertura,
+  RespuestaEstadisticasStaging,
   RespuestaLogin,
-  RespuestaCaptura
+  RespuestaCaptura,
+  ResumenStaging
 } from '@sedea/shared';
 import { obtenerSesion } from '../db/repositorios';
 
@@ -96,8 +104,126 @@ export const api = {
 
   async capturasDeBeneficiario(id: number): Promise<{ data: any[] }> {
     return peticion<{ data: any[] }>(`/capturas?beneficiario_id=${id}&page_size=200`);
+  },
+
+  // ------------------------------------------------------------------------
+  // Depuracion / staging (roles editor_datos y admin). Siempre en linea.
+  // ------------------------------------------------------------------------
+  async stagingResumen(): Promise<ResumenStaging> {
+    return peticion<ResumenStaging>('/staging/resumen');
+  },
+
+  async stagingBeneficiarios(parametros: URLSearchParams): Promise<PaginaStaging> {
+    return peticion<PaginaStaging>(`/staging/beneficiarios?${parametros.toString()}`);
+  },
+
+  async stagingBeneficiario(id: number): Promise<DetalleStaging> {
+    return peticion<DetalleStaging>(`/staging/beneficiarios/${id}`);
+  },
+
+  async stagingAprobar(id: number, motivo?: string): Promise<{ ok: true; beneficiario_id: number }> {
+    return peticion(`/staging/beneficiarios/${id}/aprobar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo: motivo || null })
+    });
+  },
+
+  async stagingDescartar(id: number, motivo?: string): Promise<{ ok: true }> {
+    return peticion(`/staging/beneficiarios/${id}/descartar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo: motivo || null })
+    });
+  },
+
+  async stagingFusionar(cuerpo: {
+    principal_id: number;
+    secundarios_ids: number[];
+    promover?: boolean;
+    motivo?: string | null;
+  }): Promise<{ ok: true; principal_id: number; fusionados: number[]; beneficiario_id: number | null }> {
+    return peticion('/staging/beneficiarios/fusionar', {
+      method: 'POST',
+      body: JSON.stringify(cuerpo)
+    });
+  },
+
+  async stagingCatalogos(parametros: URLSearchParams): Promise<PaginaStaging> {
+    return peticion<PaginaStaging>(`/staging/catalogos?${parametros.toString()}`);
+  },
+
+  async stagingCatalogoAprobar(id: number): Promise<{ ok: true; catalogo_id: number }> {
+    return peticion(`/staging/catalogos/${id}/aprobar`, { method: 'POST', body: JSON.stringify({}) });
+  },
+
+  async stagingCatalogoDescartar(id: number): Promise<{ ok: true }> {
+    return peticion(`/staging/catalogos/${id}/descartar`, { method: 'POST', body: JSON.stringify({}) });
+  },
+
+  // ------------------------------------------------------------------------
+  // Correccion de datos en produccion (roles editor_datos y admin).
+  // ------------------------------------------------------------------------
+  async correccionesBuscar(parametros: URLSearchParams): Promise<{
+    data: any[];
+    page: number;
+    page_size: number;
+    total: number;
+    has_more: boolean;
+  }> {
+    return peticion(`/correcciones/beneficiarios?${parametros.toString()}`);
+  },
+
+  async correccionesBeneficiario(id: number): Promise<any> {
+    return peticion(`/correcciones/beneficiarios/${id}`);
+  },
+
+  async correccionesHistorial(id: number): Promise<{ data: EntradaHistorialCorreccion[] }> {
+    return peticion(`/correcciones/beneficiarios/${id}/historial`);
+  },
+
+  /** PATCH con la lista blanca: solo se envian los campos modificados. */
+  async editarBeneficiario(
+    id: number,
+    cambios: Record<string, unknown>
+  ): Promise<{ ok: true; beneficiario: any; cambios: CambioCampo[] }> {
+    return peticion(`/beneficiarios/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(cambios)
+    });
+  },
+
+  // ------------------------------------------------------------------------
+  // Estadisticas del dashboard (roles admin, auditor y editor_datos).
+  // ------------------------------------------------------------------------
+  async estadisticasCobertura(parametros: URLSearchParams): Promise<RespuestaCobertura> {
+    return peticion<RespuestaCobertura>(`/estadisticas/cobertura?${parametros.toString()}`);
+  },
+
+  async estadisticasApoyos(parametros: URLSearchParams): Promise<RespuestaApoyos> {
+    return peticion<RespuestaApoyos>(`/estadisticas/apoyos?${parametros.toString()}`);
+  },
+
+  async estadisticasAvance(parametros: URLSearchParams): Promise<RespuestaAvance> {
+    return peticion<RespuestaAvance>(`/estadisticas/avance?${parametros.toString()}`);
+  },
+
+  async estadisticasStaging(): Promise<RespuestaEstadisticasStaging> {
+    return peticion<RespuestaEstadisticasStaging>('/estadisticas/staging');
   }
 };
+
+/** Pagina generica de las listas de staging. */
+export interface PaginaStaging {
+  data: any[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_more: boolean;
+}
+
+export interface DetalleStaging {
+  fila: FilaStagingBeneficiario;
+  relacionadas: { staging: any[]; produccion: any[] };
+}
 
 /** Construye una URL descargable con el token en el query string. */
 export async function urlConToken(ruta: string): Promise<string> {

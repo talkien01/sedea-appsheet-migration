@@ -9,3 +9,7 @@ pwa/dev-dist/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Archivos fuente reales del padron - contienen PII (CURP, RFC, telefono, CLABE). NUNCA commitear.
+*.xlsx
+*.xls

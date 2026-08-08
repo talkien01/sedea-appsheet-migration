@@ -9,9 +9,9 @@ import { URL_TILES } from '../api/cliente';
 
 // Sin esto, Leaflet intenta cargar los iconos desde una ruta relativa inexistente.
 L.Icon.Default.mergeOptions({
-  iconUrl,
-  iconRetinaUrl,
-  shadowUrl
+  iconUrl: iconoUrl,
+  iconRetinaUrl: iconoRetinaUrl,
+  shadowUrl: sombraUrl
 });
 
 export interface PuntoCaptura {

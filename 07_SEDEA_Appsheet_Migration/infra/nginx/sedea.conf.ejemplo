@@ -1,0 +1,45 @@
+# Configuracion de referencia para un Nginx que actua como reverse proxy
+# frente a la PWA y a la API (alternativa a Cloudflare Tunnel).
+# Copiar a /etc/nginx/conf.d/sedea.conf y ajustar dominios y certificados.
+
+server {
+  listen 80;
+  server_name campo.tu-dominio.mx;
+  # Redireccion obligatoria a HTTPS: la geolocalizacion y la camara del
+  # navegador solo funcionan en contextos seguros.
+  return 301 https://$host$request_uri;
+}
+
+server {
+  listen 443 ssl http2;
+  server_name campo.tu-dominio.mx;
+
+  ssl_certificate     /etc/letsencrypt/live/campo.tu-dominio.mx/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/campo.tu-dominio.mx/privkey.pem;
+
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header Referrer-Policy "same-origin" always;
+
+  client_max_body_size 16m;
+
+  location /api/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+
+  location /media/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+}

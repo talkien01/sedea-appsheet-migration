@@ -1,0 +1,24 @@
+# Ejemplo de configuracion de Cloudflare Tunnel (cloudflared).
+# Publica la PWA con HTTPS sin abrir puertos del VPS a internet.
+#
+# 1) cloudflared tunnel login
+# 2) cloudflared tunnel create sedea-campo
+# 3) Copia el UUID generado y el archivo de credenciales a este archivo.
+# 4) cloudflared tunnel route dns sedea-campo campo.tu-dominio.mx
+# 5) cloudflared tunnel --config ./tunnel.yml run
+
+tunnel: 00000000-0000-0000-0000-000000000000
+credentials-file: /etc/cloudflared/00000000-0000-0000-0000-000000000000.json
+
+ingress:
+  # La PWA (Nginx) ya hace proxy interno de /api y /media hacia el backend.
+  - hostname: campo.tu-dominio.mx
+    service: http://localhost:8080
+
+  # Opcional: exponer la API en un subdominio propio.
+  # Si lo activas, ajusta CORS_ORIGIN en el backend.
+  # - hostname: api.tu-dominio.mx
+  #   service: http://localhost:3000
+
+  # Regla final obligatoria.
+  - service: http_status:404

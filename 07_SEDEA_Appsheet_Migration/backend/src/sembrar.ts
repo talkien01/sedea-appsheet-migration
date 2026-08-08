@@ -8,8 +8,11 @@ import { config } from './config.js';
 import { pool, esperarBaseDatos } from './db/pool.js';
 
 // Los usuarios dependen de las Regionales; por eso catalogos va primero.
+// 004 trae el catalogo real de 152 conceptos de apoyo y se aplica antes de los
+// beneficiarios demo para que estos puedan referenciarlo.
 const ORDEN_SEEDS = [
   '002_catalogos_demo.sql',
+  '004_tipos_apoyo_apoyo.sql',
   '001_usuarios_demo.sql',
   '003_beneficiarios_demo.sql'
 ];
@@ -44,6 +47,10 @@ async function sembrar(): Promise<void> {
   const contrasena = leerContrasenaDemo();
   const usuarioAdmin = process.env.SEED_ADMIN_USER || 'admin';
   const hash = bcrypt.hashSync(contrasena, 10);
+  // El editor de datos puede tener su propia contrasena; si no se define,
+  // comparte la de los demas usuarios demo.
+  const contrasenaEditor = process.env.SEED_EDITOR_PASSWORD || contrasena;
+  const hashEditor = bcrypt.hashSync(contrasenaEditor, 10);
 
   for (const archivo of ORDEN_SEEDS) {
     const ruta = path.join(config.directorioSeeds, archivo);
@@ -57,7 +64,8 @@ async function sembrar(): Promise<void> {
       .replace(/__USUARIO_ADMIN__/g, usuarioAdmin.replace(/'/g, "''"))
       .replace(/__HASH_ADMIN__/g, hash)
       .replace(/__HASH_CAPTURISTA__/g, hash)
-      .replace(/__HASH_AUDITOR__/g, hash);
+      .replace(/__HASH_AUDITOR__/g, hash)
+      .replace(/__HASH_EDITOR__/g, hashEditor);
 
     await pool.query(sql);
     console.log(`  + ${archivo} sembrado`);

@@ -17,3 +17,12 @@ ON CONFLICT (usuario) DO UPDATE SET password_hash = EXCLUDED.password_hash;
 INSERT INTO usuarios (usuario, nombre_completo, password_hash, rol, regional_id)
 VALUES ('auditor1', 'Auditor Estatal', '__HASH_AUDITOR__', 'auditor', NULL)
 ON CONFLICT (usuario) DO UPDATE SET password_hash = EXCLUDED.password_hash;
+
+-- Editor de datos: perfil de gabinete central (sin Regional asignada) que
+-- depura el staging y corrige datos de contacto en produccion. No tiene
+-- acceso a la captura de campo ni al panel de auditoria.
+INSERT INTO usuarios (usuario, nombre_completo, password_hash, rol, regional_id)
+VALUES ('editor1', 'Editor de Datos Central', '__HASH_EDITOR__', 'editor_datos', NULL)
+ON CONFLICT (usuario) DO UPDATE SET
+  password_hash = EXCLUDED.password_hash,
+  rol           = EXCLUDED.rol;

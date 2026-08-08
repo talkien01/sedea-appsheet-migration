@@ -1,0 +1,6 @@
+GRUPO,CLAVE,VALOR,GRUPO PADRE,CLAVE PADRE,ORDEN
+colonia,COL-22014-03,Lomas de Casa Blanca,municipio,22014,3
+colonia,COL-22015-03,Vista Hermosa,municipio,22015,3
+seccion,COL-22014-03-S1,Seccion 01,colonia,COL-22014-03,1
+seccion,COL-22014-03-S2,Seccion 02,colonia,COL-22014-03,2
+estatus_entrega,CANCELADO,Cancelado,,,4

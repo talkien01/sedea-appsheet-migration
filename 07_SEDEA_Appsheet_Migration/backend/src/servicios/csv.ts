@@ -1,6 +1,6 @@
 // Generacion de CSV con BOM UTF-8 para que Excel en Windows lo abra bien.
 
-const BOM = '﻿';
+const BOM = '\uFEFF';
 
 function escapar(valor: unknown): string {
   if (valor === null || valor === undefined) return '';

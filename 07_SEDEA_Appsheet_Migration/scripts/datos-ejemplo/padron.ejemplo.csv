@@ -1,0 +1,11 @@
+FOLIO,CURP,NOMBRE DEL BENEFICIARIO,DIRECCION REGIONAL,MUNICIPIO,COLONIA/BARRIO,SECCION,LOCALIDAD,DOMICILIO,TELEFONO,TIPO DE APOYO,CANTIDAD,CICLO AGRICOLA,OBSERVACIONES DE CAMPO
+IMP-0001,HERM800101HQTRVR01,Hermelinda Robles Vazquez,Regional Centro,Queretaro,Centro,Seccion 01,Santa Rosa Jauregui,Camino Real 45,4421234501,Semilla de maiz mejorada,120,PV-2026,Entrega programada primera quincena
+IMP-0002,JUGA750210HQTRNS02,Juan Gabriel Nunez Sanchez,Regional Centro,Corregidora,Barrio La Cruz,Seccion 02,El Pueblito,Av. Constituyentes 88,4421234502,Fertilizante granulado,300,PV-2026,Requiere confirmar telefono
+IMP-0003,MARL880315MQTRSL03,Maria Elena Rosales Lopez,Regional Centro,El Marques,Centro,Seccion 01,La Canada,Calle Hidalgo 12,4421234503,Paquete de aves de postura,20,PV-2026,
+IMP-0004,PEDT700422HQTRRR04,Pedro Torres Ramirez,Regional Sierra Gorda,Jalpan de Serra,Centro,Seccion 01,Tancoyol,Camino a la Sierra 3,4411234504,Paquete ovino,8,OI-2026,Zona de dificil acceso
+IMP-0005,LUCM920830MQTRMR05,Lucia Martinez Morales,Regional Sierra Gorda,Pinal de Amoles,Barrio La Cruz,Seccion 02,Ahuacatlan,Privada Juarez 7,4411234505,Cisterna de captacion de agua,1,OI-2026,
+IMP-0006,ROSG651118HQTRLV06,Rogelio Salvador Gallegos Olvera,Regional Bajio,San Juan del Rio,Centro,Seccion 01,San Isidro,Prolongacion Zaragoza 210,4271234506,Servicio de maquinaria agricola,5,PV-2026,Superficie en hectareas
+IMP-0007,ANAB830505MQTRRT07,Ana Bertha Arteaga Trejo,Regional Bajio,Tequisquiapan,Barrio La Cruz,Seccion 02,La Fuente,Calle Morelos 34,4141234507,Semilla de maiz mejorada,90,PV-2026,
+IMP-0008,CARV771201HQTRZR08,Carlos Vazquez Zarate,Regional Bajio,Amealco de Bonfil,Centro,Seccion 01,San Ildefonso,Camino a la Presa 15,4481234508,Fertilizante granulado,250,PV-2026,Beneficiario indigena otomi
+IMP-0009,SILH910714MQTRRL09,Silvia Hernandez Ruelas,Regional Centro,Huimilpan,Centro,Seccion 01,El Vegil,Calle Independencia 5,4481234509,Paquete de aves de postura,25,PV-2026,
+IMP-0010,,Jose Refugio Aguilar Mendieta,Regional Sierra Gorda,Penamiller,Barrio La Cruz,Seccion 02,Rio Blanco,Camino Viejo s/n,4411234510,Paquete ovino,10,OI-2026,CURP pendiente de validar

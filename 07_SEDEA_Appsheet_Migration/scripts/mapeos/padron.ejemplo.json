@@ -1,0 +1,22 @@
+{
+  "tipo": "padron",
+  "delimitador": ",",
+  "hoja": "Hoja1",
+  "columnas": {
+    "folio": "FOLIO",
+    "curp": "CURP",
+    "nombre_completo": "NOMBRE DEL BENEFICIARIO",
+    "regional": "DIRECCION REGIONAL",
+    "municipio": "MUNICIPIO",
+    "colonia": "COLONIA/BARRIO",
+    "seccion": "SECCION",
+    "localidad": "LOCALIDAD",
+    "domicilio": "DOMICILIO",
+    "telefono": "TELEFONO",
+    "tipo_apoyo": "TIPO DE APOYO",
+    "cantidad_asignada": "CANTIDAD"
+  },
+  "crear_catalogos_faltantes": true,
+  "clave_upsert": "folio",
+  "guardar_columnas_no_mapeadas_en": "datos_extra"
+}

@@ -1,0 +1,195 @@
+// Operaciones de lectura/escritura sobre IndexedDB. Toda la UI de campo
+// consulta aqui, nunca a la red directamente.
+import type { RespuestaCatalogos, PerfilUsuario, Beneficiario } from '@sedea/shared';
+import { db, type CapturaLocal, type EntradaCatalogoLocal, type SesionLocal } from './indexeddb';
+
+// --------------------------------------------------------------------------
+// Sesion
+// --------------------------------------------------------------------------
+
+export async function guardarSesion(token: string, perfil: PerfilUsuario): Promise<SesionLocal> {
+  const previa = await db.sesion.get(1);
+  const sesion: SesionLocal = {
+    id: 1,
+    token,
+    perfil,
+    // El backend firma con 12 h; guardamos la caducidad para operar sin red.
+    expiracion: Date.now() + 12 * 60 * 60 * 1000,
+    ultima_sincronizacion: previa?.ultima_sincronizacion ?? null
+  };
+  await db.sesion.put(sesion);
+  return sesion;
+}
+
+export async function obtenerSesion(): Promise<SesionLocal | undefined> {
+  return db.sesion.get(1);
+}
+
+export async function sesionVigente(): Promise<SesionLocal | null> {
+  const sesion = await db.sesion.get(1);
+  if (!sesion) return null;
+  if (sesion.expiracion <= Date.now()) return null;
+  return sesion;
+}
+
+export async function cerrarSesion(): Promise<void> {
+  await db.sesion.clear();
+}
+
+export async function marcarSincronizacion(fechaIso: string): Promise<void> {
+  const sesion = await db.sesion.get(1);
+  if (sesion) {
+    sesion.ultima_sincronizacion = fechaIso;
+    await db.sesion.put(sesion);
+  }
+}
+
+// --------------------------------------------------------------------------
+// Catalogos
+// --------------------------------------------------------------------------
+
+/** Aplana la respuesta del servidor a la tabla local unica de catalogos. */
+export async function guardarCatalogos(respuesta: RespuestaCatalogos): Promise<void> {
+  const entradas: EntradaCatalogoLocal[] = [];
+
+  for (const r of respuesta.regionales) {
+    entradas.push({ grupo: 'regional', clave: r.clave, valor: r.nombre, datos: { id: r.id } });
+  }
+  for (const m of respuesta.municipios) {
+    entradas.push({
+      grupo: 'municipio',
+      clave: m.clave,
+      valor: m.nombre,
+      padre_grupo: 'regional',
+      padre_clave: String(m.regional_id),
+      datos: { id: m.id, regional_id: m.regional_id }
+    });
+  }
+  for (const t of respuesta.tipos_apoyo) {
+    entradas.push({
+      grupo: 'tipo_apoyo',
+      clave: t.clave,
+      valor: t.nombre,
+      datos: { id: t.id, unidad_medida: t.unidad_medida }
+    });
+  }
+  for (const c of respuesta.catalogos) {
+    entradas.push({
+      grupo: c.grupo,
+      clave: c.clave,
+      valor: c.valor,
+      padre_grupo: c.padre_grupo,
+      padre_clave: c.padre_clave,
+      orden: c.orden
+    });
+  }
+
+  await db.transaction('rw', db.catalogos, async () => {
+    await db.catalogos.clear();
+    await db.catalogos.bulkAdd(entradas);
+  });
+}
+
+export async function catalogosPorGrupo(grupo: string): Promise<EntradaCatalogoLocal[]> {
+  const filas = await db.catalogos.where('grupo').equals(grupo).toArray();
+  return filas.sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.valor.localeCompare(b.valor));
+}
+
+// --------------------------------------------------------------------------
+// Beneficiarios
+// --------------------------------------------------------------------------
+
+export async function guardarBeneficiarios(lista: Beneficiario[]): Promise<void> {
+  await db.beneficiarios.bulkPut(lista);
+}
+
+export async function contarBeneficiarios(): Promise<number> {
+  return db.beneficiarios.count();
+}
+
+export async function obtenerBeneficiario(id: number): Promise<Beneficiario | undefined> {
+  return db.beneficiarios.get(id);
+}
+
+/** Quita acentos y pasa a minusculas para busquedas tolerantes. */
+export function normalizarTexto(texto: string): string {
+  return String(texto ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+export interface FiltrosBeneficiarios {
+  texto?: string;
+  regional_id?: number | null;
+  municipio_id?: number | null;
+  colonia?: string | null;
+  seccion?: string | null;
+  estado?: 'todos' | 'pendientes' | 'capturados';
+}
+
+/** Busca en IndexedDB aplicando todos los filtros de la pantalla. */
+export async function buscarBeneficiarios(
+  filtros: FiltrosBeneficiarios
+): Promise<Array<Beneficiario & { capturado: boolean }>> {
+  const todos = await db.beneficiarios.toArray();
+  const capturas = await db.capturas.toArray();
+  const conCaptura = new Set(capturas.map((c) => c.beneficiario_id));
+
+  const texto = filtros.texto ? normalizarTexto(filtros.texto) : '';
+
+  return todos
+    .filter((b) => {
+      if (filtros.regional_id && b.regional_id !== filtros.regional_id) return false;
+      if (filtros.municipio_id && b.municipio_id !== filtros.municipio_id) return false;
+      if (filtros.colonia && b.colonia !== filtros.colonia) return false;
+      if (filtros.seccion && b.seccion !== filtros.seccion) return false;
+      if (texto) {
+        const objetivo = normalizarTexto(
+          `${b.nombre_completo} ${b.curp ?? ''} ${b.folio}`
+        );
+        if (!objetivo.includes(texto)) return false;
+      }
+      const capturado = conCaptura.has(b.id) || (b.total_capturas ?? 0) > 0;
+      if (filtros.estado === 'pendientes' && capturado) return false;
+      if (filtros.estado === 'capturados' && !capturado) return false;
+      return true;
+    })
+    .map((b) => ({
+      ...b,
+      capturado: conCaptura.has(b.id) || (b.total_capturas ?? 0) > 0
+    }))
+    .sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo));
+}
+
+// --------------------------------------------------------------------------
+// Capturas locales
+// --------------------------------------------------------------------------
+
+export async function guardarCapturaLocal(captura: CapturaLocal): Promise<void> {
+  await db.capturas.put(captura);
+}
+
+export async function capturasDeBeneficiario(beneficiarioId: number): Promise<CapturaLocal[]> {
+  const filas = await db.capturas.where('beneficiario_id').equals(beneficiarioId).toArray();
+  return filas.sort((a, b) => b.capturado_en.localeCompare(a.capturado_en));
+}
+
+export async function contarPendientes(): Promise<number> {
+  return db.capturas.where('estado').anyOf('pendiente', 'sincronizando', 'error').count();
+}
+
+export async function capturasPendientes(): Promise<CapturaLocal[]> {
+  const filas = await db.capturas.where('estado').anyOf('pendiente', 'error').toArray();
+  return filas.sort((a, b) => a.capturado_en.localeCompare(b.capturado_en));
+}
+
+export async function limpiarBaseLocal(): Promise<void> {
+  await db.transaction('rw', db.beneficiarios, db.catalogos, db.capturas, db.sesion, async () => {
+    await db.beneficiarios.clear();
+    await db.catalogos.clear();
+    await db.capturas.clear();
+    await db.sesion.clear();
+  });
+}

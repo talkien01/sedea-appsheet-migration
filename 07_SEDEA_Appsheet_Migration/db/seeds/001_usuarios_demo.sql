@@ -10,7 +10,7 @@ VALUES ('__USUARIO_ADMIN__', 'Administrador SEDEA', '__HASH_ADMIN__', 'admin', N
 ON CONFLICT (usuario) DO UPDATE SET password_hash = EXCLUDED.password_hash;
 
 INSERT INTO usuarios (usuario, nombre_completo, password_hash, rol, regional_id)
-SELECT 'capturista1', 'Capturista Regional Centro', '__HASH_CAPTURISTA__', 'capturista', r.id
+SELECT 'capturista1', 'Capturista Cadereyta', '__HASH_CAPTURISTA__', 'capturista', r.id
 FROM direcciones_regionales r WHERE r.clave = 'REG-01'
 ON CONFLICT (usuario) DO UPDATE SET password_hash = EXCLUDED.password_hash;
 

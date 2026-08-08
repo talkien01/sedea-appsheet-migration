@@ -1259,3 +1259,342 @@ Continúa la numeración de §7 y §8.11. Base: `API=http://localhost:3000`, `AP
 159. `README.md` incluye una sección del dashboard que documenta las 4 métricas (cobertura, distribución por tipo de apoyo, avance en el tiempo, estado del staging), los roles con acceso (`admin`, `auditor`, `editor_datos`; el capturista no), que **Chart.js** es la única dependencia nueva y es open source sin servicios externos, y que **no existe alta manual de beneficiarios** (todo entra por importación de padrón).
 
 **Definición de "terminado" (build 3):** los 159 criterios pasan (60 del build original + 50 del staging + 49 de esta extensión).
+
+# 10. EXTENSIÓN — Administración de usuarios reales + cambio de contraseña obligatorio (build 4)
+
+> **CONTINUACIÓN LITERAL DE `SPEC.md`.** Esta sección se **agrega al final** de `SPEC.md` (después de la línea "Definición de terminado (build 3)"). Nada de las secciones 1–9 se renegocia, se reescribe ni se deroga. Mismo monorepo, mismo `docker-compose.yml`, mismos 3 servicios (`db`, `backend`, `pwa`), mismo backend y misma PWA. **No se crea ningún servicio nuevo.** El proyecto ya está desplegado en producción (Hostinger + EasyPanel): toda migración debe ser **aditiva e idempotente** y no debe romper a los 4 usuarios demo/operativos ya sembrados.
+
+## 10.1 Objetivo de la extensión
+
+Sustituir la administración manual de cuentas por SQL directo por una **pantalla de administración de usuarios dentro de la app**, donde un `admin` o un `editor_datos` pueda dar de alta capturistas reales de las Direcciones Regionales, asignarles su Regional, editarlos, resetear su contraseña y darlos de baja (desactivar, nunca borrar), con **contraseña temporal de un solo uso** y **cambio de contraseña obligatorio en el primer inicio de sesión**.
+
+## 10.2 Decisiones de producto (ya acordadas con el usuario — implementar tal cual)
+
+- **D15. Acceso a la administración de usuarios: `admin` **y** `editor_datos`.** Ambos roles ven la pantalla `/usuarios` y pueden operar los endpoints `/api/usuarios/*`. `capturista` y `auditor` reciben **403** en la API y "No tienes permiso para ver esta sección." en la PWA.
+- **D16. Baja = desactivar, NUNCA borrar.** Dar de baja pone `activo = false`. La fila permanece intacta para que `capturas.usuario_id`, `staging_beneficiarios.revisado_por` y `auditoria_log.usuario_id` conserven nombre e historial. **No se implementa `DELETE /api/usuarios/:id` en ningún caso**, ni botón de eliminar en la UI. Un usuario inactivo no puede iniciar sesión y sus tokens vigentes dejan de servir.
+- **D17. Contraseña temporal + cambio obligatorio en el primer login.** Al **crear** un usuario o **resetear** su contraseña, el sistema genera una contraseña temporal aleatoria criptográficamente segura. Se muestra **una sola vez** en pantalla a quien la generó, para que se la comunique al usuario por el canal que corresponda. **Nunca** se envía por correo, **nunca** se guarda en claro y **nunca** se puede volver a consultar (ni por API, ni en BD, ni en la bitácora). El usuario queda con `debe_cambiar_password = true`.
+- **D18. El flag bloquea todo salvo el cambio de contraseña.** Mientras `debe_cambiar_password = true`, el login sigue devolviendo token (para poder autenticar el cambio), pero **cualquier otra ruta protegida responde 403** con `codigo:"cambio_password_requerido"`. Aplica a **los 4 roles**, no solo a los usuarios nuevos.
+- **D19. Cambio voluntario siempre disponible.** El endpoint de cambio de la propia contraseña funciona también cuando el flag está en `false`, para que cualquier usuario pueda cambiarla cuando quiera desde el menú de usuario.
+- **D20. Los 4 usuarios ya operativos (`admin`, `capturista1`, `auditor1`, `editor1`) NO se ven afectados**: la migración crea `debe_cambiar_password` con `DEFAULT FALSE`, por lo que las filas existentes quedan en `false` y siguen entrando exactamente como hoy. No hay cambio retroactivo forzado.
+- **D21. El nombre de login (`usuarios.usuario`) es inmutable una vez creado.** Es la clave con la que se lee la trazabilidad histórica; si está mal, se desactiva la cuenta y se crea otra. El backend rechaza el campo en la edición.
+- **D22. Regional obligatoria solo para `capturista`.** Los roles `admin`, `auditor` y `editor_datos` se crean con `regional_id = NULL` (igual que el seed vigente). Enviar Regional para esos roles es un error de validación.
+- **D23. `editor_datos` no puede crear ni tocar cuentas `admin`.** Puede administrar `capturista`, `auditor` y `editor_datos`. Cualquier operación de creación/edición/reset/activación sobre un usuario con rol `admin`, o que asigne el rol `admin`, se rechaza con **403** `rol_no_asignable`. `admin` puede con todo. (Evita escalada de privilegios desde el perfil de gabinete.)
+- **D24. Sin autoservicio de recuperación.** No hay "olvidé mi contraseña" por correo (sigue fuera de scope, §2). La vía de recuperación es: el usuario le pide a un `admin`/`editor_datos` que le resetee la contraseña.
+
+## 10.3 Modelo de datos
+
+### 10.3.1 Estado actual relevante (NO se duplica)
+
+`usuarios` (§4.1) **ya tiene** `id`, `usuario` (UNIQUE), `nombre_completo`, `password_hash`, `rol` (CHECK con los 4 roles tras §8.4.1), `regional_id`, **`activo BOOLEAN NOT NULL DEFAULT TRUE`**, `creado_en`, `actualizado_en`. **La columna `activo` ya existe: no se vuelve a crear.**
+
+### 10.3.2 `db/migrations/010_usuarios_admin.sql` (única migración de este build)
+
+Puramente aditiva e idempotente (la BD de producción ya tiene datos):
+
+```sql
+-- Cambio de contraseña obligatorio (build 4).
+-- DEFAULT FALSE: las filas existentes NO quedan forzadas a cambiar contraseña.
+ALTER TABLE usuarios
+  ADD COLUMN IF NOT EXISTS debe_cambiar_password BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Marca de la última vez que el usuario cambió su propia contraseña (informativa, puede ser NULL).
+ALTER TABLE usuarios
+  ADD COLUMN IF NOT EXISTS password_actualizado_en TIMESTAMPTZ;
+
+-- Índices de apoyo para el listado filtrado de /api/usuarios.
+CREATE INDEX IF NOT EXISTS idx_usuarios_rol      ON usuarios (rol);
+CREATE INDEX IF NOT EXISTS idx_usuarios_activo   ON usuarios (activo);
+CREATE INDEX IF NOT EXISTS idx_usuarios_regional ON usuarios (regional_id);
+```
+
+No se crean tablas nuevas. **Jamás** se crea una columna que guarde la contraseña temporal en claro: la única representación persistida es `password_hash` (bcrypt cost 10). El criterio 112 (§9.9) sigue vigente: no se elimina ni renombra ninguna columna existente.
+
+### 10.3.3 Valores nuevos de `auditoria_log.accion` (la columna es TEXT libre, el esquema no cambia)
+
+| `accion` | `entidad` | `entidad_id` | `detalle` (JSONB) |
+|---|---|---|---|
+| `usuario_creado` | `usuario` | id del creado | `{usuario, rol, regional_id, creado_por_rol}` |
+| `usuario_editado` | `usuario` | id | `{cambios:[{campo,anterior,nuevo}], editado_por_rol}` |
+| `usuario_password_reset` | `usuario` | id | `{usuario, motivo?, reseteado_por_rol}` |
+| `usuario_activado` | `usuario` | id | `{usuario, anterior:false, nuevo:true}` |
+| `usuario_desactivado` | `usuario` | id | `{usuario, anterior:true, nuevo:false, motivo?}` |
+| `password_cambiado` | `usuario` | id del propio usuario | `{obligatorio: true\|false}` |
+
+**El `detalle` NUNCA contiene la contraseña temporal ni la nueva contraseña, ni en claro ni hasheada.**
+
+## 10.4 Generación de la contraseña temporal
+
+`backend/src/servicios/passwords.ts`:
+
+- Alfabeto **sin caracteres ambiguos**: `ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789` (excluye `I`, `l`, `O`, `0`, `1`) y **sin símbolos** (para que sea trivial de dictar y copiar).
+- Longitud fija **14 caracteres**.
+- Generación con `crypto.randomBytes` y **rechazo de sesgo** (descartar bytes ≥ `256 - (256 % alfabeto.length)`), nunca `Math.random`.
+- Se **regenera** hasta que contenga al menos una letra y al menos un dígito, de modo que la temporal cumpla la propia política de contraseñas (10.5).
+- Se hashea con bcrypt cost 10 antes de guardar. **La cadena en claro solo existe en memoria durante la petición y en el cuerpo de la respuesta HTTP de creación/reset.**
+
+## 10.5 Política de contraseñas (aplica al cambio propio)
+
+Validación compartida en `packages/shared/src/usuarios.ts` (Zod), reutilizada en cliente y servidor:
+
+| Regla | Código de error | Mensaje |
+|---|---|---|
+| Longitud entre 10 y 128 caracteres | `password_debil` | "La contraseña debe tener al menos 10 caracteres." |
+| Debe contener al menos una letra y un dígito | `password_debil` | "La contraseña debe incluir al menos una letra y un número." |
+| No puede ser igual a la contraseña actual | `password_repetida` | "La nueva contraseña debe ser distinta de la actual." |
+| `password_actual` no coincide con el hash | `password_actual_incorrecta` | "La contraseña actual no es correcta." |
+
+Todas responden **422** (no 401, para no disparar el cierre de sesión automático del cliente).
+
+## 10.6 Cambios en autenticación y middleware (backend)
+
+### 10.6.1 Verificación por petición contra BD (`backend/src/plugins/auth.ts`)
+
+El plugin de autenticación, además de verificar la firma del JWT, **lee la fila del usuario** (`SELECT id, usuario, nombre_completo, rol, regional_id, activo, debe_cambiar_password FROM usuarios WHERE id = $1`) y la deja en `request.usuario`. Consecuencias (deseadas y verificables):
+
+1. **Cuenta desactivada ⇒ token inservible de inmediato.** Si `activo = false`, cualquier ruta protegida responde **401** `{"error":{"codigo":"cuenta_desactivada","mensaje":"Tu cuenta está desactivada. Contacta al administrador."}}`. No hace falta esperar a que expire el JWT.
+2. **Usuario borrado** (no ocurre por D16, pero se contempla): 401 `token_invalido`.
+3. El flag `debe_cambiar_password` se lee **de BD, no del token**: en cuanto el usuario cambia su contraseña, el mismo token vuelve a servir para todo.
+
+Esta lectura no requiere caché (una query por petición sobre PK, con el orden de magnitud del proyecto).
+
+### 10.6.2 Guarda global de cambio de contraseña (`backend/src/plugins/cambioPassword.ts`)
+
+Hook `preHandler` global, **después** de la autenticación. Si `request.usuario.debe_cambiar_password === true` y la ruta **no** está en la lista blanca, responde:
+
+```json
+{"error":{"codigo":"cambio_password_requerido","mensaje":"Debes cambiar tu contraseña antes de continuar."}}
+```
+con HTTP **403**.
+
+**Lista blanca (únicas rutas permitidas con el flag activo):**
+- `GET /api/health` (pública)
+- `POST /api/auth/login` (pública)
+- `GET /api/auth/me`
+- `PATCH /api/mi-cuenta/password`
+
+Todo lo demás (`/api/beneficiarios*`, `/api/catalogos`, `/api/capturas*`, `/api/auditoria/*`, `/api/staging/*`, `/api/correcciones/*`, `/api/estadisticas/*`, `/api/usuarios*`, `/media/*`) responde 403 mientras el flag siga en `true`.
+
+### 10.6.3 Cambios en `POST /api/auth/login` (E2) y `GET /api/auth/me` (E3) — **aditivos**
+
+- El login **sigue devolviendo 200 con `token`** exactamente como hoy (no cambia el contrato existente). El objeto `usuario` gana dos claves: **`debe_cambiar_password` (boolean)** y **`activo` (boolean, siempre `true` en un login exitoso)**.
+- Un usuario con `activo = false` que intenta iniciar sesión recibe **401** con el mismo mensaje genérico que una credencial inválida (`{"error":{"codigo":"credenciales_invalidas","mensaje":"Usuario o contraseña incorrectos."}}`) — no se filtra el estado de la cuenta. Se registra en `auditoria_log` como `login_fallido` con `detalle.motivo = "cuenta_desactivada"`.
+- `GET /api/auth/me` devuelve el perfil con `debe_cambiar_password` incluido (es de lista blanca, funciona con el flag activo).
+
+## 10.7 Endpoints nuevos
+
+Archivo `backend/src/rutas/usuarios.ts` (E34–E38) y `backend/src/rutas/miCuenta.ts` (E39). SQL en `backend/src/db/queries/usuarios.ts`; lógica en `backend/src/servicios/usuarios.ts`. Formato de error existente `{"error":{"codigo","mensaje"}}`.
+
+**Reglas transversales de `/api/usuarios/*`:**
+- `requiereRol(['admin','editor_datos'])`. Sin token → **401**; `capturista`/`auditor` → **403** `rol_no_autorizado`.
+- `password_hash` **nunca** aparece en ninguna respuesta.
+- Regla D23: si el actor es `editor_datos` y el usuario objetivo tiene `rol='admin'`, o el payload pide `rol='admin'` → **403** `rol_no_asignable` ("Tu rol no puede administrar cuentas de administrador.").
+- Toda mutación es **transaccional**: `UPDATE`/`INSERT` en `usuarios` + `INSERT` en `auditoria_log` en la misma transacción.
+- Validación del campo `usuario`: 3–32 caracteres, patrón `^[a-z0-9._-]+$`; se normaliza a minúsculas y `trim` antes de guardar; unicidad **case-insensitive**.
+- `nombre_completo`: 3–120 caracteres tras `trim`.
+- `rol` ∈ `capturista | auditor | admin | editor_datos`.
+
+| # | Método | Ruta | Descripción / Respuesta |
+|---|---|---|---|
+| **E34** | GET | `/api/usuarios` | Query: `rol`, `regional_id`, `activo` (`true`\|`false`), `q` (usuario o nombre, ≥2 chars, sin acentos), `page` (1), `page_size` (≤100, default 25). → `200 {data:[{id,usuario,nombre_completo,rol,regional_id,regional,activo,debe_cambiar_password,creado_en,actualizado_en,password_actualizado_en,capturas:<count>}], page, page_size, total, has_more}`. Orden: `activo DESC, nombre_completo ASC`. Sin filtro `activo`, devuelve activos **e** inactivos. |
+| **E35** | POST | `/api/usuarios` | Body **estricto** `{usuario, nombre_completo, rol, regional_id?}`. Genera la temporal (10.4), hashea, inserta con `activo=true` y `debe_cambiar_password=true`. → **201** `{ok:true, usuario:{id,usuario,nombre_completo,rol,regional_id,regional,activo:true,debe_cambiar_password:true,creado_en}, password_temporal:"<14 chars>", aviso:"Cópiala ahora: no se volverá a mostrar."}`. Registra `usuario_creado`. |
+| **E36** | PATCH | `/api/usuarios/:id` | Body **estricto** `{nombre_completo?, rol?, regional_id?, motivo?}`. Solo esos 3 campos de datos son editables. → `200 {ok:true, usuario:{...}, cambios:[{campo,anterior,nuevo}]}`. Sin cambios reales ⇒ `200` con `cambios:[]`, sin tocar `actualizado_en` ni bitácora. Registra `usuario_editado`. |
+| **E37** | POST | `/api/usuarios/:id/reset-password` | Body `{motivo?}`. Genera **nueva** temporal, actualiza `password_hash`, pone `debe_cambiar_password=true` y `password_actualizado_en=NULL`. → `200 {ok:true, usuario_id, usuario, password_temporal:"<14 chars>", aviso:"Cópiala ahora: no se volverá a mostrar."}`. Registra `usuario_password_reset`. |
+| **E38** | PATCH | `/api/usuarios/:id/activo` | Body `{activo:boolean, motivo?}`. → `200 {ok:true, usuario:{id,usuario,activo}}`. Idempotente: si ya estaba en ese valor, `200` sin bitácora. Registra `usuario_activado` / `usuario_desactivado`. |
+| **E39** | PATCH | `/api/mi-cuenta/password` | **Cualquier rol autenticado** (lista blanca de 10.6.2). Body `{password_actual, password_nueva}`. Valida 10.5, actualiza `password_hash`, pone `debe_cambiar_password=false` y `password_actualizado_en=now()`. → `200 {ok:true, debe_cambiar_password:false}`. Registra `password_cambiado` con `{obligatorio:<valor previo del flag>}`. **El token vigente sigue siendo válido** tras el cambio (no se invalida la sesión en curso). |
+
+### 10.7.1 Códigos de error específicos
+
+| Caso | HTTP | `codigo` | Mensaje |
+|---|---|---|---|
+| `usuario` ya existe (case-insensitive) | **409** | `usuario_duplicado` | "Ya existe un usuario con ese nombre de acceso." |
+| `rol='capturista'` sin `regional_id` | **422** | `regional_requerida` | "Los capturistas deben tener una Dirección Regional asignada." |
+| `regional_id` no nulo con rol distinto de `capturista` | **422** | `regional_no_aplica` | "Solo los capturistas llevan Dirección Regional." |
+| `regional_id` inexistente o `activo=false` | **422** | `regional_invalida` | "La Dirección Regional seleccionada no existe o está inactiva." |
+| Clave fuera de la lista blanca en E35/E36 (`usuario` en E36, `password`, `password_hash`, `activo`, `debe_cambiar_password`, `id`, `creado_en`, …) | **422** | `campo_no_editable` | "Los campos &lt;x&gt; no se pueden modificar por esta vía." |
+| Body de E36 sin ninguna clave de datos | **422** | `sin_cambios` | "No se envió ningún campo editable." |
+| `usuario`/`nombre_completo`/`rol` con formato inválido | **422** | `payload_invalido` | "Datos inválidos." |
+| Admin intentando desactivarse a sí mismo | **409** | `auto_desactivacion` | "No puedes desactivar tu propia cuenta." |
+| Desactivar (o cambiar de rol) al **último `admin` activo** | **409** | `ultimo_admin` | "Debe quedar al menos un administrador activo." |
+| `editor_datos` sobre cuenta/rol `admin` (D23) | **403** | `rol_no_asignable` | "Tu rol no puede administrar cuentas de administrador." |
+| `id` inexistente | **404** | `no_encontrado` | "El usuario no existe." |
+| `DELETE /api/usuarios/:id` | **404/405** | — | La ruta **no se implementa** (D16). |
+
+## 10.8 Pantallas nuevas en la PWA
+
+Todas **online-only** (no se cachean datos en IndexedDB; sin red muestran "Esta sección requiere conexión a internet."). Textos y validaciones en español.
+
+### 10.8.1 `/usuarios` — Administración de usuarios (`Usuarios.tsx`)
+
+`<RutaProtegida roles={['admin','editor_datos']}>`. Encabezado **"Administración de usuarios"** + aviso permanente: *"Las bajas se hacen desactivando la cuenta: el historial de capturas y auditoría se conserva. Ningún usuario se elimina."*
+
+- **Filtros** (recargan la tabla sin recargar la página): `select-filtro-rol` (Todos / Capturista / Auditor / Editor de datos / Administrador), `select-filtro-regional` (Todas + las 4 Regionales), `select-filtro-activo` (Todos / Activos / Inactivos), `input-busqueda-usuarios` (usuario o nombre, debounce 300 ms).
+- **Botón** `btn-nuevo-usuario` — "Nuevo usuario".
+- **Tabla** `data-testid="tabla-usuarios"`, filas `data-testid="fila-usuario"`. Columnas: Usuario, Nombre completo, Rol (etiqueta en español), Regional (`—` si no aplica), Estado (`badge-estado-usuario`: verde "Activo" / gris "Inactivo"), Contraseña (`badge-password-pendiente`: "Cambio pendiente" si `debe_cambiar_password`), Capturas, Acciones.
+- **Acciones por fila**: `btn-editar-usuario` ("Editar"), `btn-reset-password` ("Resetear contraseña", con confirmación "Se generará una contraseña temporal y el usuario deberá cambiarla al entrar. ¿Continuar?"), `btn-toggle-activo` ("Desactivar" / "Activar", con confirmación). **No existe ningún botón de eliminar/borrar.**
+- Vacío: "Sin resultados". Errores del backend: se muestra `error.mensaje` tal cual en `data-testid="error-usuarios"`.
+
+### 10.8.2 Formulario de alta/edición (`FormUsuario.tsx`, `data-testid="form-usuario"`)
+
+Modal. Campos: `input-usuario` (solo en alta; en edición se renderiza `readonly` **y** `disabled` con la leyenda *"El nombre de acceso no se puede cambiar: es la clave del historial de capturas y auditoría."*), `input-nombre-completo`, `select-rol`, `select-regional`.
+
+- `select-regional` está **habilitado y obligatorio solo si `select-rol` = Capturista**; con cualquier otro rol se deshabilita, se vacía y muestra "No aplica".
+- Si el actor es `editor_datos`, la opción "Administrador" **no se renderiza** en `select-rol` (D23).
+- Validación en cliente antes de enviar (mensajes bajo el campo, `data-testid="error-usuario"`, `error-nombre`, `error-regional`): patrón y longitud de `usuario`, longitud de nombre, Regional requerida para capturista. Si falla, **no** se llama a la API.
+- Botones `btn-guardar-usuario` ("Guardar") y `btn-cancelar-usuario` ("Cancelar").
+
+### 10.8.3 Modal de contraseña temporal (`ModalPasswordTemporal.tsx`)
+
+Se abre **automáticamente** tras un alta (E35) o un reset (E37) exitosos. `data-testid="modal-password-temporal"`.
+
+- Título "Contraseña temporal generada".
+- Aviso destacado: **"Cópiala ahora: no se volverá a mostrar. Entrégasela al usuario por un canal seguro; deberá cambiarla al iniciar sesión."**
+- La contraseña en `data-testid="texto-password-temporal"`, en fuente monoespaciada y seleccionable.
+- `btn-copiar-password` ("Copiar") usando `navigator.clipboard.writeText` con fallback a selección manual; al copiar muestra "Copiada al portapapeles".
+- `btn-cerrar-modal-password` ("Ya la copié, cerrar"). **Al cerrar, la contraseña se borra del estado de React**: no queda en el DOM, no se guarda en `localStorage`/IndexedDB y no se puede volver a abrir el modal para esa contraseña.
+
+### 10.8.4 `/cambiar-password` — Cambio de contraseña (`CambiarPassword.tsx`)
+
+Accesible para **cualquier usuario autenticado** (los 4 roles). Dos modos, mismo componente:
+
+| Modo | Cómo se entra | Comportamiento |
+|---|---|---|
+| **Obligatorio** | `debe_cambiar_password === true` | Se muestra `data-testid="aviso-cambio-obligatorio"` con "Por seguridad, debes cambiar tu contraseña temporal antes de usar el sistema." La navegación queda **bloqueada**: la barra de estado oculta todos los enlaces salvo "Cerrar sesión", y cualquier intento de ir a otra ruta protegida redirige aquí. |
+| **Voluntario** | Menú de usuario → "Cambiar mi contraseña" | Sin aviso de obligatoriedad; hay botón "Cancelar" que regresa a la pantalla anterior. |
+
+- `data-testid="form-cambio-password"` con `input-password-actual`, `input-password-nueva`, `input-password-confirmar` (todos `type="password"`), botón `btn-cambiar-password` ("Cambiar contraseña").
+- Validación en cliente (mensaje en `data-testid="error-password"`, sin llamar a la API): mínimo 10 caracteres, al menos una letra y un número, confirmación idéntica, nueva distinta de la actual.
+- Éxito: toast `data-testid="toast-exito"` "Contraseña actualizada." + refresco del perfil (`GET /api/auth/me`) + redirect **según rol** (§8.8.4/§9.6.5): `capturista` → `/sync` si el padrón local está vacío, si no `/beneficiarios`; `auditor` → `/auditoria`; `editor_datos` → `/depuracion`; `admin` → `/beneficiarios`. En modo voluntario, regresa a la pantalla anterior.
+- Error del backend: se muestra `error.mensaje` en `error-password`.
+
+### 10.8.5 Menú de usuario y navegación (delta sobre §8.8.4 y §9.6.5)
+
+- La barra de estado gana un **menú de usuario** `data-testid="menu-usuario"` (botón con el nombre del usuario) con: "Cambiar mi contraseña" (`nav-cambiar-password`, **visible para todos los roles**) y "Cerrar sesión" (`nav-cerrar-sesion`).
+- Enlace **"Usuarios"** (`data-testid="nav-usuarios"`) visible **solo** para `admin` y `editor_datos`. `capturista` y `auditor` no lo ven.
+- `RutaProtegida` gana: `/usuarios` → `['admin','editor_datos']`; `/cambiar-password` → cualquier rol autenticado. Todo lo demás de §8.8.4 y §9.6.5 **se mantiene idéntico**.
+- **Guarda global en la PWA**: (a) tras el login, si `usuario.debe_cambiar_password === true` se navega a `/cambiar-password` ignorando el redirect por rol; (b) `RutaProtegida` redirige a `/cambiar-password` mientras el flag esté activo; (c) `pwa/src/api/cliente.ts` intercepta cualquier respuesta **403 con `codigo === "cambio_password_requerido"`** y fuerza la navegación a `/cambiar-password`; (d) intercepta **401 con `codigo === "cuenta_desactivada"`**, borra la sesión de IndexedDB y manda a `/login` con el mensaje "Tu cuenta está desactivada. Contacta al administrador."
+
+## 10.9 Estructura de archivos nuevos (delta build 4)
+
+```
+db/migrations/010_usuarios_admin.sql
+backend/src/rutas/usuarios.ts                   # E34–E38
+backend/src/rutas/miCuenta.ts                   # E39
+backend/src/db/queries/usuarios.ts
+backend/src/servicios/usuarios.ts               # validaciones, diff, bitácora (transaccional)
+backend/src/servicios/passwords.ts              # generador crypto-seguro de temporales
+backend/src/plugins/cambioPassword.ts           # guarda global del flag
+packages/shared/src/usuarios.ts                 # Zod .strict() + tipos compartidos + política de password
+pwa/src/pantallas/Usuarios.tsx
+pwa/src/pantallas/CambiarPassword.tsx
+pwa/src/componentes/FormUsuario.tsx
+pwa/src/componentes/ModalPasswordTemporal.tsx
+pwa/src/componentes/MenuUsuario.tsx
+```
+
+Archivos modificados: `backend/src/plugins/auth.ts` (lectura de la fila del usuario por petición), `backend/src/rutas/auth.ts` (login/me con `debe_cambiar_password`, rechazo de cuenta inactiva), `backend/src/server.ts` (registro de rutas y del plugin de guarda), `pwa/src/rutas.tsx`, `pwa/src/componentes/BarraEstado.tsx`, `pwa/src/componentes/RutaProtegida.tsx`, `pwa/src/api/cliente.ts`, `README.md`.
+
+**Sin dependencias npm nuevas** (se usan `crypto` de Node, `bcryptjs` y `zod`, ya presentes). **Sin variables de entorno nuevas.** **Sin comandos npm nuevos**: todo corre con `docker compose up --build` y los scripts existentes; la migración `010` se aplica sola en el arranque del backend (§5.5).
+
+## 10.10 Assumptions de la extensión (continúa la numeración)
+
+46. **`activo` ya existía** en `usuarios` (§4.1): la migración 010 **no** la vuelve a crear; solo agrega `debe_cambiar_password` y `password_actualizado_en`.
+47. **La verificación de `activo`/`debe_cambiar_password` se hace contra BD en cada petición**, no desde claims del JWT. Cuesta una query por PK y a cambio hace que desactivar una cuenta surta efecto inmediato y que el cambio de contraseña desbloquee el token vigente sin re-login.
+48. **No se invalidan tokens al cambiar la contraseña** (no hay lista de revocación ni versión de credenciales): la sesión activa continúa. Aceptable dado el alcance y la expiración de 12 h.
+49. **La contraseña temporal viaja una sola vez en el cuerpo HTTPS de la respuesta de creación/reset.** No se persiste en claro, no se registra en `auditoria_log`, no se envía por correo (fuera de scope, §2) y no hay endpoint para reconsultarla. Si se pierde, se hace otro reset.
+50. **Longitud 14 y alfabeto sin ambiguos** (10.4): prioriza copiar/dictar sin errores por encima de memorizar; no se exigen símbolos porque complican el dictado y el teclado móvil.
+51. **`editor_datos` no administra cuentas `admin`** (D23). Es una restricción de seguridad decidida aquí ante la ambigüedad del brief: el brief da acceso a ambos roles, pero permitir que un perfil de gabinete cree administradores sería una escalada de privilegios trivial.
+52. **Protección del último administrador**: además de la prohibición de auto-desactivarse, se bloquea desactivar o degradar de rol al último `admin` activo. Evita dejar el sistema sin quien lo administre.
+53. **Regional solo para capturistas** (D22). La lógica ya existente de "auditor con regional asignada ve solo la suya" (§5.7 E5) **no se elimina** del backend; simplemente esta pantalla no permite asignarle Regional a un auditor.
+54. **El nombre de login es inmutable** (D21) y **no hay borrado** (D16): ambas decisiones existen para que `capturas.usuario_id`, `staging_beneficiarios.revisado_por` y `auditoria_log.usuario_id` nunca queden huérfanos ni cambien de significado.
+55. **Cuenta desactivada ⇒ 401 en rutas protegidas y 401 genérico en login** (sin revelar que la cuenta existe pero está inactiva). El mensaje explicativo solo se muestra a quien ya tenía sesión abierta.
+56. **La pantalla de usuarios es online-only** y no se registra en IndexedDB ni en la cola de sync (coherente con §8/§9: solo el app-shell se cachea).
+57. **`debe_cambiar_password` no se puede editar por API** salvo como efecto de crear/resetear (lo pone en `true`) o de cambiar la propia contraseña (lo pone en `false`). No existe forma de que un admin lo apague a mano.
+58. **Sin auditoría de intentos fallidos de cambio de contraseña** más allá del `login_fallido` ya existente: se consideró ruido innecesario para el volumen del proyecto.
+59. **Los 4 usuarios demo siguen documentados y funcionando** (D20). El README añade la instrucción de que, en producción, el primer paso operativo es crear los usuarios reales desde `/usuarios` y **desactivar** (no borrar) las cuentas demo que no se vayan a usar.
+
+---
+
+## 10.11 Rubric extendido (criterios 160–210)
+
+Continúa la numeración de §7, §8.11 y §9.9. Base: `API=http://localhost:3000`, `APP=http://localhost:8080`. Tokens: `T_ADMIN`, `T_CAP` (capturista1), `T_AUD` (auditor1), `T_EDIT` (editor1). `U_QA` = usuario creado durante la evaluación (`qa_capturista`).
+
+### Base de datos y migración (160–163)
+
+160. Existe `db/migrations/010_*.sql` y `information_schema.columns` muestra `usuarios.debe_cambiar_password` de tipo `boolean`, `is_nullable='NO'` y `column_default` que contiene `false`.
+161. `usuarios` conserva la columna `activo` (boolean, default true) y todas las columnas de §4.1; ninguna fue eliminada ni renombrada.
+162. `SELECT count(*) FROM usuarios WHERE usuario IN ('admin','capturista1','auditor1','editor1') AND debe_cambiar_password = false` devuelve **4** (la migración no forzó el cambio a los usuarios ya existentes).
+163. No existe ninguna columna en `usuarios` que almacene la contraseña en claro: en `information_schema.columns` para la tabla `usuarios`, ninguna columna cuyo nombre contenga `temporal`, `plano`, `claro` o `clave_temp`; la única columna de credencial es `password_hash`.
+
+### API — acceso a `/api/usuarios` (164–168)
+
+164. `GET $API/api/usuarios` sin header `Authorization` devuelve **401**.
+165. `GET $API/api/usuarios` con `T_CAP` devuelve **403** y con `T_AUD` devuelve **403**.
+166. `GET $API/api/usuarios` con `T_ADMIN` devuelve **200** con `data` array (≥4 elementos) y las claves `page`, `page_size`, `total`, `has_more`.
+167. En esa respuesta **ningún** elemento contiene la clave `password_hash` (ni `password`), y cada elemento sí trae `usuario`, `rol`, `activo` y `debe_cambiar_password`.
+168. `GET $API/api/usuarios` con `T_EDIT` devuelve **200** (el editor de datos también administra usuarios).
+
+### API — creación de usuarios (169–176)
+
+169. `POST $API/api/usuarios` con `T_ADMIN` y body `{"usuario":"qa_capturista","nombre_completo":"QA Capturista Prueba","rol":"capturista","regional_id":<id de REG-01>}` devuelve **201** con `ok:true`, `usuario.id` numérico y `password_temporal` de longitud ≥ 12.
+170. La `password_temporal` devuelta **no** contiene ninguno de los caracteres `0`, `O`, `1`, `l`, `I`, y contiene al menos una letra y al menos un dígito.
+171. En BD, `SELECT activo, debe_cambiar_password FROM usuarios WHERE usuario='qa_capturista'` devuelve `activo=true` y `debe_cambiar_password=true`.
+172. `POST /api/auth/login` con `qa_capturista` + su `password_temporal` devuelve **200** con `token` no vacío y `usuario.debe_cambiar_password === true`.
+173. Repetir el mismo `POST /api/usuarios` con `usuario:"qa_capturista"` devuelve **409** con `error.codigo === "usuario_duplicado"` y el `count(*)` de `usuarios` **no** aumenta.
+174. `POST /api/usuarios` con `{"rol":"capturista"}` y **sin** `regional_id` devuelve **422** `regional_requerida`; con `{"rol":"auditor","regional_id":<id válido>}` devuelve **422** `regional_no_aplica`.
+175. `POST /api/usuarios` con `T_EDIT` y `rol:"admin"` devuelve **403** `rol_no_asignable`; con `T_EDIT` y `rol:"capturista"` (usuario nuevo, con Regional) devuelve **201**.
+176. `POST /api/usuarios` con `T_CAP` devuelve **403** y con `T_AUD` devuelve **403**; en ambos casos el `count(*)` de `usuarios` no cambia.
+
+### API — bloqueo por `debe_cambiar_password` (177–182)
+
+177. Con el token de `qa_capturista` (flag en `true`), `GET $API/api/catalogos` devuelve **403** con `error.codigo === "cambio_password_requerido"`, y `GET $API/api/beneficiarios` devuelve **403** con el mismo código.
+178. Con ese mismo token, `GET $API/api/auth/me` devuelve **200** e incluye `debe_cambiar_password: true` (ruta de lista blanca).
+179. `PATCH $API/api/mi-cuenta/password` con ese token y `{"password_actual":"<temporal>","password_nueva":"QaSegura2026"}` devuelve **200** con `ok:true`; en BD `debe_cambiar_password` queda en **false** y `password_actualizado_en` no es NULL.
+180. Con el **mismo token de antes** (sin volver a iniciar sesión), `GET $API/api/catalogos` ahora devuelve **200**.
+181. `POST /api/auth/login` con `qa_capturista` + `QaSegura2026` devuelve **200**; con la contraseña temporal anterior devuelve **401** sin `token`.
+182. `PATCH /api/mi-cuenta/password` con `password_actual` incorrecta devuelve **422** `password_actual_incorrecta`; con `password_nueva":"abc"` devuelve **422** `password_debil`; con `password_nueva` igual a la actual devuelve **422** `password_repetida`. En los tres casos el hash en BD no cambia.
+
+### API — edición, reset y activación (183–191)
+
+183. `PATCH $API/api/usuarios/<id de U_QA>` con `T_ADMIN` y `{"nombre_completo":"QA Capturista Editado"}` devuelve **200** con `cambios` conteniendo `{campo:"nombre_completo",...}`; en BD el nombre cambió.
+184. `PATCH $API/api/usuarios/<id de U_QA>` con `{"usuario":"otro_login"}` devuelve **422** `campo_no_editable` y `SELECT usuario` en BD **no** cambió.
+185. `PATCH $API/api/usuarios/<id>` con `{"password":"x"}`, con `{"debe_cambiar_password":false}` y con `{"activo":false}` devuelve **422** `campo_no_editable` en los tres casos; `PATCH` con body `{}` devuelve **422** `sin_cambios`.
+186. `POST $API/api/usuarios/<id de U_QA>/reset-password` con `T_ADMIN` devuelve **200** con una `password_temporal` **distinta** de la generada en el criterio 169; en BD `debe_cambiar_password` vuelve a **true** y el `password_hash` cambió.
+187. Iniciar sesión con `qa_capturista` + la nueva temporal devuelve **200** con `usuario.debe_cambiar_password === true`, y con la contraseña `QaSegura2026` devuelve **401**.
+188. `PATCH $API/api/usuarios/<id de U_QA>/activo` con `{"activo":false}` y `T_ADMIN` devuelve **200**; en BD `activo=false`, y `POST /api/auth/login` de ese usuario devuelve **401** sin `token`.
+189. Con un token de `U_QA` emitido **antes** de la desactivación, `GET $API/api/auth/me` devuelve **401** con `error.codigo === "cuenta_desactivada"`.
+190. `PATCH $API/api/usuarios/<id del propio admin>/activo` con `{"activo":false}` y `T_ADMIN` devuelve **409** `auto_desactivacion`, y en BD ese admin sigue con `activo=true`.
+191. `PATCH $API/api/usuarios/<id de U_QA>/activo` con `{"activo":true}` devuelve **200**, y tras ello ese usuario vuelve a poder iniciar sesión (200 con token).
+
+### API — trazabilidad y no-borrado (192–196)
+
+192. `DELETE $API/api/usuarios/<id de U_QA>` con `T_ADMIN` devuelve **404** o **405**, y `SELECT count(*) FROM usuarios` **no** disminuye.
+193. `SELECT count(*) FROM usuarios` al final de la batería es **mayor o igual** que al inicio (ninguna fila se eliminó en ningún momento) y `SELECT usuario FROM usuarios WHERE usuario='qa_capturista'` sigue devolviendo 1 fila.
+194. `GET $API/api/auditoria/log` con `T_ADMIN` contiene al menos una entrada con cada una de estas acciones: `usuario_creado`, `usuario_editado`, `usuario_password_reset`, `usuario_desactivado`, `usuario_activado` y `password_cambiado`.
+195. `SELECT count(*) FROM auditoria_log WHERE detalle::text ILIKE '%<password_temporal generada>%'` devuelve **0** (la contraseña temporal nunca se registra en la bitácora).
+196. `GET $API/api/usuarios?rol=capturista` con `T_ADMIN` devuelve 200 y **todos** los elementos tienen `rol === "capturista"`; `GET /api/usuarios?activo=false` devuelve solo elementos con `activo === false`; `GET /api/usuarios?q=<fragmento del nombre de U_QA>` devuelve ≥1 elemento y todos coinciden con el fragmento.
+
+### PWA — pantalla de administración de usuarios (197–205)
+
+197. Playwright con `admin`: existe `[data-testid="nav-usuarios"]`; al pulsarlo la URL es `/usuarios` y se muestra `[data-testid="tabla-usuarios"]` con ≥4 filas `[data-testid="fila-usuario"]`.
+198. Playwright: `editor1` puede abrir `/usuarios` y ve la tabla; `capturista1` y `auditor1` **no** ven `[data-testid="nav-usuarios"]` (0 elementos) y al navegar directo a `/usuarios` ven "No tienes permiso para ver esta sección."
+199. Playwright: pulsar `[data-testid="btn-nuevo-usuario"]` abre `[data-testid="form-usuario"]` con `input-usuario`, `input-nombre-completo`, `select-rol` y `select-regional`; al elegir rol "Capturista" el `select-regional` queda habilitado y al elegir "Auditor" queda deshabilitado o vacío/"No aplica".
+200. Playwright: completar el formulario con un usuario nuevo (rol Capturista + Regional) y guardar muestra `[data-testid="modal-password-temporal"]` con `[data-testid="texto-password-temporal"]` no vacío, un texto visible que advierte que no se volverá a mostrar, y un botón `[data-testid="btn-copiar-password"]`.
+201. Playwright: cerrar el modal y recargar `/usuarios` — la cadena de la contraseña temporal **no** aparece en ninguna parte del DOM de la página, y el usuario nuevo sí aparece como fila en la tabla con estado "Activo".
+202. Playwright: intentar crear un usuario con un nombre de acceso ya existente muestra un mensaje de error visible en español y no agrega una fila nueva a la tabla.
+203. Playwright: pulsar `[data-testid="btn-reset-password"]` en la fila del usuario de prueba y confirmar abre de nuevo `[data-testid="modal-password-temporal"]` con un valor **distinto** al del criterio 200.
+204. Playwright: pulsar `[data-testid="btn-toggle-activo"]` y confirmar deja el `[data-testid="badge-estado-usuario"]` de esa fila en "Inactivo" tras recargar; volver a pulsarlo lo deja en "Activo".
+205. Playwright + `grep`: en `/usuarios` no existe ningún control de borrado (0 elementos con texto "Eliminar", "Borrar" o "Eliminar usuario" dentro de la tabla) y `grep -ri` en `pwa/src` no encuentra ninguna llamada a un endpoint `DELETE` de `/api/usuarios`.
+
+### PWA — cambio de contraseña obligatorio y voluntario (206–210)
+
+206. Playwright: iniciar sesión con el usuario de prueba usando su contraseña temporal redirige a `/cambiar-password`, muestra `[data-testid="aviso-cambio-obligatorio"]` y `[data-testid="form-cambio-password"]` con `input-password-actual`, `input-password-nueva` e `input-password-confirmar`.
+207. Playwright: con ese usuario en estado obligatorio, navegar directamente a `/beneficiarios` (o `/sync`) devuelve a `/cambiar-password` y **no** muestra la lista de beneficiarios.
+208. Playwright: completar el cambio con una contraseña válida muestra un mensaje de éxito en español y redirige fuera de `/cambiar-password` a la pantalla propia del rol (`/sync` o `/beneficiarios` para capturista); recargando, el aviso de cambio obligatorio ya no aparece.
+209. Playwright: escribir una contraseña nueva de 4 caracteres, o una confirmación distinta de la nueva, muestra un mensaje de error visible en español en `[data-testid="error-password"]` y la contraseña en BD **no** cambia.
+210. Playwright: con `auditor1` (flag en `false`), el menú de usuario `[data-testid="menu-usuario"]` contiene la opción "Cambiar mi contraseña" (`[data-testid="nav-cambiar-password"]`) que abre `/cambiar-password` **sin** el aviso de obligatoriedad (0 elementos `[data-testid="aviso-cambio-obligatorio"]`) y con un botón "Cancelar" visible; el mismo enlace existe también para `capturista1`.
+
+### Documentación (211)
+
+211. `README.md` incluye una sección de administración de usuarios que documenta: los roles con acceso (`admin` y `editor_datos`, y que `capturista`/`auditor` no entran), que **las bajas se hacen desactivando y nunca borrando** y por qué (trazabilidad de `capturas` y `auditoria_log`), que la contraseña temporal **se muestra una sola vez** y no se puede reconsultar, el **cambio obligatorio en el primer inicio de sesión** aplicable a todos los roles, que el nombre de acceso es inmutable, y la recomendación de crear los usuarios reales y **desactivar** las cuentas demo al pasar a producción.
+
+**Definición de "terminado" (build 4):** los **211** criterios pasan (60 del build original + 50 del staging + 49 de corrección/dashboard + 52 de esta extensión).

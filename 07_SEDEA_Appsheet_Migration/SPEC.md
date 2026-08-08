@@ -929,3 +929,333 @@ Continúa la numeración del rubric original. Base: `API`, `APP` como en §7. To
 110. `README.md` documenta en una sección propia: el rol `editor_datos` y el usuario demo `editor1`, que el importador ahora escribe en `staging_beneficiarios`/`staging_catalogos` y **nunca** directo a producción, los 6 flags de diagnóstico, las acciones aprobar/descartar/fusionar, y la regla de negocio de que un beneficiario puede recibir apoyos distintos (por eso ningún duplicado se auto-descarta).
 
 **Definición de "terminado" (build 2):** los 110 criterios pasan (60 del build original + 50 de esta extensión).
+
+---
+---
+
+# 9. EXTENSIÓN — Edición correctiva en producción + Dashboard de estadísticas (build 3)
+
+> Esta sección **se agrega**; nada de las secciones 1–8 se renegocia ni se reescribe. Mismo monorepo, mismo `docker-compose.yml`, mismos 3 servicios, mismo backend y misma PWA. **No se crea ningún servicio nuevo.** Toda regla de las secciones anteriores sigue vigente salvo las dos excepciones explícitas y acotadas que se declaran en 9.3.1.
+
+## 9.1 Objetivo de la extensión
+
+Dos capacidades independientes:
+
+1. **Edición correctiva**: permitir que un `editor_datos` (o `admin`) corrija **datos de contacto y ubicación** de un beneficiario que **ya está en producción** (tabla `beneficiarios`), cuando en campo o gabinete se detecta un dato desactualizado o mal capturado, dejando traza completa del valor anterior y el nuevo en `auditoria_log`.
+2. **Dashboard de estadísticas**: una pantalla de gestión (`/dashboard`) con 4 métricas agregadas —cobertura de captura, distribución por tipo de apoyo, avance en el tiempo y estado del staging— renderizadas con Chart.js.
+
+## 9.2 Decisiones de producto (ya acordadas con el usuario — implementar tal cual)
+
+- **D7. Lista blanca de campos editables** en producción: `colonia`, `domicilio`, `telefono`, `seccion`, `municipio_id`. Ningún otro campo es editable por esta vía.
+- **D8. `curp` y `folio` están BLOQUEADOS permanentemente.** Son la identidad legal del expediente; cambiarlos rompe la trazabilidad de auditoría. Si están mal, el caso se resuelve corrigiendo el padrón de origen y reimportando vía staging (§8), **nunca** editando en caliente. El backend **rechaza** la petición si el payload los incluye, aunque el valor enviado sea idéntico al actual.
+- **D9. Roles con permiso de edición**: `editor_datos` y `admin`. `capturista` y `auditor` **no** pueden editar (403); el capturista conserva solo lectura de la ficha + su botón "Capturar apoyo".
+- **D10. Toda edición se registra en `auditoria_log`** con `accion='beneficiario_editado'` y el detalle campo por campo (`{campo, anterior, nuevo}`), reutilizando el patrón de bitácora del build 1.
+- **D11. NO se agrega alta manual de beneficiarios.** Todo beneficiario debe originarse por importación de padrón oficial vía staging. No existe `POST /api/beneficiarios`, ni `DELETE /api/beneficiarios/:id`, ni botón "Nuevo beneficiario" en la PWA. Descartado explícitamente por el usuario.
+- **D12. Acceso al dashboard**: `admin`, `auditor` y `editor_datos`. El `capturista` **no** lo ve (es información agregada de gestión, no de campo).
+- **D13. Librería de gráficas aprobada: Chart.js** (MIT, sin costo, sin servicios externos), **única dependencia nueva** de la PWA en este build, exclusivamente para las gráficas del dashboard.
+- **D14. Los endpoints de estadísticas son de solo lectura** y se resuelven con agregaciones SQL (`COUNT`, `GROUP BY`) sobre `beneficiarios`, `capturas` y `staging_beneficiarios`/`staging_catalogos`. **No se crean tablas de métricas precalculadas** (ver Assumption 38).
+
+## 9.3 Modelo de datos
+
+**No hay tablas nuevas ni columnas nuevas.** `beneficiarios`, `capturas`, `usuarios`, `auditoria_log`, `catalogos`, `tipos_apoyo`, `municipios`, `direcciones_regionales`, `importaciones`, `staging_beneficiarios` y `staging_catalogos` conservan exactamente el esquema de §4 y §8.4.
+
+Única migración de este build, **puramente aditiva de índices** (no toca columnas):
+
+`db/migrations/009_indices_estadisticas.sql`
+```sql
+-- Índices de apoyo para las agregaciones del dashboard (no cambian el esquema lógico).
+CREATE INDEX IF NOT EXISTS idx_capturas_tipo_apoyo ON capturas (tipo_apoyo_id);
+CREATE INDEX IF NOT EXISTS idx_benef_tipo_apoyo    ON beneficiarios (tipo_apoyo_id);
+```
+
+Valores nuevos admitidos en `auditoria_log.accion` (la columna es TEXT libre, no cambia el esquema): **`beneficiario_editado`**. Con `entidad='beneficiario'`, `entidad_id=<id>` y:
+
+```json
+{
+  "cambios": [
+    {"campo":"colonia","anterior":"El Cerrito","nuevo":"Barrio de la Cruz"},
+    {"campo":"telefono","anterior":null,"nuevo":"4421234567"}
+  ],
+  "motivo": "Actualizado en visita de campo",
+  "rol": "editor_datos"
+}
+```
+
+## 9.3.1 Excepciones acotadas a reglas previas (declaradas, no contradicciones)
+
+La regla de §8.6 "las rutas existentes `/api/beneficiarios` … rechazan con 403 al rol `editor_datos`" **se mantiene íntegra para la colección `GET /api/beneficiarios`** (criterio 86 sigue pasando). Este build añade dos excepciones puntuales y solo esas:
+
+1. **`PATCH /api/beneficiarios/:id`** (ruta nueva) admite `editor_datos` y `admin`; rechaza con 403 a `capturista` y `auditor`.
+2. Para que el editor pueda **buscar y ver** la ficha que va a corregir sin debilitar la regla anterior, la lectura vive en un espacio propio: **`/api/correcciones/*`** (roles `editor_datos`, `admin`).
+
+En la PWA, la regla de §8.8.4 (`/beneficiarios*` protegido a `['capturista','admin']`) **no cambia**: el editor accede a la ficha por la ruta nueva `/correcciones/beneficiarios/:id`, que monta **el mismo componente** `FichaBeneficiario.tsx` en modo online.
+
+## 9.4 Contrato del endpoint de edición correctiva
+
+### E26 — `PATCH /api/beneficiarios/:id`
+
+- **Auth**: `Authorization: Bearer <jwt>` obligatorio. Roles permitidos: `editor_datos`, `admin`. Sin token → **401**. `capturista` o `auditor` → **403** `{"error":{"codigo":"rol_no_autorizado","mensaje":"Tu rol no puede editar datos de beneficiarios."}}`.
+- **Content-Type**: `application/json`.
+- **Body** (todas las claves de datos son opcionales; se envía solo lo que cambia):
+
+```jsonc
+{
+  "colonia": "Barrio de la Cruz",   // string | null, máx. 120
+  "domicilio": "Calle Hidalgo 45",  // string | null, máx. 200
+  "telefono": "4421234567",         // string | null, 10 dígitos tras normalizar
+  "seccion": "0345",                // string | null, máx. 20
+  "municipio_id": 12,               // number (BIGINT existente y activo)
+  "motivo": "Corregido en visita"   // metadato opcional, máx. 500 — NO es un campo de datos
+}
+```
+
+- **Lista blanca estricta** (`packages/shared/src/correcciones.ts`, Zod `.strict()`): solo `colonia`, `domicilio`, `telefono`, `seccion`, `municipio_id` y el metadato `motivo`. **Cualquier otra clave** en el payload (`curp`, `folio`, `nombre_completo`, `regional_id`, `tipo_apoyo_id`, `cantidad_asignada`, `datos_extra`, `localidad`, `id`, `creado_en`, …) provoca **422** y **ninguna** escritura (rechazo atómico, no se aplica el resto del payload):
+
+```json
+{"error":{"codigo":"campo_no_editable","mensaje":"Los campos curp, folio no son editables. CURP y Folio son la identidad legal del expediente; corrígelos en el padrón de origen y reimporta vía staging."}}
+```
+
+- **Validaciones de valor** (todas responden **422** con `codigo` propio y sin escribir nada):
+
+| Caso | `codigo` | Mensaje |
+|---|---|---|
+| Body sin ninguna clave de datos (`{}` o solo `motivo`) | `sin_cambios` | "No se envió ningún campo editable." |
+| `telefono` que tras quitar espacios, `-`, `(`, `)` y `+52` no queda en exactamente 10 dígitos | `telefono_invalido` | "El teléfono debe tener 10 dígitos." |
+| `colonia`/`domicilio`/`seccion` que exceden su longitud máxima | `longitud_excedida` | "El campo <x> excede la longitud máxima." |
+| `municipio_id` inexistente o `activo=false` | `municipio_invalido` | "El municipio seleccionado no existe o está inactivo." |
+| `municipio_id` no numérico | `payload_invalido` | "Datos inválidos." |
+
+- **Normalización aplicada antes de guardar**: `trim` en todos los textos; cadena vacía `""` se guarda como `NULL` (permite limpiar un dato); `telefono` se guarda **solo con los 10 dígitos**.
+- **Regla derivada de Regional**: si cambia `municipio_id`, el backend **actualiza también `beneficiarios.regional_id`** al `regional_id` de ese municipio (dato derivado, no aceptado en el payload). Ese cambio derivado aparece también en la lista de `cambios` del log como `campo:"regional_id"`.
+- **Aislamiento por Regional**: un `editor_datos` con `regional_id` no nulo solo puede editar beneficiarios de su Regional (si no, **403** `regional_no_permitida`) y no puede mover un beneficiario a un municipio de otra Regional (**403** `regional_no_permitida`). `admin` y `editor_datos` sin regional no tienen esa restricción.
+- **404** si el `id` no existe.
+- **Éxito — 200**:
+
+```json
+{
+  "ok": true,
+  "beneficiario": {
+    "id": 42, "folio": "STG-001", "curp": "XXXX000000HQTXXX0N",
+    "nombre_completo": "PRUEBA A", "regional_id": 1, "regional": "Cadereyta",
+    "municipio_id": 12, "municipio": "Cadereyta de Montes",
+    "colonia": "Barrio de la Cruz", "seccion": "0345",
+    "domicilio": "Calle Hidalgo 45", "telefono": "4421234567",
+    "actualizado_en": "2026-08-08T18:04:11.000Z"
+  },
+  "cambios": [
+    {"campo":"colonia","anterior":"El Cerrito","nuevo":"Barrio de la Cruz"}
+  ]
+}
+```
+
+- **No-op**: si todos los valores enviados son idénticos a los actuales, responde **200** con `"cambios": []`, no toca `actualizado_en` y **no** escribe en `auditoria_log`.
+- **Transaccionalidad**: `UPDATE` + `INSERT` en `auditoria_log` en una sola transacción. `actualizado_en = now()`.
+- **Concurrencia**: último en escribir gana; no hay control optimista (ver Assumption 34).
+- Implementación: `backend/src/rutas/beneficiarios.ts` (handler `PATCH`) + `backend/src/servicios/correcciones.ts` (validación de lista blanca, diff y bitácora).
+
+### Endpoints de lectura para corrección (roles `editor_datos`, `admin`)
+
+| # | Método | Ruta | Descripción / Respuesta |
+|---|---|---|---|
+| E27 | GET | `/api/correcciones/beneficiarios` | query `q` (folio, CURP o nombre; ≥2 caracteres), `municipio_id`, `regional_id` (solo admin), `page` (1), `page_size` (≤100, default 25) → `200 {data:[{id,folio,curp,nombre_completo,regional,municipio_id,municipio,colonia,seccion,domicilio,telefono,capturas:<count>}], page, page_size, total, has_more}`. Sin token 401; `capturista`/`auditor` 403. Aplica aislamiento por Regional igual que E26. |
+| E28 | GET | `/api/correcciones/beneficiarios/:id` | `200` con el beneficiario completo (incluye `curp` y `folio`, en modo lectura) + `municipios_disponibles:[{id,nombre,regional_id}]` para poblar el select. `404` si no existe; `403` fuera de su Regional. |
+| E29 | GET | `/api/correcciones/beneficiarios/:id/historial` | `200 {data:[{fecha, usuario, rol, motivo, cambios:[{campo,anterior,nuevo}]}]}` leyendo `auditoria_log` filtrado por `accion='beneficiario_editado' AND entidad='beneficiario' AND entidad_id=:id`, orden descendente, máx. 50. Array vacío si nunca se editó. |
+
+## 9.5 Endpoints de estadísticas (solo lectura)
+
+Todos bajo `/api/estadisticas`, en `backend/src/rutas/estadisticas.ts` con SQL en `backend/src/db/queries/estadisticas.ts`.
+
+- **Roles permitidos**: `admin`, `auditor`, `editor_datos`. Sin token → **401**. `capturista` → **403** `{"error":{"codigo":"rol_no_autorizado","mensaje":"No tienes permiso para ver las estadísticas."}}`.
+- **Aislamiento por Regional**: si el usuario (`auditor` o `editor_datos`) tiene `regional_id` no nulo, todas las agregaciones se restringen a esa Regional y el parámetro `regional_id` de query se ignora. `admin` y usuarios sin regional ven todo y pueden filtrar con `regional_id`.
+- **Filtros comunes opcionales**: `regional_id`, `municipio_id`, `desde` (`YYYY-MM-DD`), `hasta` (`YYYY-MM-DD`). `desde`/`hasta` aplican sobre `capturas.capturado_en`; nunca excluyen beneficiarios del denominador de cobertura (ver Assumption 36). Fecha con formato inválido → **422** `parametro_invalido`.
+- **Zona horaria**: el bucketing por día/semana usa `capturado_en AT TIME ZONE 'America/Mexico_City'`.
+
+| # | Método | Ruta | Respuesta |
+|---|---|---|---|
+| E30 | GET | `/api/estadisticas/cobertura` | `200 {global:{total_beneficiarios,con_captura,sin_captura,porcentaje}, por_regional:[{regional_id,regional,total_beneficiarios,con_captura,sin_captura,porcentaje}], por_municipio:[{municipio_id,municipio,regional,total_beneficiarios,con_captura,sin_captura,porcentaje}]}`. `porcentaje` = `con_captura/total*100` redondeado a 1 decimal (0 si `total=0`). `con_captura` = beneficiarios con ≥1 fila en `capturas`. `por_regional` ordenado por `regional`; `por_municipio` por `porcentaje` ascendente (los más rezagados primero). |
+| E31 | GET | `/api/estadisticas/apoyos` | query `limite` (default 15, máx. 50), `agrupar` (`concepto` default). `200 {total_capturas, total_beneficiarios, data:[{tipo_apoyo_id,clave,nombre,capturas,beneficiarios}], otros:{conceptos,capturas,beneficiarios}|null}`. `data` = top `limite` conceptos ordenados por `capturas` desc (desempate por `nombre`); el resto se agrega en `otros` (etiqueta de UI: "Otros (N conceptos)"). Si hay ≤ `limite` conceptos con datos, `otros` es `null`. Las capturas sin `tipo_apoyo_id` se agrupan bajo `{tipo_apoyo_id:null, nombre:"Sin concepto"}`. |
+| E32 | GET | `/api/estadisticas/avance` | query `agrupacion` (`dia`\|`semana`, default `dia`), `desde`, `hasta`. Defaults: `dia` → últimos 30 días; `semana` → últimas 12 semanas (lunes como inicio, `date_trunc('week',…)`). `200 {agrupacion, desde, hasta, total_capturas, data:[{periodo:"YYYY-MM-DD", capturas, beneficiarios, acumulado}]}`. **Zero-fill obligatorio**: todo periodo del rango aparece aunque valga 0; `periodo` ascendente; `acumulado` = suma corrida (nunca decrece). `agrupacion` distinta de `dia`/`semana` → **422** `parametro_invalido`. |
+| E33 | GET | `/api/estadisticas/staging` | `200 {beneficiarios:{pendiente,aprobado,descartado,fusionado,total}, catalogos:{pendiente,aprobado,descartado,fusionado,total}}` sobre `staging_beneficiarios` / `staging_catalogos` (`GROUP BY estado_revision`, las 4 llaves siempre presentes aunque valgan 0). Reutiliza las queries de §8.6/E16; no duplica lógica. |
+
+## 9.6 Pantallas de la PWA
+
+### 9.6.1 Ficha de beneficiario con modo edición (`FichaBeneficiario.tsx`, reutilizada)
+
+El mismo componente se monta en dos rutas:
+
+| Ruta | Roles (`RutaProtegida`) | Fuente de datos | Botón "Capturar apoyo" | Panel de edición |
+|---|---|---|---|---|
+| `/beneficiarios/:id` (existente) | `['capturista','admin']` | IndexedDB (offline-first, sin cambios) | Sí | Solo si `rol ∈ {editor_datos, admin}` ⇒ en la práctica, solo `admin` |
+| `/correcciones/beneficiarios/:id` (nueva) | `['editor_datos','admin']` | API (E28), online-only | No | Sí |
+
+- El botón `data-testid="btn-editar-datos"` con texto **"Editar datos de contacto/ubicación"** se renderiza **solo** si `rol ∈ {editor_datos, admin}`. Un `capturista` **nunca** lo ve (ni deshabilitado: no se renderiza).
+- Al pulsarlo aparece `data-testid="form-edicion"` con:
+  - `input-colonia` (texto, máx. 120), `input-domicilio` (texto, máx. 200), `input-telefono` (`inputMode="tel"`, máx. 20), `input-seccion` (texto, máx. 20), `select-municipio` (opciones de `municipios_disponibles`, muestra "Municipio — Regional").
+  - Bloque **"Campos no editables"** con `input-curp` e `input-folio` renderizados con `readonly` **y** `disabled`, más la leyenda fija: *"CURP y Folio no son editables: son la identidad legal del expediente. Si están mal, corrige el padrón de origen y reimporta desde Depuración."*
+  - Campo opcional `input-motivo` ("Motivo del cambio (opcional)", máx. 500).
+  - Botones `btn-guardar-edicion` ("Guardar cambios") y `btn-cancelar-edicion` ("Cancelar").
+- **Validación en cliente antes de enviar** (mensajes en español bajo el campo, `data-testid="error-telefono"` etc.): teléfono de 10 dígitos, longitudes máximas. Si falla, **no** se llama a la API.
+- Al guardar: `PATCH /api/beneficiarios/:id` con **solo** los campos modificados. Éxito → toast `data-testid="toast-exito"` "Datos actualizados." + cierre del formulario + refresco de la ficha. Si el beneficiario existe en IndexedDB local (caso `admin`), se actualiza también el registro local para no dejar la caché desfasada.
+- Errores del backend: se muestra `error.mensaje` tal cual en `data-testid="error-edicion"` (422/403), y "El beneficiario ya no existe." en 404.
+- Bloque **"Historial de correcciones"** (`data-testid="historial-correcciones"`), alimentado por E29: fecha, usuario y lista "campo: anterior → nuevo". Si no hay ediciones: "Sin correcciones registradas."
+- **Sin conexión** en `/correcciones/*`: "Esta sección requiere conexión a internet."
+
+### 9.6.2 `/correcciones` — Buscador de beneficiarios a corregir (`Correcciones.tsx`)
+
+- Roles `['editor_datos','admin']`. Encabezado "Corrección de datos — Beneficiarios en producción".
+- Aviso permanente: *"Aquí se corrigen datos de contacto y ubicación de beneficiarios ya promovidos. CURP y Folio no se editan. Para altas de beneficiarios usa la importación de padrón (Depuración)."*
+- `input-busqueda-correcciones` (folio, CURP o nombre, mínimo 2 caracteres, debounce 300 ms) → E27.
+- Tabla `data-testid="tabla-correcciones"` con filas `data-testid="fila-correccion"`: Folio, CURP, Nombre, Regional, Municipio, Colonia, Teléfono, acción "Corregir" → `/correcciones/beneficiarios/:id`.
+- Vacío: "Sin resultados". **No existe** ningún botón de alta ("Nuevo beneficiario") en esta ni en ninguna otra pantalla (D11).
+
+### 9.6.3 `/dashboard` — Dashboard de revisión y estadísticas (`Dashboard.tsx`)
+
+- Roles `['admin','auditor','editor_datos']` (D12). Online-only. Encabezado "Dashboard de seguimiento".
+- **Filtros globales** (afectan a las 3 primeras métricas): `select-regional-dashboard` (todas las Regionales; fijo y deshabilitado si el usuario tiene Regional asignada), `input-desde`, `input-hasta`, y `select-agrupacion` (Día / Semana, solo afecta a la gráfica de avance). Botón "Aplicar filtros". Los datos se recargan sin recargar la página.
+- **Métrica 1 — Cobertura de captura** (E30):
+  - 4 tarjetas: `tarjeta-total-beneficiarios` ("Beneficiarios"), `tarjeta-con-captura` ("Con evidencia"), `tarjeta-sin-captura` ("Pendientes"), `tarjeta-porcentaje` ("% de cobertura", formato `NN.N %`).
+  - Gráfica `canvas[data-testid="grafica-cobertura"]`: **barras horizontales apiladas por Regional** (serie "Con evidencia" verde + serie "Pendientes" gris), `indexAxis:'y'`, `stacked:true`.
+  - Tabla `data-testid="tabla-cobertura-municipio"` con filas `data-testid="fila-cobertura"`: Municipio, Regional, Beneficiarios, Con evidencia, Pendientes, % (ordenada por % ascendente).
+- **Métrica 2 — Distribución por tipo de apoyo** (E31):
+  - Gráfica `canvas[data-testid="grafica-apoyos"]`: **barras horizontales**, top 15 conceptos + barra final "Otros (N conceptos)". Etiquetas recortadas a 40 caracteres con tooltip completo.
+  - Texto `data-testid="resumen-apoyos"`: "Mostrando los 15 conceptos con más capturas de un total de N."
+- **Métrica 3 — Avance en el tiempo** (E32):
+  - Gráfica `canvas[data-testid="grafica-avance"]`: **línea** con dos datasets — "Capturas por periodo" (línea sólida) y "Acumulado" (línea punteada, eje Y secundario). Eje X con las etiquetas de `periodo` formateadas `DD/MM` (día) o `Sem. DD/MM` (semana).
+  - Texto `data-testid="resumen-avance"`: "N periodos · M capturas".
+  - Si `total_capturas === 0`: mensaje "Sin datos para el filtro seleccionado." en lugar de la gráfica.
+- **Métrica 4 — Estado del staging** (E33):
+  - Gráfica `canvas[data-testid="grafica-staging"]`: **dona (doughnut)** con 4 segmentos —Pendientes, Aprobadas, Descartadas, Fusionadas— del staging de padrón, colores fijos (ámbar/verde/gris/azul) y leyenda en español.
+  - Tarjetas `tarjeta-staging-pendiente`, `tarjeta-staging-aprobado`, `tarjeta-staging-descartado`, `tarjeta-staging-fusionado` + línea "Catálogos: P pendientes / A aprobados".
+  - Enlace "Ir a Depuración" → `/depuracion`, visible solo para `editor_datos` y `admin`.
+- **Estados de carga/error**: skeleton "Cargando estadísticas…" por bloque; si un endpoint falla, ese bloque muestra "No se pudieron cargar los datos." sin tumbar el resto del dashboard.
+
+### 9.6.4 Integración de Chart.js
+
+- Dependencia única nueva en `pwa/package.json`: **`chart.js` ^4.4**. **No** se agrega `react-chartjs-2` ni ninguna otra librería de gráficas, ni scripts por CDN (todo se sirve desde el bundle, sin llamadas externas).
+- Wrapper propio `pwa/src/componentes/Grafica.tsx`: componente React con `useRef` sobre un `<canvas>` + `useEffect` que crea la instancia `new Chart(ctx, config)`, la destruye en el cleanup y la recrea al cambiar `datos`/`opciones`. Props: `tipo` (`'bar'|'line'|'doughnut'`), `datos`, `opciones`, `testId`, `altura`.
+- Registro selectivo en `pwa/src/componentes/chartSetup.ts`: `Chart.register(BarController, BarElement, LineController, LineElement, PointElement, DoughnutController, ArcElement, CategoryScale, LinearScale, Tooltip, Legend, Title)`. `responsive:true`, `maintainAspectRatio:false`.
+- Todas las etiquetas, leyendas y tooltips **en español**.
+
+### 9.6.5 Navegación y control de acceso (delta sobre §8.8.4)
+
+- `RutaProtegida` gana dos entradas: `/dashboard` → `['admin','auditor','editor_datos']`; `/correcciones*` → `['editor_datos','admin']`. Todo lo demás de §8.8.4 **se mantiene idéntico**.
+- La barra de estado muestra el enlace **"Dashboard"** (`data-testid="nav-dashboard"`) solo para `admin`, `auditor` y `editor_datos`, y el enlace **"Correcciones"** (`data-testid="nav-correcciones"`) solo para `editor_datos` y `admin`. El `capturista` no ve ninguno de los dos.
+- Los redirects de login **no cambian** (`capturista` → `/sync`|`/beneficiarios`, `auditor` → `/auditoria`, `editor_datos` → `/depuracion`, `admin` → `/beneficiarios`).
+- Un rol no autorizado que navegue directo a `/dashboard` o `/correcciones` ve "No tienes permiso para ver esta sección."
+
+## 9.7 Estructura de archivos nuevos (delta build 3)
+
+```
+db/migrations/009_indices_estadisticas.sql
+backend/src/rutas/estadisticas.ts
+backend/src/rutas/correcciones.ts              # E27, E28, E29
+backend/src/db/queries/estadisticas.ts
+backend/src/servicios/correcciones.ts          # lista blanca, diff, bitácora (transaccional)
+packages/shared/src/correcciones.ts            # Zod .strict() de la lista blanca + tipos de estadísticas
+pwa/src/pantallas/Dashboard.tsx
+pwa/src/pantallas/Correcciones.tsx
+pwa/src/componentes/Grafica.tsx                # wrapper Chart.js
+pwa/src/componentes/chartSetup.ts
+pwa/src/componentes/FormEdicionBeneficiario.tsx
+pwa/src/componentes/TarjetaMetrica.tsx
+```
+
+Archivos modificados: `backend/src/rutas/beneficiarios.ts` (handler `PATCH`), `backend/src/server.ts` (registro de rutas), `pwa/src/rutas.tsx`, `pwa/src/componentes/BarraEstado.tsx`, `pwa/src/pantallas/FichaBeneficiario.tsx`, `pwa/src/api/cliente.ts`, `pwa/package.json`, `README.md`.
+
+Sin comandos nuevos de npm: todo corre con `docker compose up --build` y los scripts ya existentes.
+
+## 9.8 Assumptions de la extensión (continúa la numeración)
+
+31. **`localidad` NO es editable** por esta vía: el usuario cerró la lista en Colonia, Domicilio, Teléfono, Sección y Municipio. Se corrige por reimportación como CURP/folio.
+32. **Rechazo estricto, no silencioso**: enviar `curp`/`folio` (o cualquier campo fuera de la lista blanca) devuelve 422 y no aplica ningún cambio del payload. Se prefiere el fallo ruidoso al descarte silencioso, porque hace la restricción auditable y comprobable.
+33. **`regional_id` es derivado, no editable directamente**: solo cambia como consecuencia de cambiar `municipio_id` (un municipio pertenece a una sola Regional, §4.3/Assumption 7).
+34. **Sin bloqueo optimista** (`If-Match`/`version`): el volumen de correcciones es bajo y concurrente-improbable; gana el último y la bitácora conserva la secuencia completa de cambios.
+35. **La edición es online-only.** No se encola en la cola de sync ni se permite editar offline: corregir un dato maestro sin red abriría conflictos de mezcla que este proyecto no resuelve.
+36. **Denominador de cobertura**: los filtros de fecha aplican a las **capturas**, nunca al padrón. `total_beneficiarios` es el universo del filtro geográfico (Regional/Municipio), de modo que el porcentaje siempre responde "de mi padrón, cuánto llevo capturado (en este periodo)".
+37. **"Con evidencia" = ≥1 captura**, coherente con el badge "Capturado" del build 1 (Assumption 9). No se distingue por `estado_sync`.
+38. **Sin tablas de métricas precalculadas.** Con el orden de magnitud real (~2 300 beneficiarios, capturas del mismo orden) las agregaciones `GROUP BY` con los índices existentes + los dos de la migración 009 responden en milisegundos. Si en el futuro el padrón superara ~500 000 filas, la decisión a revisar sería una vista materializada refrescada por cron; **no** se implementa ahora.
+39. **Agrupación de conceptos**: top 15 + "Otros" es el criterio de legibilidad fijado (152 conceptos no caben en una gráfica). El parámetro `limite` existe para ajustar, con default 15.
+40. **Semana = lunes a domingo** (`date_trunc('week')` de Postgres), etiquetada por su fecha de inicio.
+41. **El dashboard es online-only** y no se cachea en IndexedDB (solo el app-shell por el service worker).
+42. **`auditor` puede ver el bloque de staging del dashboard**: son conteos agregados de gestión, sin PII; no obtiene acceso a las pantallas ni endpoints de `/api/staging/*`, que siguen en 403 para él.
+43. **Chart.js es la única dependencia nueva** del build 3 (D13); no se agregan wrappers de React, ni plugins de fecha (las etiquetas de tiempo se formatean en el propio código con `Intl.DateTimeFormat('es-MX')`).
+44. **No hay exportación CSV del dashboard** en este build (las exportaciones siguen siendo las del panel de auditoría, §5.7 E11–E13).
+45. **La ficha del capturista no cambia en absoluto** salvo por la ausencia del botón de edición: sigue siendo offline-first sobre IndexedDB.
+
+---
+
+## 9.9 Rubric extendido (criterios 111–159)
+
+Continúa la numeración de §7 y §8.11. Base: `API=http://localhost:3000`, `APP=http://localhost:8080`. Tokens: `T_ADMIN`, `T_CAP` (capturista1), `T_AUD` (auditor1), `T_EDIT` (editor1). `BID` = id de un beneficiario existente en producción (de la Regional de `editor1` si aplica).
+
+### Base de datos e integridad del esquema (111–113)
+
+111. Existe `db/migrations/009_*.sql` y `pg_indexes` contiene `idx_capturas_tipo_apoyo` e `idx_benef_tipo_apoyo`.
+112. `beneficiarios` conserva **exactamente** el conjunto de columnas de §4.6 (ninguna añadida, eliminada ni renombrada), y `capturas`, `usuarios` y `auditoria_log` conservan las suyas de §4.7/§4.1/§4.8.
+113. `information_schema.tables` **no** contiene ninguna tabla nueva de métricas precalculadas (no existe tabla cuyo nombre empiece por `estadisticas_`, `metricas_` o `dashboard_`).
+
+### API — PATCH de edición correctiva (114–127)
+
+114. `PATCH $API/api/beneficiarios/$BID` sin header `Authorization` devuelve **401**.
+115. `PATCH $API/api/beneficiarios/$BID` con `T_CAP` devuelve **403**, y con `T_AUD` devuelve **403**; en ambos casos la fila en BD queda sin cambios.
+116. `PATCH` con `T_EDIT` y body `{"colonia":"Colonia Corregida QA"}` devuelve **200** con `ok:true` y `cambios` conteniendo `{campo:"colonia", anterior:<previo>, nuevo:"Colonia Corregida QA"}`; `SELECT colonia FROM beneficiarios WHERE id=$BID` devuelve el valor nuevo.
+117. `PATCH` con `T_ADMIN` y body `{"domicilio":"Calle QA 100","telefono":"(442) 123-4567"}` devuelve **200** y en BD `telefono` queda normalizado a `4421234567`.
+118. `PATCH` con `T_EDIT` y body `{"curp":"AAAA000000HQTAAA0N"}` devuelve **422** con `error.codigo === "campo_no_editable"` y mensaje que menciona `curp`; `SELECT curp` en BD **no cambió**.
+119. `PATCH` con body `{"folio":"HACK-001"}` devuelve **422** `campo_no_editable`; `SELECT folio` en BD **no cambió**.
+120. `PATCH` con body `{"colonia":"Intento Mixto","curp":"AAAA000000HQTAAA0N"}` devuelve **422** y `colonia` en BD **tampoco** cambió (rechazo atómico del payload completo).
+121. `PATCH` con `{"nombre_completo":"OTRO"}`, con `{"tipo_apoyo_id":1}` y con `{"regional_id":2}` devuelve **422** en los tres casos y ninguno de esos campos cambia en BD.
+122. `PATCH` con `{"telefono":"12"}` devuelve **422** `telefono_invalido` y el teléfono en BD no cambia.
+123. `PATCH` con `{"municipio_id":999999}` devuelve **422** `municipio_invalido`.
+124. `PATCH` con `T_ADMIN` y `{"municipio_id":<id válido de otra Regional>}` devuelve **200** y en BD `beneficiarios.regional_id` quedó igual al `regional_id` de ese municipio (Regional derivada automáticamente).
+125. `PATCH` sobre un `id` inexistente devuelve **404**; `PATCH` con body `{}` devuelve **422** `sin_cambios`.
+126. Tras los PATCH anteriores, `GET /api/auditoria/log` con `T_ADMIN` contiene ≥1 entrada con `accion='beneficiario_editado'`, `entidad='beneficiario'`, `entidad_id` = `$BID` y `detalle.cambios` como array de objetos con `campo`, `anterior` y `nuevo`.
+127. `POST $API/api/beneficiarios` con `T_ADMIN` devuelve **404** o **405** (no existe alta manual), y `DELETE $API/api/beneficiarios/$BID` con `T_ADMIN` devuelve **404** o **405**.
+
+### API — lectura para corrección (128–131)
+
+128. `GET $API/api/correcciones/beneficiarios?q=<fragmento de un nombre existente>` con `T_EDIT` devuelve **200** con `data` array (≥1 elemento) y campos `page`, `total`, `has_more`; sin token devuelve **401** y con `T_CAP` devuelve **403**.
+129. `GET $API/api/correcciones/beneficiarios/$BID` con `T_EDIT` devuelve **200** incluyendo `curp`, `folio`, los 5 campos editables y `municipios_disponibles` como array no vacío.
+130. `GET $API/api/correcciones/beneficiarios/$BID/historial` con `T_EDIT` devuelve **200** con `data` conteniendo ≥1 entrada (tras el criterio 116) con `fecha`, `usuario` y `cambios[].campo`.
+131. `GET $API/api/beneficiarios` (colección) con `T_EDIT` sigue devolviendo **403** (la excepción del build 3 no debilitó la regla del build 2, criterio 86).
+
+### API — estadísticas (132–141)
+
+132. `GET $API/api/estadisticas/cobertura` sin token devuelve **401**; con `T_CAP` devuelve **403**.
+133. `GET $API/api/estadisticas/cobertura` devuelve **200** con `T_AUD`, con `T_ADMIN` y con `T_EDIT`, y el JSON contiene `global` (con `total_beneficiarios`, `con_captura`, `sin_captura`, `porcentaje`), `por_regional` (array) y `por_municipio` (array).
+134. En esa respuesta se cumple `global.con_captura + global.sin_captura === global.total_beneficiarios`, y la misma igualdad se cumple en **todos** los elementos de `por_regional`.
+135. `global.total_beneficiarios` con `T_ADMIN` (sin filtros) es igual a `SELECT count(*) FROM beneficiarios`.
+136. `global.con_captura` con `T_ADMIN` (sin filtros de fecha) es igual a `SELECT count(DISTINCT beneficiario_id) FROM capturas`.
+137. `por_regional` con `T_ADMIN` contiene exactamente 4 elementos, con los nombres `Cadereyta`, `Jalpan`, `Querétaro` y `San Juan del Río`.
+138. `GET $API/api/estadisticas/apoyos` con `T_AUD` devuelve **200** con `data` de longitud ≤ 15, ordenado de mayor a menor por `capturas`, cada elemento con `nombre`, `capturas` y `beneficiarios`, y la clave `otros` presente (objeto o `null`).
+139. En `apoyos`, la suma de `data[].capturas` más `otros.capturas` (0 si `otros` es `null`) es igual a `total_capturas`, y `total_capturas` es igual a `SELECT count(*) FROM capturas`.
+140. `GET $API/api/estadisticas/avance?agrupacion=dia&desde=<hoy-6d>&hasta=<hoy>` devuelve **200** con `data.length === 7` (zero-fill), `periodo` en formato `YYYY-MM-DD` y ascendente, `acumulado` no decreciente; `?agrupacion=semana` devuelve 200 con periodos semanales; `?agrupacion=mes` devuelve **422**.
+141. `GET $API/api/estadisticas/staging` con `T_EDIT` devuelve **200** con `beneficiarios.pendiente/aprobado/descartado/fusionado/total` y `catalogos.*` presentes, y `beneficiarios.pendiente` coincide con `SELECT count(*) FROM staging_beneficiarios WHERE estado_revision='pendiente'`.
+
+### PWA — dashboard (142–150)
+
+142. `pwa/package.json` lista `chart.js` en `dependencies`; **no** lista `react-chartjs-2`, `recharts`, `apexcharts`, `d3` ni `highcharts`, y `grep` en `pwa/src` + `pwa/index.html` no encuentra ninguna URL de CDN de gráficas.
+143. Playwright: con `admin`, existe `[data-testid="nav-dashboard"]` y al pulsarlo la URL es `/dashboard`; con `capturista1` ese enlace **no** existe y navegar directo a `/dashboard` muestra "No tienes permiso para ver esta sección."
+144. Playwright: `auditor1` y `editor1` pueden abrir `/dashboard` y ven el encabezado "Dashboard de seguimiento" (no la pantalla de sin permiso).
+145. Playwright: `/dashboard` contiene los 4 canvas `[data-testid="grafica-cobertura"]`, `[data-testid="grafica-apoyos"]`, `[data-testid="grafica-avance"]` y `[data-testid="grafica-staging"]`, todos visibles y con `boundingBox().width > 0` (renderizados por Chart.js).
+146. Playwright: existen las tarjetas `tarjeta-total-beneficiarios`, `tarjeta-con-captura`, `tarjeta-sin-captura` y `tarjeta-porcentaje`, con contenido numérico (la de porcentaje termina en `%`).
+147. Playwright: `[data-testid="tabla-cobertura-municipio"]` existe con ≥1 fila `[data-testid="fila-cobertura"]`, y cada fila muestra Municipio, Beneficiarios, Con evidencia y %.
+148. Playwright: cambiar `[data-testid="select-regional-dashboard"]` a una Regional concreta y aplicar filtros modifica los datos mostrados (el valor de `tarjeta-total-beneficiarios` cambia o las filas de `tabla-cobertura-municipio` se reducen) sin recargar la página.
+149. Playwright: existe `[data-testid="select-agrupacion"]` con opciones Día y Semana; al cambiar de Día a Semana el texto de `[data-testid="resumen-avance"]` cambia (distinto número de periodos).
+150. Playwright: aplicar un rango de fechas imposible (p. ej. `desde=2000-01-01`, `hasta=2000-01-07`) muestra "Sin datos para el filtro seleccionado." en el bloque de avance.
+
+### PWA — edición correctiva (151–157)
+
+151. Playwright: `capturista1` en `/beneficiarios/:id` **no** ve `[data-testid="btn-editar-datos"]` (0 elementos) pero sí ve el botón "Capturar apoyo".
+152. Playwright: `editor1` en `/correcciones` busca por nombre, ve `[data-testid="tabla-correcciones"]` con ≥1 `[data-testid="fila-correccion"]`, pulsa "Corregir" y llega a la ficha donde `[data-testid="btn-editar-datos"]` es visible.
+153. Playwright: al pulsar "Editar datos de contacto/ubicación" aparece `[data-testid="form-edicion"]` con `input-colonia`, `input-domicilio`, `input-telefono`, `input-seccion` y `select-municipio`; `input-curp` e `input-folio` están **deshabilitados o de solo lectura** y es visible la leyenda que explica que CURP y Folio no son editables.
+154. Playwright: cambiar la colonia a un valor nuevo y pulsar "Guardar cambios" muestra un mensaje de éxito en español; tras recargar la ficha se muestra el valor nuevo y `GET /api/correcciones/beneficiarios/:id` lo confirma.
+155. Playwright: escribir `12` en el teléfono y guardar muestra un mensaje de error visible en español y el teléfono en BD **no** cambia.
+156. Playwright: `admin` en `/beneficiarios/:id` ve `[data-testid="btn-editar-datos"]`, edita el domicilio y el cambio persiste tras recargar.
+157. Playwright + `grep`: en toda la PWA no existe ningún control de alta de beneficiarios (no hay elemento con texto "Nuevo beneficiario", "Agregar beneficiario" ni "Alta de beneficiario" en `/beneficiarios`, `/correcciones` ni `/depuracion`, ni aparecen esas cadenas en `pwa/src`).
+
+### Documentación (158–159)
+
+158. `README.md` incluye una sección de corrección de datos en producción que documenta: los 5 campos editables (`colonia`, `domicilio`, `telefono`, `seccion`, `municipio`), que **CURP y Folio nunca son editables** y por qué (identidad legal del expediente; se corrigen reimportando vía staging), los roles `editor_datos`/`admin` como únicos autorizados, y que cada edición queda en `auditoria_log` con valor anterior y nuevo.
+159. `README.md` incluye una sección del dashboard que documenta las 4 métricas (cobertura, distribución por tipo de apoyo, avance en el tiempo, estado del staging), los roles con acceso (`admin`, `auditor`, `editor_datos`; el capturista no), que **Chart.js** es la única dependencia nueva y es open source sin servicios externos, y que **no existe alta manual de beneficiarios** (todo entra por importación de padrón).
+
+**Definición de "terminado" (build 3):** los 159 criterios pasan (60 del build original + 50 del staging + 49 de esta extensión).

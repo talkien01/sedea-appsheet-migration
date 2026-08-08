@@ -1,0 +1,14 @@
+{
+  "tipo": "catalogo",
+  "delimitador": ",",
+  "hoja": "Hoja1",
+  "columnas": {
+    "grupo": "GRUPO",
+    "clave": "CLAVE",
+    "valor": "VALOR",
+    "padre_grupo": "GRUPO PADRE",
+    "padre_clave": "CLAVE PADRE",
+    "orden": "ORDEN"
+  },
+  "clave_upsert": "clave"
+}

@@ -3,6 +3,12 @@
 // El mapeo de columnas se define en un JSON externo: ningun nombre de columna
 // del cliente esta escrito en el codigo.
 //
+// IMPORTANTE (build 2): este importador YA NO escribe nunca en las tablas de
+// produccion `beneficiarios` / `catalogos`. Todo aterriza en las tablas de
+// staging (`staging_beneficiarios`, `staging_catalogos`) en estado
+// `pendiente`, con flags de diagnostico calculados. La unica via a produccion
+// es la aprobacion humana desde /api/staging (decision D3 del SPEC).
+//
 // Uso:
 //   npm run importar -- --tipo padron --archivo <ruta.csv|xlsx> --mapeo <ruta.json> [--dry-run]
 import fs from 'node:fs';
@@ -79,9 +85,15 @@ Opciones:
   --dry-run                  Procesa y valida sin escribir en la base de datos.
   --help, -h                 Muestra esta ayuda.
 
+Destino:
+  --tipo padron    -> staging_beneficiarios (estado_revision = 'pendiente')
+  --tipo catalogo  -> staging_catalogos     (estado_revision = 'pendiente')
+  Nada llega a produccion sin la aprobacion humana desde la pantalla de
+  Depuracion (rol editor_datos o admin).
+
 Ejemplos:
-  npm run importar -- --tipo padron --archivo scripts/datos-ejemplo/padron.ejemplo.csv --mapeo scripts/mapeos/padron.ejemplo.json
-  npm run importar -- --tipo catalogo --archivo scripts/datos-ejemplo/catalogo.ejemplo.csv --mapeo scripts/mapeos/catalogo.ejemplo.json --dry-run
+  npm run importar -- --tipo padron --archivo scripts/datos-ejemplo/padron.staging.ejemplo.csv --mapeo scripts/mapeos/padron.staging.ejemplo.json
+  npm run importar -- --tipo catalogo --archivo scripts/datos-ejemplo/catalogo.staging.ejemplo.csv --mapeo scripts/mapeos/catalogo.staging.ejemplo.json --dry-run
 `);
 }
 
@@ -89,20 +101,14 @@ Ejemplos:
 // Utilidades
 // ---------------------------------------------------------------------------
 
-/** Normaliza un encabezado: sin acentos, mayusculas, espacios colapsados. */
+/** Normaliza un texto: sin acentos, mayusculas, espacios colapsados. */
 function normalizar(texto: string): string {
   return String(texto ?? '')
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .trim()
     .replace(/\s+/g, ' ')
     .toUpperCase();
-}
-
-/** Genera una clave tipo slug para catalogos creados al vuelo. */
-function aClave(texto: string, prefijo = ''): string {
-  const base = normalizar(texto).replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
-  return prefijo ? `${prefijo}-${base}` : base;
 }
 
 function aNumero(valor: unknown): number | null {
@@ -125,7 +131,7 @@ interface Mapeo {
 function leerFilas(archivo: string, mapeo: Mapeo): Record<string, string>[] {
   const extension = path.extname(archivo).toLowerCase();
   if (extension === '.csv' || extension === '.txt') {
-    const contenido = fs.readFileSync(archivo, 'utf8').replace(/^\ufeff/, '');
+    const contenido = fs.readFileSync(archivo, 'utf8').replace(/^﻿/, '');
     return parseCsv(contenido, {
       columns: true,
       skip_empty_lines: true,
@@ -149,11 +155,39 @@ function leerFilas(archivo: string, mapeo: Mapeo): Record<string, string>[] {
 
 const { Pool } = pg;
 
+/** Los 6 flags de diagnostico del staging de padron. */
+const FLAGS_PADRON = [
+  'folio_duplicado',
+  'curp_duplicada_mismo_concepto',
+  'curp_duplicada_concepto_distinto',
+  'sin_coordenadas',
+  'sin_colonia',
+  'concepto_no_reconocido'
+] as const;
+
+/** Flags del staging de catalogos. */
+const FLAGS_CATALOGO = ['clave_duplicada', 'valor_duplicado', 'concepto_no_reconocido'] as const;
+
 interface Resultado {
   leidas: number;
   insertadas: number;
   actualizadas: number;
+  omitidas: number;
   errores: Array<{ fila: number; motivo: string }>;
+  flags: Record<string, number>;
+  niveles: Record<string, number>;
+}
+
+function resultadoVacio(leidas: number): Resultado {
+  return {
+    leidas,
+    insertadas: 0,
+    actualizadas: 0,
+    omitidas: 0,
+    errores: [],
+    flags: {},
+    niveles: {}
+  };
 }
 
 async function main(): Promise<number> {
@@ -184,8 +218,10 @@ async function main(): Promise<number> {
   }
 
   const filas = leerFilas(opciones.archivo, mapeo);
+  const archivoBase = path.basename(opciones.archivo);
   console.log(`Archivo: ${opciones.archivo}`);
   console.log(`Mapeo:   ${opciones.mapeo}`);
+  console.log(`Destino: ${opciones.tipo === 'padron' ? 'staging_beneficiarios' : 'staging_catalogos'}`);
   console.log(`Filas leidas: ${filas.length}${opciones.dryRun ? ' (modo --dry-run)' : ''}`);
 
   if (!process.env.DATABASE_URL) {
@@ -194,7 +230,7 @@ async function main(): Promise<number> {
   }
 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  const resultado: Resultado = { leidas: filas.length, insertadas: 0, actualizadas: 0, errores: [] };
+  const resultado = resultadoVacio(filas.length);
   let importacionId: number | null = null;
 
   try {
@@ -202,15 +238,15 @@ async function main(): Promise<number> {
       const { rows } = await pool.query<{ id: number }>(
         `INSERT INTO importaciones (archivo, tipo, mapeo, ejecutado_por)
          VALUES ($1, $2, $3::jsonb, $4) RETURNING id`,
-        [path.basename(opciones.archivo), opciones.tipo, JSON.stringify(mapeo), os.userInfo().username]
+        [archivoBase, opciones.tipo, JSON.stringify(mapeo), os.userInfo().username]
       );
       importacionId = rows[0].id;
     }
 
     if (opciones.tipo === 'padron') {
-      await importarPadron(pool, filas, mapeo, resultado, importacionId, opciones.dryRun);
+      await importarPadron(pool, filas, mapeo, resultado, importacionId, opciones.dryRun, archivoBase);
     } else {
-      await importarCatalogo(pool, filas, mapeo, resultado, opciones.dryRun);
+      await importarCatalogo(pool, filas, mapeo, resultado, importacionId, opciones.dryRun, archivoBase);
     }
 
     if (!opciones.dryRun && importacionId !== null) {
@@ -229,19 +265,23 @@ async function main(): Promise<number> {
         ]
       );
 
-      // Bitacora de auditoria de la importacion.
+      // Bitacora de auditoria de la importacion a staging.
       await pool.query(
         `INSERT INTO auditoria_log (accion, entidad, entidad_id, detalle)
-         VALUES ('import_padron', 'beneficiario', $1, $2::jsonb)`,
+         VALUES ('staging_import', $1, $2, $3::jsonb)`,
         [
+          opciones.tipo === 'padron' ? 'staging_beneficiario' : 'staging_catalogo',
           String(importacionId),
           JSON.stringify({
-            archivo: path.basename(opciones.archivo),
+            archivo: archivoBase,
             tipo: opciones.tipo,
-            leidas: resultado.leidas,
-            insertadas: resultado.insertadas,
-            actualizadas: resultado.actualizadas,
-            errores: resultado.errores.length
+            filas_leidas: resultado.leidas,
+            filas_insertadas: resultado.insertadas,
+            filas_actualizadas: resultado.actualizadas,
+            filas_omitidas: resultado.omitidas,
+            filas_error: resultado.errores.length,
+            conteo_por_flag: resultado.flags,
+            conteo_por_nivel: resultado.niveles
           })
         ]
       );
@@ -252,122 +292,120 @@ async function main(): Promise<number> {
     console.log(`  leidas:       ${resultado.leidas}`);
     console.log(`  insertadas:   ${resultado.insertadas}`);
     console.log(`  actualizadas: ${resultado.actualizadas}`);
+    console.log(`  omitidas:     ${resultado.omitidas} (ya revisadas, no se tocan)`);
     console.log(`  errores:      ${resultado.errores.length}`);
     if (importacionId !== null) console.log(`  importacion:  #${importacionId}`);
     for (const error of resultado.errores.slice(0, 10)) {
       console.log(`    - fila ${error.fila}: ${error.motivo}`);
     }
+
+    console.log('');
+    console.log('Alertas detectadas');
+    const flags = opciones.tipo === 'padron' ? FLAGS_PADRON : FLAGS_CATALOGO;
+    for (const flag of flags) {
+      console.log(`  ${flag.padEnd(34)} ${resultado.flags[flag] ?? 0}`);
+    }
+    for (const nivel of ['alta', 'media', 'ninguna']) {
+      console.log(`  nivel_alerta=${nivel.padEnd(21)} ${resultado.niveles[nivel] ?? 0}`);
+    }
+    console.log('');
+    console.log(
+      'Ninguna fila se aprobo ni se descarto automaticamente: todas quedan en ' +
+        'estado "pendiente" a la espera de revision humana en /depuracion.'
+    );
     return 0;
   } finally {
     await pool.end().catch(() => undefined);
   }
 }
 
-/** Importa el padron de beneficiarios con upsert por la clave configurada. */
+// ---------------------------------------------------------------------------
+// Padron -> staging_beneficiarios
+// ---------------------------------------------------------------------------
+
+/**
+ * Importa el padron a staging. La resolucion de Regional / Municipio /
+ * Concepto es de SOLO LECTURA: nunca crea catalogos nuevos, porque un concepto
+ * no reconocido debe quedar marcado con su flag y no colarse al catalogo
+ * oficial de 152 conceptos.
+ */
 async function importarPadron(
   pool: pg.Pool,
   filas: Record<string, string>[],
   mapeo: Mapeo,
   resultado: Resultado,
   importacionId: number | null,
-  dryRun: boolean
+  dryRun: boolean,
+  archivoBase: string
 ): Promise<void> {
-  const columnas = mapeo.columnas;
-  const crearFaltantes = mapeo.crear_catalogos_faltantes !== false;
   const campoExtra = mapeo.guardar_columnas_no_mapeadas_en || 'datos_extra';
+  if (campoExtra !== 'datos_extra') {
+    console.warn(
+      `  ! "${campoExtra}" no es una columna del staging: las columnas no mapeadas ` +
+        'se guardaran en datos_extra.'
+    );
+  }
 
-  // Indice normalizado de columnas mapeadas -> campo destino.
   const mapaNormalizado = new Map<string, string>();
-  for (const [destino, origen] of Object.entries(columnas)) {
+  for (const [destino, origen] of Object.entries(mapeo.columnas)) {
     mapaNormalizado.set(normalizar(origen), destino);
   }
 
-  // Caches para no golpear la base en cada fila.
-  const cacheRegionales = new Map<string, number>();
-  const cacheMunicipios = new Map<string, number>();
-  const cacheApoyos = new Map<string, number>();
+  const cacheRegionales = new Map<string, number | null>();
+  const cacheMunicipios = new Map<string, number | null>();
+  const cacheApoyos = new Map<string, number | null>();
 
   async function resolverRegional(nombre: string): Promise<number | null> {
     const clave = normalizar(nombre);
     if (!clave) return null;
     if (cacheRegionales.has(clave)) return cacheRegionales.get(clave)!;
-
     const { rows } = await pool.query<{ id: number }>(
       `SELECT id FROM direcciones_regionales
-        WHERE upper(unaccent(nombre)) = $1 OR upper(clave) = $1 LIMIT 1`,
+        WHERE activo AND (upper(unaccent(nombre)) = $1 OR upper(clave) = $1) LIMIT 1`,
       [clave]
     );
-    if (rows.length) {
-      cacheRegionales.set(clave, rows[0].id);
-      return rows[0].id;
-    }
-    if (!crearFaltantes || dryRun) return null;
-
-    const insercion = await pool.query<{ id: number }>(
-      `INSERT INTO direcciones_regionales (clave, nombre) VALUES ($1, $2)
-       ON CONFLICT (clave) DO UPDATE SET nombre = EXCLUDED.nombre RETURNING id`,
-      [aClave(nombre, 'REG'), nombre.trim()]
-    );
-    cacheRegionales.set(clave, insercion.rows[0].id);
-    return insercion.rows[0].id;
+    const id = rows.length ? rows[0].id : null;
+    cacheRegionales.set(clave, id);
+    return id;
   }
 
-  async function resolverMunicipio(nombre: string, regionalId: number): Promise<number | null> {
-    const clave = `${regionalId}|${normalizar(nombre)}`;
-    if (!normalizar(nombre)) return null;
+  async function resolverMunicipio(nombre: string, regionalId: number | null): Promise<number | null> {
+    const normalizado = normalizar(nombre);
+    if (!normalizado) return null;
+    const clave = `${regionalId ?? 0}|${normalizado}`;
     if (cacheMunicipios.has(clave)) return cacheMunicipios.get(clave)!;
-
     const { rows } = await pool.query<{ id: number }>(
-      `SELECT id FROM municipios
-        WHERE regional_id = $1 AND (upper(unaccent(nombre)) = $2 OR upper(clave) = $2) LIMIT 1`,
-      [regionalId, normalizar(nombre)]
+      regionalId
+        ? `SELECT id FROM municipios
+            WHERE activo AND regional_id = $2 AND (upper(unaccent(nombre)) = $1 OR upper(clave) = $1)
+            LIMIT 1`
+        : `SELECT id FROM municipios
+            WHERE activo AND (upper(unaccent(nombre)) = $1 OR upper(clave) = $1) LIMIT 1`,
+      regionalId ? [normalizado, regionalId] : [normalizado]
     );
-    if (rows.length) {
-      cacheMunicipios.set(clave, rows[0].id);
-      return rows[0].id;
-    }
-    if (!crearFaltantes || dryRun) return null;
-
-    // Un mismo municipio en dos Regionales genera dos registros distintos (ver Assumption 7).
-    const insercion = await pool.query<{ id: number }>(
-      `INSERT INTO municipios (clave, nombre, regional_id) VALUES ($1, $2, $3)
-       ON CONFLICT (clave, regional_id) DO UPDATE SET nombre = EXCLUDED.nombre RETURNING id`,
-      [aClave(nombre, 'MUN'), nombre.trim(), regionalId]
-    );
-    cacheMunicipios.set(clave, insercion.rows[0].id);
-    return insercion.rows[0].id;
+    const id = rows.length ? rows[0].id : null;
+    cacheMunicipios.set(clave, id);
+    return id;
   }
 
   async function resolverTipoApoyo(nombre: string): Promise<number | null> {
     const clave = normalizar(nombre);
     if (!clave) return null;
     if (cacheApoyos.has(clave)) return cacheApoyos.get(clave)!;
-
     const { rows } = await pool.query<{ id: number }>(
-      `SELECT id FROM tipos_apoyo WHERE upper(unaccent(nombre)) = $1 OR upper(clave) = $1 LIMIT 1`,
+      `SELECT id FROM tipos_apoyo
+        WHERE activo AND (upper(unaccent(nombre)) = $1 OR upper(clave) = $1) LIMIT 1`,
       [clave]
     );
-    if (rows.length) {
-      cacheApoyos.set(clave, rows[0].id);
-      return rows[0].id;
-    }
-    if (!crearFaltantes || dryRun) return null;
-
-    const insercion = await pool.query<{ id: number }>(
-      `INSERT INTO tipos_apoyo (clave, nombre, categoria) VALUES ($1, $2, 'otro')
-       ON CONFLICT (clave) DO UPDATE SET nombre = EXCLUDED.nombre RETURNING id`,
-      [aClave(nombre, 'TA'), nombre.trim()]
-    );
-    cacheApoyos.set(clave, insercion.rows[0].id);
-    return insercion.rows[0].id;
+    const id = rows.length ? rows[0].id : null;
+    cacheApoyos.set(clave, id);
+    return id;
   }
 
-  let contador = 0;
   for (const [indice, fila] of filas.entries()) {
-    const numeroFila = indice + 2; // +1 por encabezado, +1 por base 1
-    contador++;
+    // fila_origen: 1 = primera fila de datos (el encabezado no cuenta).
+    const filaOrigen = indice + 1;
 
-    // Reparte los valores entre campos mapeados y datos_extra.
     const valores: Record<string, string> = {};
     const extra: Record<string, string> = {};
     for (const [encabezado, valor] of Object.entries(fila)) {
@@ -376,24 +414,19 @@ async function importarPadron(
       else if (String(valor ?? '').trim() !== '') extra[encabezado.trim()] = String(valor).trim();
     }
 
-    const nombreCompleto = valores.nombre_completo;
-    if (!nombreCompleto) {
-      resultado.errores.push({ fila: numeroFila, motivo: 'Sin nombre del beneficiario' });
-      continue;
-    }
-
     const regionalId = valores.regional ? await resolverRegional(valores.regional) : null;
-    if (!regionalId) {
-      resultado.errores.push({
-        fila: numeroFila,
-        motivo: `Direccion Regional no resoluble: "${valores.regional ?? ''}"`
-      });
-      continue;
-    }
-
-    const municipioId = valores.municipio ? await resolverMunicipio(valores.municipio, regionalId) : null;
+    const municipioId = valores.municipio
+      ? await resolverMunicipio(valores.municipio, regionalId)
+      : null;
     const tipoApoyoId = valores.tipo_apoyo ? await resolverTipoApoyo(valores.tipo_apoyo) : null;
-    const folio = valores.folio && valores.folio !== '' ? valores.folio : `IMP-${contador}`;
+
+    // Una Regional no resoluble NO descarta la fila: se guarda y se anota el
+    // motivo para que el revisor la corrija antes de promover.
+    const avisos: string[] = [];
+    if (!regionalId) {
+      avisos.push(`Dirección Regional no resuelta: "${valores.regional ?? ''}"`);
+    }
+    if (!valores.nombre_completo) avisos.push('Fila sin nombre del beneficiario');
 
     if (dryRun) {
       resultado.insertadas++;
@@ -401,56 +434,158 @@ async function importarPadron(
     }
 
     const { rows } = await pool.query<{ inserto: boolean }>(
-      `INSERT INTO beneficiarios (
-          folio, curp, nombre_completo, regional_id, municipio_id, colonia, seccion,
-          localidad, domicilio, telefono, tipo_apoyo_id, cantidad_asignada, ${campoExtra}, origen_import_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14)
-       ON CONFLICT (folio) DO UPDATE SET
-          curp = EXCLUDED.curp,
-          nombre_completo = EXCLUDED.nombre_completo,
-          regional_id = EXCLUDED.regional_id,
-          municipio_id = EXCLUDED.municipio_id,
-          colonia = EXCLUDED.colonia,
-          seccion = EXCLUDED.seccion,
-          localidad = EXCLUDED.localidad,
-          domicilio = EXCLUDED.domicilio,
-          telefono = EXCLUDED.telefono,
-          tipo_apoyo_id = EXCLUDED.tipo_apoyo_id,
+      `INSERT INTO staging_beneficiarios (
+          importacion_id, archivo, fila_origen, folio, curp, nombre_completo,
+          regional_texto, regional_id, municipio_texto, municipio_id, colonia, seccion,
+          localidad, domicilio, telefono, tipo_apoyo_texto, tipo_apoyo_id,
+          cantidad_asignada, lat_proyecto, lng_proyecto, datos_extra, motivo_revision)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22)
+       ON CONFLICT (archivo, fila_origen) DO UPDATE SET
+          importacion_id   = EXCLUDED.importacion_id,
+          folio            = EXCLUDED.folio,
+          curp             = EXCLUDED.curp,
+          nombre_completo  = EXCLUDED.nombre_completo,
+          regional_texto   = EXCLUDED.regional_texto,
+          regional_id      = EXCLUDED.regional_id,
+          municipio_texto  = EXCLUDED.municipio_texto,
+          municipio_id     = EXCLUDED.municipio_id,
+          colonia          = EXCLUDED.colonia,
+          seccion          = EXCLUDED.seccion,
+          localidad        = EXCLUDED.localidad,
+          domicilio        = EXCLUDED.domicilio,
+          telefono         = EXCLUDED.telefono,
+          tipo_apoyo_texto = EXCLUDED.tipo_apoyo_texto,
+          tipo_apoyo_id    = EXCLUDED.tipo_apoyo_id,
           cantidad_asignada = EXCLUDED.cantidad_asignada,
-          ${campoExtra} = EXCLUDED.${campoExtra},
-          origen_import_id = EXCLUDED.origen_import_id,
-          actualizado_en = now()
+          lat_proyecto     = EXCLUDED.lat_proyecto,
+          lng_proyecto     = EXCLUDED.lng_proyecto,
+          datos_extra      = EXCLUDED.datos_extra,
+          motivo_revision  = EXCLUDED.motivo_revision,
+          actualizado_en   = now()
+        -- Las filas ya revisadas (aprobado/descartado/fusionado) no se tocan.
+        WHERE staging_beneficiarios.estado_revision = 'pendiente'
        RETURNING (xmax = 0) AS inserto`,
       [
-        folio,
+        importacionId,
+        archivoBase,
+        filaOrigen,
+        valores.folio || null,
         valores.curp || null,
-        nombreCompleto,
+        valores.nombre_completo || null,
+        valores.regional || null,
         regionalId,
+        valores.municipio || null,
         municipioId,
         valores.colonia || null,
         valores.seccion || null,
         valores.localidad || null,
         valores.domicilio || null,
         valores.telefono || null,
+        valores.tipo_apoyo || null,
         tipoApoyoId,
         aNumero(valores.cantidad_asignada),
+        aNumero(valores.lat_proyecto),
+        aNumero(valores.lng_proyecto),
         JSON.stringify(extra),
-        importacionId
+        avisos.length ? avisos.join(' · ') : null
       ]
     );
 
-    if (rows[0]?.inserto) resultado.insertadas++;
+    if (rows.length === 0) resultado.omitidas++;
+    else if (rows[0].inserto) resultado.insertadas++;
     else resultado.actualizadas++;
+
+    if (avisos.length) {
+      resultado.errores.push({ fila: filaOrigen, motivo: avisos.join(' · ') });
+    }
   }
+
+  if (dryRun) return;
+
+  await recalcularFlagsPadron(pool, archivoBase);
+  await contarFlags(pool, 'staging_beneficiarios', FLAGS_PADRON, archivoBase, resultado);
 }
 
-/** Importa entradas del catalogo generico clave/valor. */
+/**
+ * Recalcula los 6 flags de las filas pendientes del archivo importado,
+ * comparandolas contra el resto del staging pendiente y contra produccion.
+ * Es deterministico y no provoca ninguna accion automatica.
+ */
+async function recalcularFlagsPadron(pool: pg.Pool, archivo: string): Promise<void> {
+  // Concepto comparable: el id resuelto si existe; si no, el texto normalizado.
+  const conceptoStaging = (a: string) =>
+    `coalesce(${a}.tipo_apoyo_id::text, 'T:' || upper(unaccent(coalesce(${a}.tipo_apoyo_texto, ''))))`;
+
+  await pool.query(
+    `UPDATE staging_beneficiarios s
+        SET folio_duplicado                  = c.folio_dup,
+            curp_duplicada_mismo_concepto    = c.curp_mismo,
+            curp_duplicada_concepto_distinto = c.curp_distinto,
+            sin_coordenadas                  = c.sin_coord,
+            sin_colonia                      = c.sin_col,
+            concepto_no_reconocido           = c.sin_concepto,
+            nivel_alerta = CASE
+              WHEN c.folio_dup OR c.curp_mismo THEN 'alta'
+              WHEN c.curp_distinto OR c.sin_coord OR c.sin_col OR c.sin_concepto THEN 'media'
+              ELSE 'ninguna' END,
+            actualizado_en = now()
+       FROM (
+         SELECT f.id,
+           (nullif(btrim(f.folio), '') IS NOT NULL AND (
+              EXISTS (SELECT 1 FROM staging_beneficiarios o
+                       WHERE o.id <> f.id AND o.estado_revision = 'pendiente'
+                         AND upper(unaccent(btrim(coalesce(o.folio, '')))) = upper(unaccent(btrim(f.folio))))
+              OR EXISTS (SELECT 1 FROM beneficiarios b
+                       WHERE upper(unaccent(btrim(b.folio))) = upper(unaccent(btrim(f.folio))))
+           )) AS folio_dup,
+
+           (nullif(btrim(f.curp), '') IS NOT NULL AND (
+              EXISTS (SELECT 1 FROM staging_beneficiarios o
+                       WHERE o.id <> f.id AND o.estado_revision = 'pendiente'
+                         AND upper(btrim(coalesce(o.curp, ''))) = upper(btrim(f.curp))
+                         AND ${conceptoStaging('o')} = ${conceptoStaging('f')})
+              OR EXISTS (SELECT 1 FROM beneficiarios b
+                       WHERE upper(btrim(coalesce(b.curp, ''))) = upper(btrim(f.curp))
+                         AND coalesce(b.tipo_apoyo_id::text, 'T:') = ${conceptoStaging('f')})
+           )) AS curp_mismo,
+
+           (nullif(btrim(f.curp), '') IS NOT NULL AND (
+              EXISTS (SELECT 1 FROM staging_beneficiarios o
+                       WHERE o.id <> f.id AND o.estado_revision = 'pendiente'
+                         AND upper(btrim(coalesce(o.curp, ''))) = upper(btrim(f.curp))
+                         AND ${conceptoStaging('o')} <> ${conceptoStaging('f')})
+              OR EXISTS (SELECT 1 FROM beneficiarios b
+                       WHERE upper(btrim(coalesce(b.curp, ''))) = upper(btrim(f.curp))
+                         AND coalesce(b.tipo_apoyo_id::text, 'T:') <> ${conceptoStaging('f')})
+           )) AS curp_distinto,
+
+           (f.lat_proyecto IS NULL OR f.lng_proyecto IS NULL
+              OR f.lat_proyecto NOT BETWEEN -90 AND 90
+              OR f.lng_proyecto NOT BETWEEN -180 AND 180
+              OR (f.lat_proyecto = 0 AND f.lng_proyecto = 0)) AS sin_coord,
+
+           (nullif(btrim(coalesce(f.colonia, '')), '') IS NULL) AS sin_col,
+           (f.tipo_apoyo_id IS NULL) AS sin_concepto
+         FROM staging_beneficiarios f
+        WHERE f.archivo = $1 AND f.estado_revision = 'pendiente'
+       ) c
+      WHERE s.id = c.id`,
+    [archivo]
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Catalogo -> staging_catalogos
+// ---------------------------------------------------------------------------
+
 async function importarCatalogo(
   pool: pg.Pool,
   filas: Record<string, string>[],
   mapeo: Mapeo,
   resultado: Resultado,
-  dryRun: boolean
+  importacionId: number | null,
+  dryRun: boolean,
+  archivoBase: string
 ): Promise<void> {
   const mapaNormalizado = new Map<string, string>();
   for (const [destino, origen] of Object.entries(mapeo.columnas)) {
@@ -458,15 +593,17 @@ async function importarCatalogo(
   }
 
   for (const [indice, fila] of filas.entries()) {
-    const numeroFila = indice + 2;
+    const filaOrigen = indice + 1;
     const valores: Record<string, string> = {};
+    const extra: Record<string, string> = {};
     for (const [encabezado, valor] of Object.entries(fila)) {
       const destino = mapaNormalizado.get(normalizar(encabezado));
       if (destino) valores[destino] = String(valor ?? '').trim();
+      else if (String(valor ?? '').trim() !== '') extra[encabezado.trim()] = String(valor).trim();
     }
 
     if (!valores.grupo || !valores.clave || !valores.valor) {
-      resultado.errores.push({ fila: numeroFila, motivo: 'Faltan grupo, clave o valor' });
+      resultado.errores.push({ fila: filaOrigen, motivo: 'Faltan grupo, clave o valor' });
       continue;
     }
     if (dryRun) {
@@ -475,25 +612,105 @@ async function importarCatalogo(
     }
 
     const { rows } = await pool.query<{ inserto: boolean }>(
-      `INSERT INTO catalogos (grupo, clave, valor, padre_grupo, padre_clave, orden)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (grupo, clave, COALESCE(padre_clave, '')) DO UPDATE SET
-         valor = EXCLUDED.valor,
-         padre_grupo = EXCLUDED.padre_grupo,
-         orden = EXCLUDED.orden
+      `INSERT INTO staging_catalogos (
+          importacion_id, archivo, fila_origen, grupo, clave, valor,
+          padre_grupo, padre_clave, orden, datos_extra)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
+       ON CONFLICT (archivo, fila_origen) DO UPDATE SET
+          importacion_id = EXCLUDED.importacion_id,
+          grupo          = EXCLUDED.grupo,
+          clave          = EXCLUDED.clave,
+          valor          = EXCLUDED.valor,
+          padre_grupo    = EXCLUDED.padre_grupo,
+          padre_clave    = EXCLUDED.padre_clave,
+          orden          = EXCLUDED.orden,
+          datos_extra    = EXCLUDED.datos_extra,
+          actualizado_en = now()
+        WHERE staging_catalogos.estado_revision = 'pendiente'
        RETURNING (xmax = 0) AS inserto`,
       [
+        importacionId,
+        archivoBase,
+        filaOrigen,
         valores.grupo,
         valores.clave,
         valores.valor,
         valores.padre_grupo || null,
         valores.padre_clave || null,
-        aNumero(valores.orden) ?? 0
+        aNumero(valores.orden) ?? 0,
+        JSON.stringify(extra)
       ]
     );
 
-    if (rows[0]?.inserto) resultado.insertadas++;
+    if (rows.length === 0) resultado.omitidas++;
+    else if (rows[0].inserto) resultado.insertadas++;
     else resultado.actualizadas++;
+  }
+
+  if (dryRun) return;
+
+  await recalcularFlagsCatalogo(pool, archivoBase);
+  await contarFlags(pool, 'staging_catalogos', FLAGS_CATALOGO, archivoBase, resultado);
+}
+
+async function recalcularFlagsCatalogo(pool: pg.Pool, archivo: string): Promise<void> {
+  await pool.query(
+    `UPDATE staging_catalogos s
+        SET clave_duplicada        = c.clave_dup,
+            valor_duplicado        = c.valor_dup,
+            concepto_no_reconocido = c.no_reconocido,
+            nivel_alerta = CASE
+              WHEN c.clave_dup THEN 'alta'
+              WHEN c.valor_dup OR c.no_reconocido THEN 'media'
+              ELSE 'ninguna' END,
+            actualizado_en = now()
+       FROM (
+         SELECT f.id,
+           (EXISTS (SELECT 1 FROM staging_catalogos o
+                     WHERE o.id <> f.id AND o.estado_revision = 'pendiente'
+                       AND o.grupo IS NOT DISTINCT FROM f.grupo
+                       AND upper(unaccent(coalesce(o.clave, ''))) = upper(unaccent(coalesce(f.clave, ''))))
+            OR EXISTS (SELECT 1 FROM catalogos g
+                     WHERE g.grupo = f.grupo AND g.clave = f.clave)) AS clave_dup,
+
+           EXISTS (SELECT 1 FROM staging_catalogos o
+                    WHERE o.id <> f.id AND o.estado_revision = 'pendiente'
+                      AND o.grupo IS NOT DISTINCT FROM f.grupo
+                      AND upper(unaccent(coalesce(o.valor, ''))) = upper(unaccent(coalesce(f.valor, '')))
+                      AND upper(unaccent(coalesce(o.clave, ''))) <> upper(unaccent(coalesce(f.clave, '')))) AS valor_dup,
+
+           (f.grupo = 'concepto_apoyo' AND NOT EXISTS (
+              SELECT 1 FROM tipos_apoyo t
+               WHERE t.activo AND upper(unaccent(t.nombre)) = upper(unaccent(coalesce(f.valor, ''))))
+           ) AS no_reconocido
+         FROM staging_catalogos f
+        WHERE f.archivo = $1 AND f.estado_revision = 'pendiente'
+       ) c
+      WHERE s.id = c.id`,
+    [archivo]
+  );
+}
+
+/** Lee de la base el conteo de cada flag y de cada nivel para el resumen. */
+async function contarFlags(
+  pool: pg.Pool,
+  tabla: 'staging_beneficiarios' | 'staging_catalogos',
+  flags: readonly string[],
+  archivo: string,
+  resultado: Resultado
+): Promise<void> {
+  const { rows } = await pool.query<Record<string, number>>(
+    `SELECT ${flags.map((f) => `count(*) FILTER (WHERE ${f})::int AS "${f}"`).join(', ')},
+            count(*) FILTER (WHERE nivel_alerta = 'alta')::int    AS alta,
+            count(*) FILTER (WHERE nivel_alerta = 'media')::int   AS media,
+            count(*) FILTER (WHERE nivel_alerta = 'ninguna')::int AS ninguna
+       FROM ${tabla} WHERE archivo = $1`,
+    [archivo]
+  );
+  const fila = rows[0] ?? {};
+  for (const flag of flags) resultado.flags[flag] = Number(fila[flag] ?? 0);
+  for (const nivel of ['alta', 'media', 'ninguna']) {
+    resultado.niveles[nivel] = Number(fila[nivel] ?? 0);
   }
 }
 

@@ -1,0 +1,7 @@
+GRUPO,CLAVE,VALOR,GRUPO PADRE,CLAVE PADRE,ORDEN,NOTA DE GABINETE
+unidad_medida,UM-KG,Kilogramo,,,1,Fila limpia
+unidad_medida,UM-LT,Litro,,,2,Fila limpia
+unidad_medida,UM-PZA,Pieza,,,3,Fila limpia
+unidad_medida,UM-TON,Tonelada,,,4,Fila limpia
+unidad_medida,UM-BULTO,Bulto,,,5,Clave repetida en el archivo de origen
+unidad_medida,UM-BULTO,Bulto de 50 kg,,,6,Clave repetida en el archivo de origen

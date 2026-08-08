@@ -26,7 +26,13 @@ ENV VITE_TILE_URL=$VITE_TILE_URL
 RUN npm run build -w @sedea/shared && npm run build -w pwa
 
 FROM nginx:1.27-alpine
-COPY pwa/nginx.conf /etc/nginx/conf.d/default.conf
+# Plantilla procesada por el entrypoint oficial de nginx (envsubst) al arrancar,
+# asi el nombre/puerto interno del backend se puede ajustar por variable de
+# entorno sin reconstruir la imagen (ej. en EasyPanel el servicio se llama
+# "sedea_backend", no "backend" como en docker-compose local).
+COPY pwa/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/pwa/dist /usr/share/nginx/html
+ENV BACKEND_HOST=backend
+ENV BACKEND_PORT=3000
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

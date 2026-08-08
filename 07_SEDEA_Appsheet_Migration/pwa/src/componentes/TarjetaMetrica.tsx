@@ -8,8 +8,12 @@ interface Props {
 
 export default function TarjetaMetrica({ etiqueta, valor, testId, detalle }: Props) {
   return (
-    <div className="metrica" data-testid={testId}>
-      <span className="metrica-valor">{valor}</span>
+    // El data-testid va sobre el valor, no sobre la tarjeta, para que su texto
+    // sea exactamente el numero (o el porcentaje) sin arrastrar la etiqueta.
+    <div className="metrica">
+      <span className="metrica-valor" data-testid={testId}>
+        {valor}
+      </span>
       <span className="metrica-etiqueta">{etiqueta}</span>
       {detalle && <span className="metrica-detalle">{detalle}</span>}
     </div>

@@ -71,8 +71,22 @@ npm run dev:pwa             # PWA en http://localhost:5173 (proxy /api -> 3000)
 
 El importador **no tiene ningún nombre de columna escrito en el código**: el mapeo
 vive en un JSON externo, por lo que se adapta a cualquier hoja que entregue la
-Secretaría. Las columnas no mapeadas se conservan íntegras en
-`beneficiarios.datos_extra` (JSONB).
+Secretaría. Las columnas no mapeadas se conservan íntegras en `datos_extra` (JSONB).
+
+> **Importante:** el importador **ya no escribe nunca directamente en
+> `beneficiarios` ni en `catalogos`.** `--tipo padron` aterriza en
+> `staging_beneficiarios` y `--tipo catalogo` en `staging_catalogos`, siempre en
+> `estado_revision = 'pendiente'`. La única vía a producción es la aprobación
+> humana desde la pantalla de Depuración (ver
+> [Depuración de datos](#depuración-de-datos-staging)).
+
+Fixtures sintéticos listos para probar el flujo completo (sin datos personales):
+
+```bash
+npm run importar -- --tipo padron   --archivo scripts/datos-ejemplo/padron.staging.ejemplo.csv   --mapeo scripts/mapeos/padron.staging.ejemplo.json
+
+npm run importar -- --tipo catalogo   --archivo scripts/datos-ejemplo/catalogo.staging.ejemplo.csv   --mapeo scripts/mapeos/catalogo.staging.ejemplo.json
+```
 
 ```bash
 # Padrón (CSV o XLSX)
@@ -96,26 +110,34 @@ Reglas del importador:
 
 - Los encabezados se normalizan (sin acentos, mayúsculas, espacios colapsados)
   antes de compararse con el mapeo.
-- La clave de upsert es el **folio** (`clave_upsert`); reejecutar la misma
-  importación **no duplica** beneficiarios.
-- Si el CSV no trae folio se genera `IMP-<n>`.
-- Filas sin nombre o sin Regional resoluble se registran en
-  `importaciones.errores` y **no abortan** el proceso.
+- La clave de idempotencia en staging es **(archivo, fila_origen)**: reejecutar
+  la misma importación **actualiza** las filas que siguen en `pendiente` y **no
+  toca** las que ya fueron aprobadas, descartadas o fusionadas.
+- La resolución de Regional / Municipio / Concepto es de **solo lectura**: el
+  importador nunca da de alta catálogos nuevos, para que un concepto fuera del
+  catálogo vigente quede marcado con su alerta en lugar de colarse.
+- Filas sin nombre o sin Regional resoluble **no se descartan**: se guardan con
+  el motivo anotado en `motivo_revision` para que el revisor las corrija.
 - Cada corrida escribe una fila en `importaciones` y una entrada
-  `import_padron` en `auditoria_log`.
+  `staging_import` en `auditoria_log` con el conteo de cada alerta.
+- Al promover a producción la clave de upsert sigue siendo el **folio**; si la
+  fila aprobada no trae folio se genera `IMP-<id de staging>`.
 
 ---
 
 ## Usuarios demo
 
 Se crean con `npm run seed` usando la contraseña de la variable
-`SEED_ADMIN_PASSWORD` (por defecto `cambiame123` en `.env.example`).
+`SEED_ADMIN_PASSWORD` (por defecto `cambiame123` en `.env.example`). El usuario
+`editor1` puede tener contraseña propia con `SEED_EDITOR_PASSWORD`; si no se
+define, reutiliza la de los demás.
 
 | Usuario | Rol | Alcance |
 |---|---|---|
 | `admin` | admin | Todas las Regionales + bitácora |
 | `capturista1` | capturista | Solo Regional Centro (`REG-01`) |
 | `auditor1` | auditor | Todas las Regionales (sin regional asignada) |
+| `editor1` | `editor_datos` | Depuración de staging y corrección de datos en producción (perfil de gabinete central, sin Regional asignada) |
 
 > **Advertencia:** estos usuarios existen únicamente para pruebas.
 > **Cámbialos o elimínalos antes de operar en producción**, y define un
@@ -178,9 +200,209 @@ Rutas `/auditoria` y `/auditoria/beneficiario/:id`, accesibles solo para los rol
 | GET | `/api/auditoria/expediente/:id.pdf` | `auditor`, `admin` |
 | GET | `/api/auditoria/expediente/:id.csv` | `auditor`, `admin` |
 | GET | `/api/auditoria/log` | `admin` |
+| PATCH | `/api/beneficiarios/:id` | `editor_datos`, `admin` (edición correctiva) |
+| GET | `/api/staging/resumen` | `editor_datos`, `admin` |
+| GET | `/api/staging/beneficiarios` | `editor_datos`, `admin` |
+| GET | `/api/staging/beneficiarios/:id` | `editor_datos`, `admin` |
+| POST | `/api/staging/beneficiarios/:id/aprobar` | `editor_datos`, `admin` |
+| POST | `/api/staging/beneficiarios/:id/descartar` | `editor_datos`, `admin` |
+| POST | `/api/staging/beneficiarios/fusionar` | `editor_datos`, `admin` |
+| GET | `/api/staging/catalogos` | `editor_datos`, `admin` |
+| POST | `/api/staging/catalogos/:id/aprobar` | `editor_datos`, `admin` |
+| POST | `/api/staging/catalogos/:id/descartar` | `editor_datos`, `admin` |
+| GET | `/api/correcciones/beneficiarios` | `editor_datos`, `admin` |
+| GET | `/api/correcciones/beneficiarios/:id` | `editor_datos`, `admin` |
+| GET | `/api/correcciones/beneficiarios/:id/historial` | `editor_datos`, `admin` |
+| GET | `/api/estadisticas/cobertura` | `admin`, `auditor`, `editor_datos` |
+| GET | `/api/estadisticas/apoyos` | `admin`, `auditor`, `editor_datos` |
+| GET | `/api/estadisticas/avance` | `admin`, `auditor`, `editor_datos` |
+| GET | `/api/estadisticas/staging` | `admin`, `auditor`, `editor_datos` |
 | GET | `/media/*` | autenticado (header o `?token=`) |
 
+**No existe `POST /api/beneficiarios` ni `DELETE /api/beneficiarios/:id`:** no hay
+alta ni baja manual de beneficiarios; todo beneficiario nace de una importación de
+padrón oficial revisada en staging.
+
 Errores en formato `{"error":{"codigo":"...","mensaje":"..."}}`.
+
+---
+
+## Depuración de datos (staging)
+
+Entre la importación del padrón y las tablas de producción hay una **capa de
+staging revisable por humanos**. Ningún registro sucio o duplicado del archivo de
+origen llega al capturista de campo sin que una persona lo apruebe.
+
+### Rol `editor_datos` y usuario demo `editor1`
+
+El rol **`editor_datos`** es un perfil de gabinete con acceso **exclusivo** a las
+pantallas y endpoints de depuración y corrección. **No** tiene acceso a la
+captura de campo (`/beneficiarios*`, `/sync`) ni al panel de auditoría
+(`/auditoria*`): la API le responde **403** en ambos. El rol `admin` conserva
+acceso a todo, staging incluido.
+
+El usuario demo es **`editor1`** (contraseña desde `SEED_EDITOR_PASSWORD`, con
+respaldo en `SEED_ADMIN_PASSWORD`). Como todos los usuarios demo, **cámbialo o
+elimínalo antes de operar en producción**.
+
+### El importador nunca escribe en producción
+
+`npm run importar -- --tipo padron` escribe en **`staging_beneficiarios`** y
+`--tipo catalogo` en **`staging_catalogos`**, siempre con
+`estado_revision = 'pendiente'`. **Nunca** escribe directo en `beneficiarios` ni
+en `catalogos`. El importador tampoco auto-fusiona ni auto-descarta nada: toda
+promoción a producción es una acción humana explícita.
+
+### Los 6 flags de diagnóstico
+
+Cada fila de padrón importada se marca con los flags que le apliquen (puede tener
+varios a la vez). **Ningún flag provoca una acción automática**, solo informan al
+revisor:
+
+| Flag | Significa | Nivel |
+|---|---|---|
+| `folio_duplicado` | El folio se repite en el staging pendiente o ya existe en `beneficiarios` | alta |
+| `curp_duplicada_mismo_concepto` | Misma CURP y **mismo** concepto de apoyo: probable captura duplicada real | alta |
+| `curp_duplicada_concepto_distinto` | Misma CURP con **otro** concepto: probablemente legítimo | media |
+| `sin_coordenadas` | Falta la latitud/longitud del proyecto, o está fuera de rango | media |
+| `sin_colonia` | La colonia viene vacía en el archivo de origen | media |
+| `concepto_no_reconocido` | El concepto no coincide con ningún `tipos_apoyo` vigente | media |
+
+`nivel_alerta` es `alta` si hay algún flag alto, `media` si hay algún otro y
+`ninguna` si la fila está limpia.
+
+### Regla de negocio: un beneficiario puede recibir apoyos distintos
+
+Una misma persona puede calificar legítimamente para **dos o más apoyos
+distintos** (por ejemplo maquinaria **y** semilla o fertilizante). Por eso
+**ningún duplicado se auto-descarta**: misma CURP con concepto distinto se marca
+solo como alerta *media* y pasa igualmente por revisión humana. La pantalla de
+detalle muestra el aviso *"Un beneficiario puede recibir apoyos distintos.
+Confirma antes de descartar."*
+
+### Acciones de revisión (`/depuracion`)
+
+- **Aprobar**: promueve la fila a `beneficiarios` (upsert por folio) y la marca
+  `aprobado`, dejando `revisado_por`, `revisado_en` y el id promovido.
+- **Descartar**: marca la fila `descartado`. **No** escribe nada en producción.
+- **Fusionar**: marca las filas secundarias como `fusionado` apuntando a la
+  principal (`fusionado_en_id`), recalcula sus alertas y opcionalmente promueve
+  la principal. **La fusión no borra filas**: se preserva la trazabilidad
+  completa hacia el archivo de origen.
+
+Los catálogos (`/depuracion/catalogos`) solo admiten **aprobar** y **descartar**:
+una clave duplicada se resuelve aprobando una y descartando la otra.
+
+Toda acción queda en `auditoria_log` con `staging_aprobado`, `staging_descartado`
+o `staging_fusionado`, y cada importación con `staging_import`.
+
+### Catálogo real de conceptos
+
+`db/seeds/004_tipos_apoyo_apoyo.sql` trae los **152 conceptos de apoyo** reales
+(`AP-001` … `AP-152`) extraídos de la hoja `APOYO` del catálogo oficial. La hoja
+`Copia de APOYO` **se descarta por completo**: es una versión divergente (173
+conceptos, solo 9 en común) que no corresponde al catálogo vigente. El seed se
+regenera con:
+
+```bash
+npm run extraer-catalogo -- --archivo "<ruta al XLSX>" --hoja APOYO \
+  --salida db/seeds/004_tipos_apoyo_apoyo.sql
+```
+
+El XLSX de origen **no se copia ni se commitea** (contiene PII en otras hojas);
+solo se commitea el SQL generado, que contiene únicamente nombres de conceptos.
+
+---
+
+## Corrección de datos en producción
+
+Cuando en campo o gabinete se detecta un dato desactualizado de un beneficiario
+**ya promovido**, un `editor_datos` o un `admin` lo corrige desde
+`/correcciones` sin tocar el padrón de origen.
+
+### Campos editables (lista blanca estricta)
+
+Solo estos **5 campos** son editables por esta vía:
+
+| Campo | Límite |
+|---|---|
+| `colonia` | 120 caracteres |
+| `domicilio` | 200 caracteres |
+| `telefono` | 10 dígitos tras normalizar (`+52`, espacios, guiones y paréntesis se descartan) |
+| `seccion` | 20 caracteres |
+| `municipio` (`municipio_id`) | debe existir y estar activo |
+
+Cambiar el municipio actualiza **también** la Dirección Regional del
+beneficiario, porque es un dato derivado (un municipio pertenece a una sola
+Regional). `localidad`, `nombre_completo`, `tipo_apoyo_id`, `cantidad_asignada` y
+`regional_id` **no** son editables aquí.
+
+### CURP y Folio nunca son editables
+
+**`curp` y `folio` están bloqueados de forma permanente.** Son la identidad legal
+del expediente: cambiarlos rompería la trazabilidad de auditoría entre el archivo
+de origen, el staging, el padrón y las evidencias de campo. Si están mal, el caso
+se resuelve **corrigiendo el padrón de origen y reimportando vía staging**, nunca
+editando en caliente.
+
+El backend es **estricto y ruidoso**, no silencioso: si el payload incluye `curp`,
+`folio` o cualquier otra clave fuera de la lista blanca, responde **422**
+`campo_no_editable` y **no aplica ningún cambio del payload**, ni siquiera los
+campos que sí eran válidos. En la PWA, CURP y Folio se muestran `readonly` y
+`disabled` con su explicación.
+
+### Roles autorizados y bitácora
+
+Solo **`editor_datos`** y **`admin`** pueden editar (`PATCH
+/api/beneficiarios/:id`). `capturista` y `auditor` reciben **403**; el capturista
+conserva la lectura de la ficha y su botón "Capturar apoyo", pero **nunca** ve el
+botón de edición (no se renderiza).
+
+Cada edición se registra en `auditoria_log` con `accion='beneficiario_editado'`,
+`entidad='beneficiario'` y el detalle **campo por campo con el valor anterior y el
+nuevo**, más el motivo opcional y el rol de quien editó. El historial se ve en la
+propia ficha ("Historial de correcciones"). La edición es **solo en línea**: no se
+encola en la cola de sincronización.
+
+**No hay alta manual de beneficiarios.** No existe `POST /api/beneficiarios`, ni
+`DELETE /api/beneficiarios/:id`, ni ningún botón "Nuevo beneficiario" en la PWA:
+todo beneficiario entra por importación de padrón oficial revisada en staging.
+
+---
+
+## Dashboard de seguimiento
+
+`/dashboard` reúne cuatro métricas agregadas de gestión, calculadas en vivo con
+agregaciones SQL (`COUNT` / `GROUP BY`). **No hay tablas de métricas
+precalculadas.**
+
+| Métrica | Qué muestra |
+|---|---|
+| **Cobertura de captura** | Beneficiarios con y sin evidencia, global, por Regional (barras apiladas) y por municipio (tabla ordenada por % ascendente, los más rezagados primero) |
+| **Distribución por tipo de apoyo** | Top 15 conceptos con más capturas + una barra final "Otros (N conceptos)" |
+| **Avance en el tiempo** | Capturas por día o por semana, con línea de acumulado; todos los periodos del rango aparecen aunque valgan 0 |
+| **Estado del staging** | Dona con filas pendientes / aprobadas / descartadas / fusionadas, más el resumen de catálogos |
+
+Filtros globales: Dirección Regional, rango de fechas y agrupación (día/semana).
+Un usuario con Regional asignada queda anclado a la suya.
+
+### Roles con acceso
+
+Pueden verlo **`admin`**, **`auditor`** y **`editor_datos`**. El **`capturista` no
+lo ve**: es información agregada de gestión, no de campo — el enlace no aparece en
+su barra y navegar directo a `/dashboard` muestra "No tienes permiso para ver esta
+sección."
+
+### Chart.js es la única dependencia nueva
+
+Las gráficas usan **Chart.js 4.x**, software **open source (licencia MIT), sin
+costo y sin servicios externos**: se sirve entero desde el bundle de la PWA, no
+hay llamadas a ningún CDN ni telemetría. Es la **única dependencia nueva** de este
+build: no se añadió `react-chartjs-2`, `recharts`, `d3` ni ninguna otra librería
+de gráficas. El registro de componentes es selectivo
+(`pwa/src/componentes/chartSetup.ts`) y el envoltorio propio
+(`pwa/src/componentes/Grafica.tsx`) crea y destruye cada instancia. Todas las
+etiquetas, leyendas y tooltips están en español.
 
 ---
 

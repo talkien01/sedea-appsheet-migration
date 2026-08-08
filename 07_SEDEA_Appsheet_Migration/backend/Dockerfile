@@ -13,7 +13,8 @@ COPY backend/package.json backend/
 COPY pwa/package.json pwa/
 COPY scripts/package.json scripts/
 
-RUN npm install --no-audit --no-fund
+# Solo los workspaces que necesita la API: acelera el build de la imagen.
+RUN npm install --no-audit --no-fund -w backend -w @sedea/shared --include-workspace-root
 
 # Codigo fuente necesario para el backend.
 COPY packages/shared packages/shared

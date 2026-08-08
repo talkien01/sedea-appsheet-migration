@@ -10,7 +10,8 @@ COPY backend/package.json backend/
 COPY pwa/package.json pwa/
 COPY scripts/package.json scripts/
 
-RUN npm install --no-audit --no-fund
+# Solo los workspaces que necesita la PWA.
+RUN npm install --no-audit --no-fund -w pwa -w @sedea/shared --include-workspace-root
 
 COPY packages/shared packages/shared
 COPY pwa pwa

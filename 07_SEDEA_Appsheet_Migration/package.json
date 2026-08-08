@@ -19,7 +19,8 @@
     "dev:pwa": "npm run dev -w pwa",
     "migrate": "tsx backend/src/migrar.ts",
     "seed": "tsx backend/src/sembrar.ts",
-    "importar": "tsx scripts/importar.ts"
+    "importar": "tsx scripts/importar.ts",
+    "extraer-catalogo": "tsx scripts/extraer-catalogo-apoyo.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.2",

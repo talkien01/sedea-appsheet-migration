@@ -2,7 +2,7 @@
 // Mantener este archivo como unica fuente de verdad de los contratos evita
 // la desalineacion entre la cola de sincronizacion y el endpoint de upsert.
 
-export type Rol = 'capturista' | 'auditor' | 'admin';
+export type Rol = 'capturista' | 'auditor' | 'admin' | 'editor_datos';
 
 export interface PerfilUsuario {
   id: number;

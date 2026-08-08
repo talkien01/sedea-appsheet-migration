@@ -17,6 +17,9 @@ import rutasCatalogos from './rutas/catalogos.js';
 import rutasBeneficiarios from './rutas/beneficiarios.js';
 import rutasCapturas from './rutas/capturas.js';
 import rutasAuditoria from './rutas/auditoria.js';
+import rutasStaging from './rutas/staging.js';
+import rutasCorrecciones from './rutas/correcciones.js';
+import rutasEstadisticas from './rutas/estadisticas.js';
 
 async function construirApp() {
   const app = Fastify({
@@ -81,6 +84,10 @@ async function construirApp() {
   await app.register(rutasBeneficiarios);
   await app.register(rutasCapturas);
   await app.register(rutasAuditoria);
+  // Extensiones: depuracion de staging, correccion en produccion y dashboard.
+  await app.register(rutasStaging);
+  await app.register(rutasCorrecciones);
+  await app.register(rutasEstadisticas);
 
   return app;
 }

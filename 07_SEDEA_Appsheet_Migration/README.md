@@ -35,6 +35,11 @@ automáticamente al arrancar (solo si la base está vacía).
 docker compose up --build
 ```
 
+> **Puertos ocupados.** Si el host ya usa 3000, 8080 o 5432, no hace falta tocar
+> `docker-compose.yml`: define en tu `.env` las variables `BACKEND_PORT_HOST`,
+> `PWA_PORT_HOST` o `POSTGRES_PORT_HOST` con puertos libres. Los puertos
+> *internos* de los contenedores no cambian.
+
 ---
 
 ## Desarrollo sin Docker

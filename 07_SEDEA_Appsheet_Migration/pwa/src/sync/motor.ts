@@ -70,7 +70,11 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
         formulario.append('cantidad_entregada', String(captura.cantidad_entregada));
       }
       if (captura.observaciones) formulario.append('observaciones', captura.observaciones);
-      formulario.append('foto', captura.foto, `${captura.uuid}.jpg`);
+      // El servidor exige un mimetype image/*; si el Blob perdio el tipo se reetiqueta.
+      const archivoFoto = captura.foto.type.startsWith('image/')
+        ? captura.foto
+        : new Blob([captura.foto], { type: 'image/jpeg' });
+      formulario.append('foto', archivoFoto, `${captura.uuid}.jpg`);
 
       let intentos = captura.intentos ?? 0;
       let enviado = false;
@@ -107,7 +111,10 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
       }
 
       if (!enviado) {
-        await marcarEstado(captura.uuid, 'error', { intentos, error_msg: ultimoError });
+        await marcarEstado(captura.uuid, 'error', {
+          intentos,
+          error_msg: ultimoError || 'No fue posible enviar la captura al servidor.'
+        });
         resultado.fallidas++;
       }
       notificar();

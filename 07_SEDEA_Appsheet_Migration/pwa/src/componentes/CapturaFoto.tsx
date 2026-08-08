@@ -51,7 +51,14 @@ export default function CapturaFoto({ onFoto }: Props) {
     setError(null);
     setProcesando(true);
     try {
-      const blob = await comprimir(archivo);
+      let blob: Blob;
+      try {
+        blob = await comprimir(archivo);
+      } catch {
+        // Si el navegador no puede recomprimir, se envia el archivo original:
+        // el servidor lo normaliza igualmente antes de guardarlo.
+        blob = archivo;
+      }
       if (previa) URL.revokeObjectURL(previa);
       setPrevia(URL.createObjectURL(blob));
       onFoto(blob);

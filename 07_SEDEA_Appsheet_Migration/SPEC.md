@@ -505,6 +505,8 @@ El Evaluator ejecuta estos criterios con `curl` (API) o Playwright (UI). Base: `
 14. Reejecutar la misma importación no duplica beneficiarios (el `COUNT(*)` de `beneficiarios` no aumenta).
 15. Una columna del CSV de ejemplo no declarada en el mapeo aparece dentro de `beneficiarios.datos_extra`.
 
+> **Nota de la extensión (§8):** a partir del build de staging, los criterios 13–15 se evalúan contra `staging_beneficiarios` en lugar de `beneficiarios` (ver criterios 69–80, que los sustituyen operativamente). Se conservan aquí por trazabilidad histórica.
+
 ### API — autenticación y seguridad por Regional
 
 16. `POST /api/auth/login` con credenciales demo válidas devuelve 200 y un campo `token` no vacío.
@@ -565,4 +567,365 @@ El Evaluator ejecuta estos criterios con `curl` (API) o Playwright (UI). Base: `
 59. `README.md` existe y contiene secciones con los términos `EasyPanel`, `Hostinger`, `Cloudflare Tunnel`, `Protección de datos`, y los comandos `docker compose up` y de importación.
 60. `README.md` documenta explícitamente HTTPS, control de acceso por Regional y bitácora `auditoria_log` en su sección de protección de datos, y lista los usuarios demo con la advertencia de cambiarlos en producción.
 
-**Definición de "terminado":** los 60 criterios pasan.
+**Definición de "terminado" (build 1):** los 60 criterios pasan. ✔ verificado en `FINDINGS.md` (pass 1, 60/60).
+
+---
+---
+
+# 8. EXTENSIÓN — Subsistema de depuración / staging de datos (build 2)
+
+> Esta sección **se agrega** al SPEC original; nada de las secciones 1–7 se renegocia. Todo lo aquí descrito vive dentro del mismo monorepo, mismo `docker-compose.yml`, mismo backend y misma PWA. No se crea un segundo servicio ni un deploy separado.
+
+## 8.1 Objetivo de la extensión
+
+Interponer una capa de **staging revisable por humanos** entre la importación del padrón real y las tablas de producción, de forma que ningún registro sucio o duplicado del archivo de origen llegue al capturista de campo sin que una persona con rol `editor_datos` lo haya aprobado, descartado o fusionado explícitamente.
+
+## 8.2 Motivación (hallazgos sobre los archivos reales de origen)
+
+Estos hallazgos son contexto de diseño; **los archivos reales NO se commitean, NO se copian a `scripts/datos-ejemplo/` y NO se usan como fixtures de prueba** (contienen PII). Permanecen en la raíz del proyecto, cubiertos por `.gitignore`.
+
+- `[PROYECTESTRATORG] Base general.xlsx` no es un padrón plano: es la bitácora del flujo completo del programa (solicitud → dictamen → autorización → pago → seguimiento), **2325 filas × 176 columnas**.
+- ~**101 folios duplicados** y ~**113 CURP duplicadas** (~4–5 % del archivo).
+- **1594 filas (68 %) sin Colonia**; **126 filas (5.4 %) sin coordenadas de proyecto**.
+- `[PROYECTESTRATORG] CATALOGOS.xlsx` trae dos catálogos de conceptos divergentes: hoja `APOYO` (152 conceptos) y hoja `Copia de APOYO` (173), con solo 9 en común.
+- La hoja `REGION` confirma **4 Direcciones Regionales**: Cadereyta, Jalpan, Querétaro, San Juan del Río (el SPEC original asumía 3).
+- El importador actual escribe directo a `beneficiarios`/`catalogos`: con datos de esta calidad, un capturista vería duplicados y basura sin depurar.
+
+## 8.3 Decisiones de producto (ya acordadas con el usuario — implementar tal cual)
+
+- **D1. Catálogo vigente**: la hoja `APOYO` (152 conceptos) es el catálogo base de conceptos de apoyo. La hoja `Copia de APOYO` **no se usa** ni se importa.
+- **D2. Un beneficiario puede recibir legítimamente 2+ apoyos distintos** (p. ej. maquinaria **y** semilla/fertilizante) si califica para cada uno. Por lo tanto:
+  - Misma CURP + **concepto distinto** ⇒ probablemente legítimo, pero **NO se auto-aprueba**: pasa por staging para confirmación humana (alerta de nivel `media`).
+  - Mismo **folio**, o misma CURP + **mismo concepto** ⇒ probable captura duplicada real: alerta de nivel `alta`.
+- **D3. El importador NUNCA auto-fusiona ni auto-descarta.** Toda fila importada nace en `estado_revision='pendiente'`. La promoción a producción es siempre una acción humana explícita.
+- **D4. Rol nuevo `editor_datos`**: acceso **exclusivo** a las pantallas y endpoints de staging. Sin acceso a captura de campo (`/beneficiarios*`) ni al panel de auditoría (`/auditoria*`). `admin` conserva acceso a todo, staging incluido.
+- **D5. Alcance de la fusión**: la acción "fusionar" existe **solo para `staging_beneficiarios`**. Para `staging_catalogos` bastan aprobar/descartar (una clave duplicada se resuelve aprobando una y descartando la otra).
+- **D6. 4 Regionales reales** sustituyen a las 3 ficticias del seed original.
+
+## 8.4 Modelo de datos nuevo
+
+Migraciones nuevas, **aditivas**. No se altera ninguna columna existente de `beneficiarios`, `capturas`, `usuarios`, `auditoria_log`, `catalogos`, `tipos_apoyo`, `municipios`, `direcciones_regionales`, `importaciones` (salvo el CHECK de rol descrito en 8.4.1).
+
+### 8.4.1 `db/migrations/007_rol_editor_datos.sql`
+
+```sql
+ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_rol_check;
+ALTER TABLE usuarios ADD CONSTRAINT usuarios_rol_check
+  CHECK (rol IN ('capturista','auditor','admin','editor_datos'));
+```
+
+### 8.4.2 `db/migrations/008_staging.sql` → tabla `staging_beneficiarios`
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | BIGSERIAL PK | |
+| importacion_id | BIGINT REFERENCES importaciones(id) | corrida que la generó |
+| archivo | TEXT NOT NULL | nombre base del archivo de origen |
+| fila_origen | INTEGER NOT NULL | número de fila en el archivo (1 = primera fila de datos) |
+| folio | TEXT | tal como viene (puede repetirse o ser NULL) |
+| curp | TEXT | |
+| nombre_completo | TEXT | |
+| regional_texto | TEXT | valor crudo del archivo |
+| regional_id | BIGINT REFERENCES direcciones_regionales(id) | resuelto por normalización; NULL si no resoluble |
+| municipio_texto | TEXT | |
+| municipio_id | BIGINT REFERENCES municipios(id) | |
+| colonia | TEXT | |
+| seccion | TEXT | |
+| localidad | TEXT | |
+| domicilio | TEXT | |
+| telefono | TEXT | |
+| tipo_apoyo_texto | TEXT | concepto tal como viene |
+| tipo_apoyo_id | BIGINT REFERENCES tipos_apoyo(id) | NULL si no reconocido |
+| cantidad_asignada | NUMERIC(14,3) | |
+| lat_proyecto | DOUBLE PRECISION | coordenada del proyecto en el archivo |
+| lng_proyecto | DOUBLE PRECISION | |
+| datos_extra | JSONB NOT NULL DEFAULT '{}' | **todas** las columnas no mapeadas |
+| **folio_duplicado** | BOOLEAN NOT NULL DEFAULT FALSE | flag de diagnóstico |
+| **curp_duplicada_mismo_concepto** | BOOLEAN NOT NULL DEFAULT FALSE | flag de diagnóstico |
+| **curp_duplicada_concepto_distinto** | BOOLEAN NOT NULL DEFAULT FALSE | flag de diagnóstico |
+| **sin_coordenadas** | BOOLEAN NOT NULL DEFAULT FALSE | flag de diagnóstico |
+| **sin_colonia** | BOOLEAN NOT NULL DEFAULT FALSE | flag de diagnóstico |
+| **concepto_no_reconocido** | BOOLEAN NOT NULL DEFAULT FALSE | flag de diagnóstico |
+| nivel_alerta | TEXT NOT NULL DEFAULT 'ninguna' CHECK (nivel_alerta IN ('alta','media','ninguna')) | derivado, ver 8.5.2 |
+| **estado_revision** | TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado_revision IN ('pendiente','aprobado','descartado','fusionado')) | |
+| **revisado_por** | BIGINT REFERENCES usuarios(id) | NULL mientras esté pendiente |
+| **revisado_en** | TIMESTAMPTZ | NULL mientras esté pendiente |
+| motivo_revision | TEXT | comentario libre del revisor (máx. 500) |
+| promovido_beneficiario_id | BIGINT REFERENCES beneficiarios(id) | se llena al aprobar |
+| fusionado_en_id | BIGINT REFERENCES staging_beneficiarios(id) | fila principal, si `estado_revision='fusionado'` |
+| creado_en / actualizado_en | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+
+Restricciones e índices:
+- `UNIQUE (archivo, fila_origen)` — hace idempotente la reimportación del mismo archivo.
+- `idx_stgb_estado (estado_revision)`, `idx_stgb_folio (folio)`, `idx_stgb_curp (curp)`, `idx_stgb_nivel (nivel_alerta)`, `idx_stgb_import (importacion_id)`.
+
+### 8.4.3 `db/migrations/008_staging.sql` → tabla `staging_catalogos`
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | BIGSERIAL PK | |
+| importacion_id | BIGINT REFERENCES importaciones(id) | |
+| archivo | TEXT NOT NULL | |
+| fila_origen | INTEGER NOT NULL | |
+| grupo / clave / valor / padre_grupo / padre_clave | TEXT | igual que `catalogos` |
+| orden | INTEGER NOT NULL DEFAULT 0 | |
+| datos_extra | JSONB NOT NULL DEFAULT '{}' | |
+| **clave_duplicada** | BOOLEAN NOT NULL DEFAULT FALSE | misma (grupo,clave) ≥2 veces en staging o ya en `catalogos` |
+| **valor_duplicado** | BOOLEAN NOT NULL DEFAULT FALSE | mismo (grupo, valor normalizado) con claves distintas |
+| **concepto_no_reconocido** | BOOLEAN NOT NULL DEFAULT FALSE | solo aplica si `grupo='concepto_apoyo'`: el valor no existe en `tipos_apoyo` vigente |
+| nivel_alerta | TEXT NOT NULL DEFAULT 'ninguna' CHECK (nivel_alerta IN ('alta','media','ninguna')) | `alta` si `clave_duplicada`; `media` si otro flag |
+| **estado_revision** | TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado_revision IN ('pendiente','aprobado','descartado','fusionado')) | `fusionado` no se usa aquí (ver D5) |
+| **revisado_por** | BIGINT REFERENCES usuarios(id) | |
+| **revisado_en** | TIMESTAMPTZ | |
+| motivo_revision | TEXT | |
+| promovido_catalogo_id | BIGINT REFERENCES catalogos(id) | |
+| creado_en / actualizado_en | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+
+Restricciones: `UNIQUE (archivo, fila_origen)`; índices por `estado_revision`, `grupo`, `nivel_alerta`.
+
+### 8.4.4 Acciones nuevas en `auditoria_log`
+
+Se agregan (solo como valores de la columna `accion`, sin cambiar el esquema): `staging_import`, `staging_aprobado`, `staging_descartado`, `staging_fusionado`. `entidad` = `staging_beneficiario` | `staging_catalogo`; `entidad_id` = id de la fila; `detalle` incluye flags, estado anterior y nuevo, e ids involucrados en la fusión.
+
+## 8.5 Importador CLI actualizado (`scripts/importar.ts`)
+
+### 8.5.1 Comportamiento
+
+- **Compatibilidad obligatoria**: se conservan exactamente los flags `--tipo <padron|catalogo>`, `--archivo`, `--mapeo`, `--dry-run`, `--help|-h`, el mismo formato de mapeo JSON (5.6) y la misma salida de totales.
+- **Destino nuevo**: `--tipo padron` escribe en `staging_beneficiarios`; `--tipo catalogo` escribe en `staging_catalogos`. **Ya no escribe nunca en `beneficiarios`/`catalogos`.** La única vía a producción es la aprobación humana (8.6).
+- El mapeo de padrón admite dos claves nuevas opcionales: `"lat_proyecto"` y `"lng_proyecto"`.
+- UPSERT por `(archivo, fila_origen)`: reimportar el mismo archivo **actualiza** las filas que siguen en `pendiente` y **no toca** (ni duplica) las que ya estén en `aprobado`/`descartado`/`fusionado`; esas se reportan como `filas_omitidas`.
+- `--dry-run` calcula y muestra el resumen de flags sin escribir nada.
+- Cada corrida crea una fila en `importaciones` (tipo `padron`|`catalogo`) y una entrada `staging_import` en `auditoria_log` con `{archivo, filas_leidas, filas_insertadas, filas_actualizadas, filas_omitidas, filas_error, conteo_por_flag}`.
+- Salida en consola (además de los totales existentes): bloque "Alertas detectadas" con el conteo de cada uno de los 6 flags y de `nivel_alerta`.
+- La resolución de Regional/Municipio/Concepto usa normalización (trim, mayúsculas, sin acentos, espacios colapsados). Si la Regional no resuelve, la fila se guarda igual con `regional_id=NULL` (no se descarta) y se marca en `motivo_revision`.
+
+### 8.5.2 Cálculo de flags (determinista, evaluado sobre staging pendiente ∪ producción)
+
+Sea `norm(x)` = trim + mayúsculas + sin acentos + espacios colapsados; los valores vacíos no participan en comparaciones de duplicidad.
+
+| Flag | Regla |
+|---|---|
+| `folio_duplicado` | `norm(folio)` no vacío y aparece ≥2 veces entre las filas pendientes del staging, **o** ya existe en `beneficiarios.folio`. |
+| `curp_duplicada_mismo_concepto` | Existe otra fila (staging pendiente o `beneficiarios`) con el mismo `norm(curp)` **y** el mismo concepto (`tipo_apoyo_id` si resolvió, si no `norm(tipo_apoyo_texto)`). |
+| `curp_duplicada_concepto_distinto` | Existe otra fila con el mismo `norm(curp)` pero **distinto** concepto. |
+| `sin_coordenadas` | `lat_proyecto` o `lng_proyecto` NULL/no numérica/fuera de rango (`lat∉[-90,90]`, `lng∉[-180,180]`) o ambas = 0. |
+| `sin_colonia` | `norm(colonia)` vacío. |
+| `concepto_no_reconocido` | `norm(tipo_apoyo_texto)` no coincide con ningún `norm(tipos_apoyo.nombre)` activo (o el campo viene vacío). |
+
+`nivel_alerta` = `alta` si `folio_duplicado` **o** `curp_duplicada_mismo_concepto`; si no, `media` si cualquier otro flag es verdadero; si no, `ninguna`.
+
+Una fila puede tener varios flags a la vez. **Ningún flag provoca acción automática.**
+
+### 8.5.3 Fixtures sintéticos para pruebas (obligatorios, sin PII)
+
+`scripts/datos-ejemplo/padron.staging.ejemplo.csv` — **exactamente 12 filas de datos**, nombres y CURP inventados (patrón `PRUEBA <letra>` / `XXXX000000HQTXXX0N`), construidas para disparar cada flag:
+
+| Fila | Escenario | Flags esperados |
+|---|---|---|
+| 1 | limpia, concepto real A | ninguno (`nivel_alerta='ninguna'`) |
+| 2 | limpia, concepto real B | ninguno (`nivel_alerta='ninguna'`) |
+| 3 | folio `STG-003` | `folio_duplicado` |
+| 4 | folio `STG-003` (repetido) | `folio_duplicado` |
+| 5 | CURP `X5`, concepto A, folio distinto | `curp_duplicada_mismo_concepto` |
+| 6 | CURP `X5`, concepto A, folio distinto | `curp_duplicada_mismo_concepto` |
+| 7 | CURP `X7`, concepto A | `curp_duplicada_concepto_distinto` |
+| 8 | CURP `X7`, concepto B | `curp_duplicada_concepto_distinto` |
+| 9 | colonia vacía | `sin_colonia` |
+| 10 | lat/lng vacías | `sin_coordenadas` |
+| 11 | concepto `APOYO INEXISTENTE PARA PRUEBA` | `concepto_no_reconocido` |
+| 12 | colonia vacía **y** lat/lng vacías | `sin_colonia` + `sin_coordenadas` |
+
+Conteos esperados tras importar el fixture (usados por el rubric): `folio_duplicado=2`, `curp_duplicada_mismo_concepto=2`, `curp_duplicada_concepto_distinto=2`, `sin_colonia=2`, `sin_coordenadas=2`, `concepto_no_reconocido=1`, `nivel_alerta='ninguna'` = 2, total filas = 12, todas en `estado_revision='pendiente'`.
+
+Los "conceptos reales A y B" son **dos nombres copiados textualmente del seed de 152 conceptos** (8.7); el Generator los elige y los documenta en `scripts/datos-ejemplo/README.md`. Las filas 1–10 y 12 usan A o B (reconocidos); solo la 11 usa el concepto inexistente. Todas las filas traen ≥2 columnas fuera del mapeo (ej. `ETAPA DEL TRAMITE`, `OBSERVACIONES DE GABINETE`) para verificar `datos_extra`.
+
+`scripts/datos-ejemplo/catalogo.staging.ejemplo.csv` — 6 filas, de las cuales 2 comparten `(grupo, clave)` ⇒ `clave_duplicada=true` en ambas.
+
+Mapeos correspondientes: `scripts/mapeos/padron.staging.ejemplo.json` (incluye `lat_proyecto`/`lng_proyecto`) y `scripts/mapeos/catalogo.staging.ejemplo.json`.
+
+## 8.6 Endpoints nuevos (backend)
+
+Todos bajo `/api/staging`, protegidos por `requiereRol(['editor_datos','admin'])`. Cualquier otro rol autenticado recibe **403**; sin token, **401**. Errores con el formato existente `{"error":{"codigo","mensaje"}}`. Archivo: `backend/src/rutas/staging.ts`.
+
+| # | Método | Ruta | Descripción / Respuesta |
+|---|---|---|---|
+| E16 | GET | `/api/staging/resumen` | `200 {beneficiarios:{total, por_estado:{pendiente,aprobado,descartado,fusionado}, por_alerta:{folio_duplicado,curp_duplicada_mismo_concepto,curp_duplicada_concepto_distinto,sin_coordenadas,sin_colonia,concepto_no_reconocido}, por_nivel:{alta,media,ninguna}}, catalogos:{...}}` |
+| E17 | GET | `/api/staging/beneficiarios` | query `estado` (default `pendiente`, admite `todos`), `alerta` (uno de los 6 flags, `ninguna`, o vacío), `nivel` (`alta\|media\|ninguna`), `q` (folio/CURP/nombre), `importacion_id`, `page` (1), `page_size` (≤200, default 50) → `200 {data:[fila+flags+nivel_alerta+estado_revision], page, page_size, total, has_more}` |
+| E18 | GET | `/api/staging/beneficiarios/:id` | `200 {fila, relacionadas:{staging:[filas con mismo folio o misma CURP, excluyendo la propia, con su motivo_relacion:'folio'\|'curp_mismo_concepto'\|'curp_concepto_distinto'], produccion:[beneficiarios con mismo folio o CURP]}}`; `404` si no existe. |
+| E19 | POST | `/api/staging/beneficiarios/:id/aprobar` | body `{motivo?}`. Promueve a `beneficiarios` (UPSERT por `folio`; `lat_proyecto`/`lng_proyecto` y `datos_extra` de staging se guardan en `beneficiarios.datos_extra`). Marca `estado_revision='aprobado'`, `revisado_por`, `revisado_en`, `promovido_beneficiario_id`. → `200 {ok:true, beneficiario_id}`. `409` si la fila no está en `pendiente`. `422` si falta `nombre_completo` o `regional_id` no resuelto. Registra `staging_aprobado`. |
+| E20 | POST | `/api/staging/beneficiarios/:id/descartar` | body `{motivo?}` → `200 {ok:true}`, `estado_revision='descartado'`, **no** escribe en producción. `409` si no está en `pendiente`. Registra `staging_descartado`. |
+| E21 | POST | `/api/staging/beneficiarios/fusionar` | body `{principal_id:number, secundarios_ids:number[] (≥1), campos?:{<columna>:<valor>}, promover?:boolean (default false), motivo?}`. Aplica `campos` sobre la fila principal (solo columnas de datos, nunca flags ni estado), marca cada secundaria `estado_revision='fusionado'` con `fusionado_en_id=principal_id`, recalcula flags de la principal, y si `promover:true` ejecuta la misma promoción de E19. → `200 {ok:true, principal_id, fusionados:[ids], beneficiario_id: number|null}`. `422` si `principal_id ∈ secundarios_ids`, si algún id no existe o si alguna fila no está en `pendiente`. Registra `staging_fusionado`. |
+| E22 | GET | `/api/staging/catalogos` | mismos filtros que E17 (`estado`, `alerta` ∈ `clave_duplicada\|valor_duplicado\|concepto_no_reconocido\|ninguna`, `grupo`, `q`, paginación). |
+| E23 | GET | `/api/staging/catalogos/:id` | `200 {fila, relacionadas:{staging:[misma (grupo,clave)], produccion:[catalogos con misma (grupo,clave)]}}` |
+| E24 | POST | `/api/staging/catalogos/:id/aprobar` | Promueve a `catalogos` (UPSERT por `(grupo,clave,padre_clave)`) → `200 {ok:true, catalogo_id}`; `409` si no está pendiente. |
+| E25 | POST | `/api/staging/catalogos/:id/descartar` | `200 {ok:true}`. |
+
+Reglas transversales:
+- Toda mutación es **transaccional** (promoción + cambio de estado + bitácora en una sola transacción).
+- **Aislamiento por Regional**: si el usuario `editor_datos` tiene `regional_id` no nulo, las consultas y mutaciones de staging se limitan a filas con ese `regional_id` (o `regional_id IS NULL`, que cualquiera puede revisar); `admin` y `editor_datos` sin regional ven todo.
+- `capturista` y `auditor` reciben 403 en **todas** las rutas `/api/staging/*`.
+- Las rutas existentes (`/api/beneficiarios`, `/api/capturas`, `/api/auditoria/*`) **rechazan con 403** al rol `editor_datos`.
+
+## 8.7 Semilla del catálogo real y Regionales
+
+- `scripts/extraer-catalogo-apoyo.ts`: utilidad CLI (`--archivo <ruta xlsx> --hoja APOYO --salida db/seeds/004_tipos_apoyo_apoyo.sql`) que lee **solo la columna de nombre de concepto** de la hoja `APOYO` y genera el seed SQL. No lee ni emite ninguna columna de beneficiarios. El **archivo xlsx no se copia ni se commitea**; solo se commitea el SQL generado (los nombres de conceptos de apoyo no son PII).
+- `db/seeds/004_tipos_apoyo_apoyo.sql`: **exactamente 152 filas** en `tipos_apoyo` con `clave` `AP-001` … `AP-152` (orden de aparición en la hoja), `nombre` = texto real del concepto, `categoria='otro'`, `activo=TRUE`, idempotente (`ON CONFLICT (clave) DO UPDATE`). Encabezado del archivo con comentario: origen (`CATALOGOS.xlsx`, hoja `APOYO`), fecha de extracción y nota de que `Copia de APOYO` se descarta por decisión D1.
+- `db/seeds/002_catalogos_demo.sql` se actualiza para que `direcciones_regionales` contenga **exactamente 4** filas: `REG-01 Cadereyta`, `REG-02 Jalpan`, `REG-03 Querétaro`, `REG-04 San Juan del Río`. Los municipios y beneficiarios demo se reasignan a estas 4 claves; `capturista1` sigue en `REG-01`.
+- `db/seeds/001_usuarios_demo.sql` agrega el usuario demo **`editor1`** (rol `editor_datos`, `regional_id=NULL`, password desde `SEED_EDITOR_PASSWORD`, con fallback a `SEED_ADMIN_PASSWORD`). Se documenta en el README junto con la advertencia de cambiarlo en producción. Nueva variable en `.env.example`: `SEED_EDITOR_PASSWORD=cambiame123`.
+
+## 8.8 Pantallas nuevas en la PWA
+
+Rutas nuevas en `pwa/src/rutas.tsx`, envueltas en `<RutaProtegida roles={['editor_datos','admin']}>`. **Son online-only**: no se cachean en IndexedDB ni se registran en la cola de sync (si no hay red, muestran "Esta sección requiere conexión a internet."). Componentes en `pwa/src/pantallas/` y `pwa/src/componentes/`.
+
+### 8.8.1 `/depuracion` — Lista de staging de padrón (`Depuracion.tsx`)
+
+- Encabezado "Depuración de datos — Padrón" + tarjetas de resumen (E16): Pendientes, Aprobados, Descartados, Fusionados y conteo por nivel de alerta.
+- Filtros (todos con `data-testid`): `select-estado` (Pendiente/Aprobado/Descartado/Fusionado/Todos), `select-alerta` (Todas / Folio duplicado / CURP duplicada mismo concepto / CURP duplicada concepto distinto / Sin coordenadas / Sin colonia / Concepto no reconocido / Sin alertas), `input-busqueda` (folio, CURP o nombre).
+- Tabla `data-testid="tabla-staging"` con filas `data-testid="fila-staging"`; columnas: Folio, CURP, Nombre, Regional, Municipio, Concepto de apoyo, **Alertas** (badges), Estado, acción "Revisar" → `/depuracion/beneficiarios/:id`.
+- Badges de alerta (`data-testid="badge-alerta"`), texto en español y color por nivel: rojo `alta`, ámbar `media`, verde "Sin alertas".
+- Vacío: mensaje "Sin resultados".
+
+### 8.8.2 `/depuracion/beneficiarios/:id` — Detalle y comparación (`DepuracionDetalle.tsx`)
+
+- Panel superior: todos los campos de la fila + sus badges + `datos_extra` en tabla colapsable.
+- **Comparación lado a lado** (`data-testid="comparador"`): tarjetas/columnas —una por candidato— con la fila actual marcada "Esta fila" y cada relacionada (staging y producción) con su motivo (`Mismo folio`, `Misma CURP · mismo concepto`, `Misma CURP · concepto distinto`) y origen (`Staging` / `Ya en producción`). Los campos cuyo valor difiere entre candidatos se resaltan visualmente.
+- Aviso fijo en pantalla cuando hay relacionadas por CURP con concepto distinto: "Un beneficiario puede recibir apoyos distintos. Confirma antes de descartar."
+- Acciones: `btn-aprobar` ("Aprobar y promover a producción", con diálogo de confirmación), `btn-descartar` ("Descartar", pide motivo opcional), `btn-fusionar` ("Fusionar seleccionadas") habilitado solo si hay ≥1 candidata de staging seleccionada mediante checkbox `chk-candidata`; el diálogo de fusión permite elegir la fila principal y marcar "Promover a producción tras fusionar".
+- Tras cada acción: toast en español, refresco de la fila y del resumen; el estado mostrado cambia a Aprobado / Descartado / Fusionado. Si el backend responde 409, se muestra "Esta fila ya fue revisada."
+
+### 8.8.3 `/depuracion/catalogos` — Lista de staging de catálogos (`DepuracionCatalogos.tsx`)
+
+Misma mecánica reducida: filtros por estado/alerta/grupo, tabla con badges y botones Aprobar/Descartar por fila.
+
+### 8.8.4 Navegación y control de acceso
+
+- Tras login, el redirect por rol es: `capturista` → `/sync` o `/beneficiarios` (sin cambio); `auditor` → `/auditoria`; **`editor_datos` → `/depuracion`**; `admin` → `/beneficiarios`.
+- La barra de estado muestra un enlace "Depuración" solo para `editor_datos` y `admin`.
+- `RutaProtegida` se endurece: `/beneficiarios*` y `/sync` pasan a `roles={['capturista','admin']}`; `/auditoria*` sigue en `['auditor','admin']`; `/depuracion*` en `['editor_datos','admin']`. Cualquier rol fuera de la lista ve la pantalla "No tienes permiso para ver esta sección."
+
+## 8.9 Estructura de archivos nuevos (delta)
+
+```
+db/migrations/007_rol_editor_datos.sql
+db/migrations/008_staging.sql
+db/seeds/004_tipos_apoyo_apoyo.sql          # 152 conceptos reales (generado, commiteado)
+backend/src/rutas/staging.ts
+backend/src/db/queries/staging.ts
+backend/src/servicios/promocion.ts          # promover staging -> produccion (transaccional)
+packages/shared/src/staging.ts              # tipos + Zod de staging compartidos
+pwa/src/pantallas/Depuracion.tsx
+pwa/src/pantallas/DepuracionDetalle.tsx
+pwa/src/pantallas/DepuracionCatalogos.tsx
+pwa/src/componentes/BadgeAlerta.tsx
+pwa/src/componentes/ComparadorDuplicados.tsx
+scripts/extraer-catalogo-apoyo.ts
+scripts/mapeos/padron.staging.ejemplo.json
+scripts/mapeos/catalogo.staging.ejemplo.json
+scripts/datos-ejemplo/padron.staging.ejemplo.csv
+scripts/datos-ejemplo/catalogo.staging.ejemplo.csv
+scripts/datos-ejemplo/README.md             # documenta los conceptos A y B usados y que todo es sintético
+```
+
+Comandos nuevos:
+
+| Acción | Comando |
+|---|---|
+| Importar padrón a staging | `npm run importar -- --tipo padron --archivo scripts/datos-ejemplo/padron.staging.ejemplo.csv --mapeo scripts/mapeos/padron.staging.ejemplo.json` |
+| Importar catálogo a staging | `npm run importar -- --tipo catalogo --archivo scripts/datos-ejemplo/catalogo.staging.ejemplo.csv --mapeo scripts/mapeos/catalogo.staging.ejemplo.json` |
+| Regenerar seed de conceptos | `npm run extraer-catalogo -- --archivo "[PROYECTESTRATORG] CATALOGOS.xlsx" --hoja APOYO --salida db/seeds/004_tipos_apoyo_apoyo.sql` |
+
+## 8.10 Assumptions de la extensión
+
+18. **Staging vive en el mismo esquema `public`** de la misma base (no un esquema `staging` aparte) para que las consultas de duplicidad contra producción sean triviales y transaccionales.
+19. **Idempotencia del importador** por `(archivo, fila_origen)`, no por hash de contenido: así dos filas idénticas del archivo real siguen visibles como duplicados a revisar en vez de colapsarse silenciosamente.
+20. **Los flags se recalculan en cada importación** para las filas pendientes de ese archivo; las filas ya revisadas conservan sus flags históricos.
+21. **La promoción usa UPSERT por `folio`** (misma clave que el build 1). Si la fila aprobada no trae folio, se genera `IMP-<staging_id>`.
+22. **`beneficiarios` no gana columnas nuevas**: `lat_proyecto`/`lng_proyecto` del staging se promueven dentro de `beneficiarios.datos_extra` como `{"lat_proyecto":..., "lng_proyecto":...}`.
+23. **Fusionar solo aplica a `staging_beneficiarios`** (D5); en catálogos se resuelve con aprobar + descartar.
+24. **La fusión no borra filas**: las secundarias quedan con `estado_revision='fusionado'` y `fusionado_en_id`, preservando la trazabilidad completa hacia el archivo de origen.
+25. **`editor_datos` sin regional** (`regional_id NULL`) es lo normal: es un perfil de gabinete central. Si se le asigna regional, ve solo esa.
+26. **Las pantallas de depuración son online-only** y no se registran en el service worker para datos (sí en el app-shell); no hay depuración offline.
+27. **Los 152 conceptos de la hoja `APOYO` no son PII** (son nombres de conceptos de apoyo), por eso el seed generado sí se commitea; los archivos xlsx de origen no.
+28. **El Evaluator no necesita los archivos reales**: todo el rubric 61–110 se verifica con los fixtures sintéticos y el seed commiteado.
+29. **No se migra el histórico**: las filas ya presentes en `beneficiarios` por el build 1 se quedan; el staging solo aplica a importaciones nuevas.
+30. **La hoja `Copia de APOYO` se ignora por completo** y se documenta el motivo en `db/seeds/004_tipos_apoyo_apoyo.sql` y en el README.
+
+---
+
+## 8.11 Rubric extendido (criterios 61–110)
+
+Continúa la numeración del rubric original. Base: `API`, `APP` como en §7. Tokens: `T_ADMIN`, `T_CAP` (capturista1), `T_AUD` (auditor1), `T_EDIT` (editor1).
+
+### Base de datos y migraciones (61–68)
+
+61. Existen `db/migrations/007_*.sql` y `db/migrations/008_*.sql`, y `information_schema.tables` contiene `staging_beneficiarios` y `staging_catalogos`.
+62. `staging_beneficiarios` contiene **todas** estas columnas: `folio_duplicado`, `curp_duplicada_mismo_concepto`, `curp_duplicada_concepto_distinto`, `sin_coordenadas`, `sin_colonia`, `concepto_no_reconocido`, `estado_revision`, `revisado_por`, `revisado_en`, `datos_extra` (verificable en `information_schema.columns`); los 6 primeros son `boolean` y `datos_extra` es `jsonb`.
+63. El CHECK de `staging_beneficiarios.estado_revision` acepta exactamente `pendiente,aprobado,descartado,fusionado` y el default de la columna es `pendiente` (verificable en `information_schema.columns.column_default` + `pg_constraint`).
+64. `INSERT INTO usuarios (...) VALUES (..., 'editor_datos', ...)` no viola el CHECK (o `pg_get_constraintdef` de `usuarios_rol_check` contiene `editor_datos`).
+65. Las tablas `beneficiarios`, `capturas`, `usuarios` y `auditoria_log` conservan todas las columnas listadas en §4 (ninguna eliminada ni renombrada).
+66. `SELECT count(*) FROM tipos_apoyo WHERE clave LIKE 'AP-%'` devuelve exactamente **152**, y `db/seeds/004_tipos_apoyo_apoyo.sql` existe y menciona la hoja `APOYO`.
+67. `SELECT nombre FROM direcciones_regionales ORDER BY clave` devuelve exactamente 4 filas: `Cadereyta`, `Jalpan`, `Querétaro`, `San Juan del Río`.
+68. `POST /api/auth/login` con el usuario demo `editor1` devuelve 200 y `usuario.rol === 'editor_datos'`.
+
+### Importador a staging (69–80)
+
+69. `npm run importar -- --help` sale con código 0 y sigue mostrando `--tipo`, `--archivo`, `--mapeo`, `--dry-run` (compatibilidad con el build 1).
+70. Importar `padron.staging.ejemplo.csv` con su mapeo sale con código 0; después `SELECT count(*) FROM staging_beneficiarios` = **12** y el `count(*)` de `beneficiarios` **no cambió**.
+71. `SELECT count(*) FROM staging_beneficiarios WHERE folio_duplicado` = **2**.
+72. `SELECT count(*) FROM staging_beneficiarios WHERE curp_duplicada_mismo_concepto` = **2**.
+73. `SELECT count(*) FROM staging_beneficiarios WHERE curp_duplicada_concepto_distinto` = **2**.
+74. `SELECT count(*) FROM staging_beneficiarios WHERE sin_colonia` = **2** y `... WHERE sin_coordenadas` = **2**.
+75. `SELECT count(*) FROM staging_beneficiarios WHERE concepto_no_reconocido` = **1**.
+76. `SELECT count(*) FROM staging_beneficiarios WHERE nivel_alerta='ninguna'` = **2**.
+77. Tras la importación, `SELECT count(*) FROM staging_beneficiarios WHERE estado_revision='pendiente'` = **12** y `... WHERE estado_revision <> 'pendiente'` = **0** (el importador no auto-aprueba, no auto-descarta y no auto-fusiona).
+78. Reejecutar exactamente la misma importación sale 0 y `count(*)` de `staging_beneficiarios` sigue siendo **12** (idempotencia por `archivo, fila_origen`).
+79. `npm run importar -- ... --dry-run` sobre un archivo nuevo sale 0 y no cambia el `count(*)` de `staging_beneficiarios`.
+80. Una columna del CSV no declarada en el mapeo aparece dentro de `staging_beneficiarios.datos_extra`, y `auditoria_log` contiene al menos una entrada con `accion='staging_import'`.
+
+### API de staging — acceso (81–86)
+
+81. `GET $API/api/staging/beneficiarios` sin header `Authorization` devuelve **401**.
+82. `GET $API/api/staging/beneficiarios` con `T_CAP` devuelve **403**.
+83. `GET $API/api/staging/beneficiarios` con `T_AUD` devuelve **403**.
+84. `GET $API/api/staging/beneficiarios` con `T_EDIT` devuelve **200** con `data` array y campos `page`, `total`, `has_more`.
+85. `GET $API/api/staging/beneficiarios` con `T_ADMIN` devuelve **200**.
+86. `GET $API/api/beneficiarios` y `GET $API/api/auditoria/capturas` con `T_EDIT` devuelven **403** en ambos casos (el editor de datos no accede a campo ni a auditoría).
+
+### API de staging — consulta (87–90)
+
+87. `GET /api/staging/beneficiarios?alerta=folio_duplicado` con `T_EDIT` devuelve 200 con `total=2` y todos los elementos con `folio_duplicado:true`.
+88. `GET /api/staging/beneficiarios?alerta=curp_duplicada_concepto_distinto` devuelve `total=2` y todos con `curp_duplicada_concepto_distinto:true`.
+89. `GET /api/staging/beneficiarios/:id` de una de las filas con folio duplicado devuelve 200 y `relacionadas.staging` con ≥1 elemento cuyo `folio` es idéntico al de la fila consultada y cuyo `motivo_relacion` es `folio`.
+90. `GET /api/staging/resumen` con `T_EDIT` devuelve 200 con `beneficiarios.por_estado.pendiente` = 12 y las 6 llaves de `por_alerta` presentes.
+
+### API de staging — acciones (91–99)
+
+91. `POST /api/staging/beneficiarios/<id_limpia>/aprobar` con `T_EDIT` devuelve 200 con `beneficiario_id`; en BD esa fila queda `estado_revision='aprobado'` con `revisado_por` y `revisado_en` no nulos, y `count(*)` de `beneficiarios` aumentó exactamente en 1.
+92. Repetir el mismo `aprobar` sobre la misma fila devuelve **409** y `count(*)` de `beneficiarios` **no** vuelve a aumentar.
+93. `POST /api/staging/beneficiarios/<otro_id>/descartar` devuelve 200; la fila queda `estado_revision='descartado'` y `count(*)` de `beneficiarios` no cambia.
+94. `POST /api/staging/beneficiarios/fusionar` con `{principal_id, secundarios_ids:[id2], promover:false}` sobre las dos filas de folio duplicado devuelve 200; en BD `id2` queda `estado_revision='fusionado'` con `fusionado_en_id = principal_id`, la principal sigue `pendiente` y `count(*)` de `beneficiarios` no cambia.
+95. `POST /api/staging/beneficiarios/fusionar` con `{principal_id, secundarios_ids:[principal_id]}` devuelve **422**; con un `secundarios_ids` inexistente devuelve **422** o **404**.
+96. `POST /api/staging/beneficiarios/<id>/aprobar` con `T_AUD` devuelve **403**, y con `T_CAP` devuelve **403**.
+97. `GET /api/auditoria/log` con `T_ADMIN` contiene entradas con `accion='staging_aprobado'`, `accion='staging_descartado'` y `accion='staging_fusionado'`.
+98. Importar `catalogo.staging.ejemplo.csv` deja filas en `staging_catalogos` sin aumentar el `count(*)` de `catalogos`; `GET /api/staging/catalogos?alerta=clave_duplicada` con `T_EDIT` devuelve 200 con `total=2`.
+99. `POST /api/staging/catalogos/<id>/aprobar` con `T_EDIT` devuelve 200 y `count(*)` de `catalogos` aumenta en 1; `POST /api/staging/catalogos/<otro_id>/descartar` devuelve 200 sin aumentar `catalogos`.
+
+### PWA — pantallas de depuración (100–108)
+
+100. Playwright: login con `editor1` navega fuera de `/login` y la URL resultante es `/depuracion`.
+101. Playwright: `/depuracion` muestra `[data-testid="tabla-staging"]` con ≥10 filas `[data-testid="fila-staging"]` y al menos un `[data-testid="badge-alerta"]` visible con texto en español.
+102. Playwright: en `/depuracion`, seleccionar "Folio duplicado" en `[data-testid="select-alerta"]` deja exactamente 2 filas en la tabla; seleccionar una alerta sin coincidencias muestra "Sin resultados".
+103. Playwright: `/depuracion` muestra tarjetas de resumen con los conteos de Pendientes / Aprobados / Descartados / Fusionados.
+104. Playwright: en el detalle de una fila con duplicado, existe `[data-testid="comparador"]` con ≥2 tarjetas de candidato mostrando sus campos, y son visibles los botones "Aprobar", "Descartar" y "Fusionar".
+105. Playwright: pulsar "Aprobar" y confirmar cambia el estado mostrado de la fila a "Aprobado" y aparece un mensaje de éxito en español; al recargar `/depuracion` con filtro Estado=Pendiente esa fila ya no aparece.
+106. Playwright: pulsar "Descartar" en otra fila deja su estado en "Descartado" tras recargar.
+107. Playwright: seleccionar una candidata con `[data-testid="chk-candidata"]` y confirmar "Fusionar" deja la candidata en estado "Fusionada" al filtrar por Estado=Fusionado.
+108. Playwright: `capturista1` en `/depuracion` ve "No tienes permiso para ver esta sección." (no la tabla); `editor1` en `/beneficiarios` y en `/auditoria` también ve "No tienes permiso"; `admin` puede abrir `/depuracion`, `/beneficiarios` y `/auditoria` sin ver esa pantalla.
+
+### Documentación y protección de datos (109–110)
+
+109. `git ls-files` no lista ningún archivo `.xlsx`, `scripts/datos-ejemplo/` no contiene archivos `.xlsx`, y `.gitignore` incluye un patrón que cubre `*.xlsx` o los dos archivos `[PROYECTESTRATORG] *.xlsx`.
+110. `README.md` documenta en una sección propia: el rol `editor_datos` y el usuario demo `editor1`, que el importador ahora escribe en `staging_beneficiarios`/`staging_catalogos` y **nunca** directo a producción, los 6 flags de diagnóstico, las acciones aprobar/descartar/fusionar, y la regla de negocio de que un beneficiario puede recibir apoyos distintos (por eso ningún duplicado se auto-descarta).
+
+**Definición de "terminado" (build 2):** los 110 criterios pasan (60 del build original + 50 de esta extensión).

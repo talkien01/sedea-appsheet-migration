@@ -3,6 +3,12 @@
 import type {
   Beneficiario,
   CambioCampo,
+  CambioUsuario,
+  PaginaUsuarios,
+  PerfilUsuario,
+  RespuestaAltaUsuario,
+  RespuestaResetPassword,
+  UsuarioAdmin,
   EntradaHistorialCorreccion,
   FilaStagingBeneficiario,
   PaginaBeneficiarios,
@@ -37,6 +43,22 @@ async function tokenActual(): Promise<string | null> {
   return sesion?.token ?? null;
 }
 
+/**
+ * Manejadores globales de sesion (build 4). El cliente HTTP no conoce React
+ * Router, asi que la App registra aqui que hacer cuando el backend exige el
+ * cambio de contrasena o avisa de una cuenta desactivada.
+ */
+interface ManejadoresSesion {
+  alCambioRequerido: () => void;
+  alCuentaDesactivada: (mensaje: string) => void;
+}
+
+let manejadores: ManejadoresSesion | null = null;
+
+export function registrarManejadoresSesion(nuevos: ManejadoresSesion): void {
+  manejadores = nuevos;
+}
+
 async function peticion<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
   const token = await tokenActual();
   const cabeceras = new Headers(opciones.headers);
@@ -58,6 +80,18 @@ async function peticion<T>(ruta: string, opciones: RequestInit = {}): Promise<T>
   if (!respuesta.ok) {
     const mensaje = cuerpo?.error?.mensaje ?? 'Ocurrio un error inesperado.';
     const codigo = cuerpo?.error?.codigo ?? 'error';
+
+    // Guarda global: el backend bloquea todo mientras la contrasena temporal
+    // no se cambie, y anula el token si la cuenta se desactiva.
+    if (respuesta.status === 403 && codigo === 'cambio_password_requerido') {
+      manejadores?.alCambioRequerido();
+    }
+    if (respuesta.status === 401 && codigo === 'cuenta_desactivada') {
+      manejadores?.alCuentaDesactivada(
+        'Tu cuenta está desactivada. Contacta al administrador.'
+      );
+    }
+
     throw new ErrorPeticion(respuesta.status, codigo, mensaje);
   }
 
@@ -208,6 +242,65 @@ export const api = {
 
   async estadisticasStaging(): Promise<RespuestaEstadisticasStaging> {
     return peticion<RespuestaEstadisticasStaging>('/estadisticas/staging');
+  },
+
+  // ------------------------------------------------------------------------
+  // Administracion de usuarios (roles admin y editor_datos). Siempre en linea:
+  // nada de esto se guarda en IndexedDB.
+  // ------------------------------------------------------------------------
+  async perfil(): Promise<{ usuario: PerfilUsuario }> {
+    return peticion<{ usuario: PerfilUsuario }>('/auth/me');
+  },
+
+  async usuarios(parametros: URLSearchParams): Promise<PaginaUsuarios> {
+    return peticion<PaginaUsuarios>(`/usuarios?${parametros.toString()}`);
+  },
+
+  async crearUsuario(cuerpo: {
+    usuario: string;
+    nombre_completo: string;
+    rol: string;
+    regional_id?: number | null;
+  }): Promise<RespuestaAltaUsuario> {
+    return peticion<RespuestaAltaUsuario>('/usuarios', {
+      method: 'POST',
+      body: JSON.stringify(cuerpo)
+    });
+  },
+
+  async editarUsuario(
+    id: number,
+    cambios: Record<string, unknown>
+  ): Promise<{ ok: true; usuario: UsuarioAdmin; cambios: CambioUsuario[] }> {
+    return peticion(`/usuarios/${id}`, { method: 'PATCH', body: JSON.stringify(cambios) });
+  },
+
+  async resetearPassword(id: number, motivo?: string): Promise<RespuestaResetPassword> {
+    return peticion<RespuestaResetPassword>(`/usuarios/${id}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo: motivo || null })
+    });
+  },
+
+  async cambiarActivoUsuario(
+    id: number,
+    activo: boolean,
+    motivo?: string
+  ): Promise<{ ok: true; usuario: { id: number; usuario: string; activo: boolean } }> {
+    return peticion(`/usuarios/${id}/activo`, {
+      method: 'PATCH',
+      body: JSON.stringify({ activo, motivo: motivo || null })
+    });
+  },
+
+  async cambiarMiPassword(
+    passwordActual: string,
+    passwordNueva: string
+  ): Promise<{ ok: true; debe_cambiar_password: false }> {
+    return peticion('/mi-cuenta/password', {
+      method: 'PATCH',
+      body: JSON.stringify({ password_actual: passwordActual, password_nueva: passwordNueva })
+    });
   }
 };
 

@@ -13,6 +13,8 @@ import { useEstadoRed } from '../sync/estadoRed';
  * seccion en vez de en el padron de campo (que no todos pueden ver).
  */
 async function destinoPorRol(perfilUsuario: PerfilUsuario | null): Promise<string> {
+  // Build 4: la contrasena temporal manda sobre el destino por rol.
+  if (perfilUsuario?.debe_cambiar_password === true) return '/cambiar-password';
   if (perfilUsuario?.rol === 'editor_datos') return '/depuracion';
   if (perfilUsuario?.rol === 'auditor') return '/auditoria';
   const total = await contarBeneficiarios();
@@ -20,7 +22,7 @@ async function destinoPorRol(perfilUsuario: PerfilUsuario | null): Promise<strin
 }
 
 export default function Login() {
-  const { iniciarSesion, perfil } = useSesion();
+  const { iniciarSesion, perfil, avisoSesion, limpiarAvisoSesion } = useSesion();
   const navegar = useNavigate();
   const enLinea = useEstadoRed();
 
@@ -53,6 +55,7 @@ export default function Login() {
 
     setEnviando(true);
     try {
+      limpiarAvisoSesion();
       const usuarioAutenticado = await iniciarSesion(usuario.trim(), password);
       navegar(await destinoPorRol(usuarioAutenticado), { replace: true });
     } catch (fallo) {
@@ -80,6 +83,13 @@ export default function Login() {
         {!enLinea && (
           <div className="mensaje aviso" role="status">
             Sin conexión. Solo puedes entrar si ya iniciaste sesión en este dispositivo.
+          </div>
+        )}
+
+        {/* Aviso al ser expulsado por una cuenta desactivada (build 4). */}
+        {avisoSesion && !error && (
+          <div className="mensaje error" role="alert" data-testid="aviso-sesion">
+            {avisoSesion}
           </div>
         )}
 

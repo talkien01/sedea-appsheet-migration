@@ -1,16 +1,16 @@
 // Barra de estado global: conectividad, usuario, pendientes y sincronizacion manual.
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useSesion } from '../App';
 import { NOMBRE_APP } from '../api/cliente';
 import { contarPendientes } from '../db/repositorios';
 import { useEstadoRed } from '../sync/estadoRed';
 import { alCambiarCola, sincronizarPendientes } from '../sync/motor';
+import MenuUsuario from './MenuUsuario';
 
 export default function BarraEstado() {
   const { perfil, cerrarSesion } = useSesion();
   const enLinea = useEstadoRed();
-  const navegar = useNavigate();
   const [pendientes, setPendientes] = useState(0);
   const [sincronizando, setSincronizando] = useState(false);
 
@@ -38,22 +38,34 @@ export default function BarraEstado() {
     }
   };
 
-  const salir = async () => {
-    await cerrarSesion();
-    navegar('/login', { replace: true });
-  };
+  // Mientras la contrasena temporal no se cambie, la navegacion queda
+  // bloqueada: la barra solo deja cerrar sesion (10.8.4).
+  const bloqueado = perfil?.debe_cambiar_password === true;
+
+  if (bloqueado) {
+    return (
+      <header className="barra-estado">
+        <span className="marca">
+          {NOMBRE_APP}
+          <span className="usuario" data-testid="usuario-actual">
+            {perfil?.nombre_completo}
+          </span>
+        </span>
+        <button
+          type="button"
+          className="secundario"
+          data-testid="nav-cerrar-sesion"
+          onClick={() => void cerrarSesion()}
+        >
+          Cerrar sesión
+        </button>
+      </header>
+    );
+  }
 
   return (
     <header className="barra-estado">
-      <span className="marca">
-        {NOMBRE_APP}
-        {perfil && (
-          <span className="usuario" data-testid="usuario-actual">
-            {perfil.nombre_completo} ({perfil.rol}
-            {perfil.regional_nombre ? ` · ${perfil.regional_nombre}` : ''})
-          </span>
-        )}
-      </span>
+      <span className="marca">{NOMBRE_APP}</span>
 
       <span
         className={`indicador ${enLinea ? '' : 'sin-conexion'}`}
@@ -106,9 +118,15 @@ export default function BarraEstado() {
           Sincronización
         </Link>
       )}
-      <button type="button" className="secundario" onClick={() => void salir()}>
-        Salir
-      </button>
+
+      {/* La administracion de usuarios es exclusiva de admin y editor de datos (D15). */}
+      {perfil && (perfil.rol === 'admin' || perfil.rol === 'editor_datos') && (
+        <Link className="boton secundario" to="/usuarios" data-testid="nav-usuarios">
+          Usuarios
+        </Link>
+      )}
+
+      <MenuUsuario />
     </header>
   );
 }

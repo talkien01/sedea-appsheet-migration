@@ -32,6 +32,17 @@ export async function sesionVigente(): Promise<SesionLocal | null> {
   return sesion;
 }
 
+/**
+ * Actualiza el perfil guardado sin tocar el token (build 4): tras cambiar la
+ * contrasena el token sigue siendo valido y solo cambia debe_cambiar_password.
+ */
+export async function actualizarPerfilSesion(perfil: PerfilUsuario): Promise<void> {
+  const sesion = await db.sesion.get(1);
+  if (!sesion) return;
+  sesion.perfil = perfil;
+  await db.sesion.put(sesion);
+}
+
 export async function cerrarSesion(): Promise<void> {
   await db.sesion.clear();
 }

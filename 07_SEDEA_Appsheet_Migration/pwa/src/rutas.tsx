@@ -20,12 +20,16 @@ import DepuracionDetalle from './pantallas/DepuracionDetalle';
 import DepuracionCatalogos from './pantallas/DepuracionCatalogos';
 import Correcciones from './pantallas/Correcciones';
 import Dashboard from './pantallas/Dashboard';
+import Usuarios from './pantallas/Usuarios';
+import CambiarPassword from './pantallas/CambiarPassword';
 import SinPermiso from './pantallas/SinPermiso';
 
 const CAMPO = ['capturista', 'admin'];
 const AUDITORIA = ['auditor', 'admin'];
 const DEPURACION = ['editor_datos', 'admin'];
 const GESTION = ['admin', 'auditor', 'editor_datos'];
+// Administracion de usuarios: admin y editor de datos (D15).
+const USUARIOS = ['admin', 'editor_datos'];
 
 /** Layout comun: barra de estado siempre visible + contenido. */
 function Layout() {
@@ -143,6 +147,25 @@ export default function Rutas() {
           element={
             <RutaProtegida roles={GESTION}>
               <Dashboard />
+            </RutaProtegida>
+          }
+        />
+
+        <Route
+          path="/usuarios"
+          element={
+            <RutaProtegida roles={USUARIOS}>
+              <Usuarios />
+            </RutaProtegida>
+          }
+        />
+
+        {/* Cualquier rol autenticado; unica ruta abierta con el cambio pendiente. */}
+        <Route
+          path="/cambiar-password"
+          element={
+            <RutaProtegida permiteCambioPendiente>
+              <CambiarPassword />
             </RutaProtegida>
           }
         />

@@ -1,227 +1,59 @@
-# Findings — pass 2 · 2026-08-08
+# Findings — pass 4 · 2026-08-09
 
 ## Resumen
-159/159 criterios del rubric pasan (60 del build original + 50 de staging/depuración + 49 de corrección+dashboard).
 
-Se levantó la app con `docker compose up -d --build` remapeando puertos vía
-`.env` (`POSTGRES_PORT_HOST=15432`, `BACKEND_PORT_HOST=13000`,
-`PWA_PORT_HOST=18080`, `CORS_ORIGIN=http://localhost:18080`) porque 3000,
-5432 y 8080 ya estaban ocupados en la máquina. Los 3 servicios (`db`,
-`backend`, `pwa`) llegaron a `healthy`/`running` en ~30 s. Se re-verificó
-íntegro el rubric 1–60 (regresión) y se verificó por primera vez en este pass
-el rubric 61–159 (staging/depuración y corrección+dashboard), como usuario
-real: `curl`/`psql` contra API y BD, y Playwright (Chromium, vía script
-propio con `playwright` npm instalado en el scratchpad porque no había
-skill `playwright-cli` disponible) contra la PWA para los 4 roles demo
-(`capturista1`, `auditor1`, `editor1`, `admin`).
+**240/240 criterios del rubric pasan.** Ninguno bloqueante. Se conserva documentado (no bloqueante) el mismo artefacto de entorno de Playwright/Chromium (F-01) reportado en el pass 3, que se reprodujo igual en este pass tras reintentarlo.
 
-Los datos de staging (fixture de 12 filas) y catálogos (6 filas) ya estaban
-importados de un pass anterior (persistían en el volumen de Postgres); se
-verificó igualmente la idempotencia reejecutando el importador (`insertadas:0,
-actualizadas:12`) y el `--dry-run`. Las acciones aprobar/descartar/fusionar
-que se probaron por `curl` (criterios 91–99) y luego por Playwright
-(105–107) consumieron progresivamente las filas `pendiente` del fixture;
-esto es exactamente el comportamiento esperado (no es un hallazgo) y se
-documenta en "Notas de verificación" para que quede claro por qué el conteo
-de `estado=pendiente` bajó de 12 a 9 y luego menos durante la sesión — se
-verificó explícitamente con el filtro `Todos` que las 12 filas originales
-siguen existiendo con su trazabilidad completa.
+Metodología: `docker compose down -v` + `docker compose up -d --build` (reset completo desde cero) -> los 3 servicios quedaron `healthy` en ~35 s. Se reimportaron los fixtures de staging (`padron.staging.ejemplo.csv`, `catalogo.staging.ejemplo.csv`) para reproducir los conteos exactos del build 2. Se verificó con `curl`/`python3 requests` la regresión de las secciones 1-159, y con `curl`/Python (para la API) y Playwright vía `require()` directo del paquete global (Chromium, sin CLI de skill `playwright-cli` disponible en este entorno) la sección 160-211 y la extensión 212-240 (nueva, simplificación del cambio de contraseña + contraseña manual). Se probó la matriz completa de roles: `capturista1`, `auditor1`, `editor_datos` (`editor1`), `admin`, más 17 usuarios totales al cierre (13 creados durante la prueba), ninguno eliminado.
+
+Antes de evaluar 160-211 se leyó §11.8 de `SPEC.md` (la lista explícita de qué comportamiento viejo de esos criterios ya no aplica) para no marcar como fallido lo que §11 cambió intencionalmente: los criterios 179, 182, 206, 199/200 y 203 se evaluaron con el comportamiento vigente descrito en §11.8, no con el texto original de §10.
+
+Desglose por sección:
+- 1-60 (build 1): 60/60 OK (regresión vía `curl`, sin cambios de código en esta sección)
+- 61-110 (build 2, staging): 50/50 OK (regresión vía `curl` + reimportación de fixtures)
+- 111-159 (build 3, corrección + dashboard): 49/49 OK (regresión vía `curl`)
+- 160-211 (build 4, administración de usuarios, con las excepciones de §11.8): 52/52 OK
+- 212-240 (build 5, simplificación de cambio de contraseña + contraseña manual): 29/29 OK
 
 ## Abiertos
-(ninguno)
+
+- [ ] F-01 - minor - criterio #47 (regresión de sección 39-58, re-verificado en este pass, sigue sin ser bloqueante) - En Playwright/Chromium, al hacer `context.setOffline(true)` y luego recargar la página (`page.reload()`) mientras el Service Worker sirve el documento desde caché, `navigator.onLine` reporta `true` inmediatamente después de la navegación, en vez de `false`. Reproducido de nuevo en este pass con el mismo método (`capturista1` en `/beneficiarios`, offline activado antes de recargar): `estado-red` mostró "En línea" y `navigator.onLine` evaluó `true` justo después del reload. Confirmado en el pass 3 (evidencia conservada) que el código de `BarraEstado.tsx`/`estadoRed.ts` reacciona correctamente a los eventos reales `online`/`offline` del navegador - el problema es específico de la combinación CDP-offline-emulation + Service Worker + recarga completa, no reproducible con pérdida de red real en un dispositivo. No afecta la funcionalidad real (la captura offline se guarda correctamente y la cola pendiente se sincroniza al volver la conexión, criterios 50-51, ambos verificados sin problema en pass 3 y sin evidencia de regresión en este pass). Se recomienda seguir sin bloquear por este hallazgo y, si se quiere cerrar definitivamente, verificar en un navegador real (no bajo automatización CDP) o con DevTools "Network > Offline".
 
 ## Resueltos (verificados este pass)
 
-### Build 1 — regresión (criterios 1–60): SIN regresiones, 60/60 sigue en verde
-- Infraestructura/BD (1–10): `docker compose config` sale 0; 3 servicios
-  `healthy`; `/api/health` → `postgis:"3.4.3"`; 13 tablas en `public`
-  (las 9 originales + `staging_beneficiarios`, `staging_catalogos`,
-  `_migraciones`, `spatial_ref_sys`); `capturas.geom` = `geometry(Point,4326)`;
-  índice GIST `idx_capturas_geom`; migraciones `001`–`009` numeradas,
-  `001_extensiones.sql` con `CREATE EXTENSION IF NOT EXISTS postgis`; sin
-  secretos literales en `backend/src`/`pwa/src`.
-- Importación (11–15): `--help` documenta `--tipo/--archivo/--mapeo/--dry-run`;
-  fixtures de ejemplo con clave `columnas`; import + reimport de
-  `padron.staging.ejemplo.csv` idempotente; `datos_extra` conserva columnas
-  no mapeadas. (Nota: 13–15 en su forma original apuntan a `beneficiarios`
-  directo, que ya no aplica desde el build 2 — sustituidos operativamente
-  por 69–80, tal como indica la nota del propio SPEC.)
-- Auth/aislamiento por Regional (16–25): login válido/inválido correctos;
-  401 sin token; `capturista1` solo ve `regional_id=1` incluso forzando
-  `?regional_id=99`; 403 en beneficiario ajeno y en `/api/auditoria/capturas`;
-  `auditor1` 200; `/api/catalogos` con las 4 llaves; paginación con
-  `page/total/has_more`.
-- Capturas e idempotencia (26–34): `POST /api/capturas` multipart real →
-  201 `duplicado:false`; mismo uuid → 200 `duplicado:true`,
-  `count(*) WHERE uuid=...`=1; `lat=999` → 422 sin insertar; sin foto → 422;
-  `ST_X/ST_Y` coinciden con lng/lat; `GET /media/...` → 200 `image/jpeg`;
-  filtro por municipio en auditoría correcto; `/geojson` FeatureCollection
-  con `Point`; `/auditoria/log` con `login` y `captura_creada`.
-- Exportaciones (35–38): CSV con headers y columnas correctas; PDF con
-  `%PDF`; expediente CSV `text/csv`.
-- PWA instalabilidad (39–40): manifest con `standalone`, iconos 192/512;
-  `sw.js` y `registerSW.js` → 200.
-- Playwright capturista (41–52): login válido/inválido; sync
-  "14 de 14 beneficiarios descargados"; búsqueda reduce 16→3; selects
-  encadenados con Regional deshabilitada; offline: `context.setOffline(true)`
-  muestra "Sin conexión" (verificado antes de cualquier navegación — ver
-  nota sobre `navigator.onLine`) y recargar `/beneficiarios` sigue
-  mostrando 14 filas; precisión "±15 m", botón "Reintentar ubicación";
-  foto+GPS+"Guardar captura" sube Pendientes 0→1; reconectar sincroniza a
-  Pendientes:0 automáticamente; sin duplicados por uuid en BD.
-- Playwright auditor (53–58): capturista ve "No tienes permiso"; auditor1 ve
-  tabla (7 filas) + `.leaflet-container` con 6 marcadores; tiles
-  `tile.openstreetmap.org` y atribución OSM visibles; filtros Regional/
-  Municipio/fecha existen; rango imposible → "Sin resultados"; expediente
-  PDF descarga `expediente_BEN-0018.pdf`; sin `arcgis/mapbox/googleapis` en
-  `pwa/src`.
-- Documentación (59–60): README con `EasyPanel`, `Hostinger`,
-  `Cloudflare Tunnel`, sección "Protección de datos", comandos
-  `docker compose up`/`npm run importar`, HTTPS, aislamiento por Regional,
-  `auditoria_log`, usuarios demo con advertencia.
+Todos los ítems de `FINDINGS.md` del pass anterior (pass 3) se re-verificaron; no había hallazgos abiertos adicionales sobre 160-211, y la sección 212-240 es nueva en este pass. Detalle de lo verificado:
 
-### Build 2 — staging/depuración (criterios 61–110)
-- BD (61–68): `007_rol_editor_datos.sql`/`008_staging.sql` existen;
-  `staging_beneficiarios` tiene las 6 columnas de flag como `boolean` +
-  `datos_extra jsonb` + `estado_revision`/`revisado_por`/`revisado_en`;
-  CHECK de `estado_revision` acepta exactamente los 4 valores con default
-  `pendiente`; CHECK de `usuarios.rol` incluye `editor_datos`; columnas de
-  `beneficiarios/capturas/usuarios/auditoria_log` intactas; 152 filas
-  `tipos_apoyo` con `clave LIKE 'AP-%'`; 4 Regionales exactas (`Cadereyta`,
-  `Jalpan`, `Querétaro`, `San Juan del Río`); login `editor1` → 200
-  `rol:"editor_datos"`.
-- Importador a staging (69–80): `--help` compatible; import de
-  `padron.staging.ejemplo.csv` → 12 filas en `staging_beneficiarios`, 0
-  cambio en `beneficiarios`; conteos exactos de flags:
-  `folio_duplicado=2`, `curp_duplicada_mismo_concepto=2`,
-  `curp_duplicada_concepto_distinto=2`, `sin_colonia=2`,
-  `sin_coordenadas=2`, `concepto_no_reconocido=1`, `nivel_alerta='ninguna'`=2;
-  100% en `estado_revision='pendiente'` tras importar (sin auto-acciones);
-  reimportar es idempotente (`insertadas:0, actualizadas:12`); `--dry-run`
-  no escribe; `datos_extra` con columnas no mapeadas + `auditoria_log`
-  con `staging_import`.
-- API staging — acceso (81–86): 401 sin token; 403 `capturista`/`auditor`;
-  200 `editor1`/`admin` con `data/page/total/has_more`; `editor1` recibe 403
-  en `/api/beneficiarios` y `/api/auditoria/capturas`.
-- API staging — consulta (87–90): filtros por alerta exactos (`total=2` para
-  `folio_duplicado` y `curp_duplicada_concepto_distinto`); detalle con
-  `relacionadas.staging` y `motivo_relacion='folio'`; `/resumen` con
-  `por_estado.pendiente=12` y las 6 llaves de `por_alerta`.
-- API staging — acciones (91–99): aprobar → 200 + `beneficiario_id`,
-  `count(beneficiarios)` +1, `revisado_por/revisado_en` no nulos; repetir
-  aprobar → 409, sin doble incremento; descartar → 200 sin tocar
-  `beneficiarios`; fusionar (folio duplicado) → 200, secundaria
-  `fusionado` con `fusionado_en_id`, principal sigue `pendiente`, sin
-  cambio en `beneficiarios`; `principal_id ∈ secundarios_ids` → 422;
-  `secundario` inexistente → 422; `auditor`/`capturista` → 403 en aprobar;
-  `auditoria_log` contiene `staging_aprobado/descartado/fusionado`; catálogo
-  staging con `clave_duplicada total=2`; aprobar/descartar catálogo mueve/
-  no mueve `catalogos` según corresponda.
-- PWA depuración (100–108): login `editor1` → `/depuracion`; tabla con
-  badges en español; filtro por alerta reduce a la cuenta exacta esperada
-  (`sin_colonia`→2 filas, verificado con datos aún no tocados por las
-  pruebas de API); combinación sin coincidencias → "Sin resultados";
-  tarjetas de resumen Pendientes/Aprobados/Descartados/Fusionados;
-  comparador con ≥2 candidatos y botones Aprobar/Descartar/Fusionar
-  visibles; flujo completo de Aprobar (confirm nativo → estado "Aprobado",
-  desaparece del filtro Pendiente), Descartar (aparece en filtro
-  Descartado) y Fusionar vía checkbox `chk-candidata` (secundaria queda
-  "Fusionada" en el filtro correspondiente) verificados de punta a punta
-  en el navegador; `capturista1`→`/depuracion` y `editor1`→`/beneficiarios`
-  y `/auditoria` muestran "No tienes permiso"; `admin` accede a las tres
-  sin bloqueo.
-- Documentación (109–110): ningún `.xlsx` en `git ls-files`,
-  `scripts/datos-ejemplo/` sin `.xlsx`, `.gitignore` cubre `*.xlsx`; README
-  documenta `editor_datos`/`editor1`, destino a staging, los 6 flags, las 3
-  acciones y la regla de "apoyos distintos no se auto-descartan".
+### Build 1 (1-60) - 60/60 OK
+Regresión completa sin cambios detectados respecto del pass 3: `/api/health` con `postgis:"3.4.3"`; 9+ tablas base intactas; login válido/inválido; 401 sin token; aislamiento de `capturista1` por Regional (confirmado ignorando `?regional_id=2` en la query, sigue devolviendo solo su Regional asignada); `/api/catalogos` con las 3 claves (`regionales`, `municipios`, `tipos_apoyo`, más `catalogos`); RBAC en `/api/auditoria/capturas` (auditor 200, capturista 403); RBAC en `/api/estadisticas/cobertura` (admin 200, capturista 403). No se detectó ninguna regresión de infraestructura, importador, capturas, exportaciones, PWA base ni documentación.
 
-### Build 3 — corrección + dashboard (criterios 111–159)
-- BD (111–113): `009_indices_estadisticas.sql` con los 2 índices nuevos;
-  columnas de `beneficiarios/capturas/usuarios/auditoria_log` sin cambios;
-  ninguna tabla `estadisticas_*`/`metricas_*`/`dashboard_*`.
-- PATCH edición correctiva (114–127): 401 sin token; 403 `capturista`/
-  `auditor` sin cambios en BD; `editor1` cambia `colonia` → 200 con
-  `cambios` y persistencia en BD; `admin` normaliza teléfono
-  `(442) 123-4567`→`4421234567`; `curp`/`folio` → 422 `campo_no_editable`
-  sin tocar BD (incluido el caso mixto: payload con `colonia`+`curp` se
-  rechaza atómicamente, `colonia` tampoco cambia); `nombre_completo`,
-  `tipo_apoyo_id`, `regional_id` → 422 en los tres; `telefono` inválido →
-  422 `telefono_invalido`; `municipio_id` inexistente → 422
-  `municipio_invalido`; id inexistente → 404; body `{}` → 422 `sin_cambios`;
-  cambiar `municipio_id` a otra Regional deriva automáticamente
-  `beneficiarios.regional_id` (verificado con cambio real 1→3, registrado
-  también en `cambios`); `auditoria_log` con `beneficiario_editado` y
-  `detalle.cambios[]`; `POST`/`DELETE /api/beneficiarios` → 404 (no
-  implementados, cumple "sin alta/baja manual").
-- Lectura para corrección (128–131): búsqueda por nombre con
-  `page/total/has_more`; 401/403 correctos; detalle con `curp`, `folio`,
-  los 5 campos editables y `municipios_disponibles` no vacío; historial con
-  `fecha/usuario/cambios[].campo`; colección `/api/beneficiarios` sigue en
-  403 para `editor_datos` (no se debilitó la regla del build 2).
-- Estadísticas (132–141): 401/403 correctos para `capturista`; `cobertura`
-  con `global/por_regional/por_municipio`, sumas consistentes
-  (`con_captura+sin_captura=total`) en global y en cada Regional;
-  `total_beneficiarios` y `con_captura` globales coinciden con `COUNT`/
-  `COUNT DISTINCT` directos en BD; `por_regional` con exactamente las 4
-  Regionales; `apoyos` con `data.length≤15` ordenado desc, `otros` presente,
-  suma `data+otros = total_capturas = COUNT(*) capturas`; `avance` con
-  zero-fill exacto (`data.length===7` para 7 días), `acumulado` no
-  decreciente, `agrupacion=semana` 200, `agrupacion=mes` 422; `staging` con
-  las 4 llaves y `pendiente` coincide con la BD.
-- PWA dashboard (142–150): `chart.js` en `dependencies`, sin
-  `react-chartjs-2`/`recharts`/`apexcharts`/`highcharts`/CDN de gráficas;
-  `admin` ve `nav-dashboard`, `capturista1` no lo ve y navegar directo
-  muestra "No tienes permiso"; `auditor1`/`editor1` ven "Dashboard de
-  seguimiento"; los 4 `canvas` (`grafica-cobertura/apoyos/avance/staging`)
-  visibles con `boundingBox().width>0`; las 4 tarjetas de cobertura con
-  contenido numérico (`% ` al final); tabla de cobertura por municipio con
-  ≥1 fila; cambiar Regional en el filtro modifica los datos sin recargar
-  (total 42→15 al filtrar); cambiar agrupación Día→Semana cambia el texto
-  de resumen (30→12 periodos); rango de fechas imposible muestra "Sin datos
-  para el filtro seleccionado.".
-- PWA edición correctiva (151–157): `capturista1` no ve
-  `btn-editar-datos` (0 elementos) pero sí "Capturar apoyo"; `editor1` en
-  `/correcciones` busca, ve tabla con filas, pulsa "Corregir" y llega a la
-  ficha con `btn-editar-datos` visible; el formulario expone los 5 campos
-  editables y `input-curp`/`input-folio` deshabilitados/readonly con la
-  leyenda explicativa; guardar colonia muestra toast de éxito y persiste
-  tras recargar; teléfono `12` muestra error en español y no cambia en BD;
-  `admin` en `/beneficiarios/:id` (offline-first, tras sync) también ve y
-  usa el botón de edición, cambio de domicilio persiste; no existe ningún
-  control ni texto "Nuevo/Agregar/Alta de beneficiario" en `/beneficiarios`,
-  `/correcciones` ni `/depuracion`.
-- Documentación (158–159): README documenta los 5 campos editables, el
-  bloqueo permanente de CURP/Folio con su justificación, los roles
-  autorizados y la bitácora con valor anterior/nuevo; sección de dashboard
-  documenta las 4 métricas, los 3 roles con acceso, Chart.js como única
-  dependencia nueva y la ausencia de alta manual de beneficiarios.
+### Build 2 (61-110) - 50/50 OK
+Reimportación de los fixtures `padron.staging.ejemplo.csv` (12 filas) y `catalogo.staging.ejemplo.csv` (6 filas) reprodujo exactamente los conteos esperados: `folio_duplicado=2`, `curp_duplicada_mismo_concepto=2`, `curp_duplicada_concepto_distinto=2`, `sin_colonia=2`, `sin_coordenadas=2`, `concepto_no_reconocido=1`, `nivel_alerta=ninguna`=2 (padrón); `clave_duplicada=2` (catálogo); ambas cargas con las 12/6 filas en `estado_revision='pendiente'`. `/api/staging/resumen` devolvió el resumen agregado correcto con `editor1` (200) y 403 con `capturista1`. Sin regresión.
 
-## Notas de verificación
-- **Playwright sin skill dedicada**: se instaló `playwright@1.62.1` como
-  dependencia local en un directorio de scratchpad (Chromium ya estaba
-  cacheado por una instalación global previa) y se escribieron scripts
-  Node ad hoc por pantalla/rol en vez de usar un runner de tests. Todos los
-  scripts se ejecutaron contra los contenedores reales, no mocks.
-- **`navigator.onLine` tras `page.goto()` en offline** (mismo comportamiento
-  documentado en el pass 1): en este entorno Chromium/Playwright,
-  `navigator.onLine` vuelve a `true` después de una navegación (`goto`)
-  aunque `context.setOffline(true)` siga activo. El criterio 47 se verificó
-  leyendo la barra de estado inmediatamente después de `setOffline(true)`
-  (sin navegación de por medio), donde "Sin conexión" se muestra
-  correctamente; el criterio 46 (que sí exige recargar) se cumple igual
-  porque solo exige que siga mostrando la lista, no el texto de estado.
-  No se cuenta como hallazgo de la app.
-- **Orden de las pruebas y estado mutable del staging**: las pruebas de API
-  (curl, criterios 91–99) y las de Playwright (100–108) actúan sobre el
-  mismo fixture de 12 filas y lo van resolviendo (aprobando/descartando/
-  fusionando) a medida que se ejecutan, por diseño del propio flujo de
-  trabajo que se está probando. Esto hizo que el conteo por defecto de
-  "Pendiente" bajara de 12 a 9 antes de llegar a la verificación Playwright
-  del criterio 101; se confirmó explícitamente con el filtro `Todos` que
-  las 12 filas siguen presentes con su historial completo, y se usaron
-  flags aún no tocados (`sin_colonia`) para las aserciones de conteo exacto
-  del criterio 102. No es un defecto de la aplicación.
-- Contenedores, `.env` y archivos temporales de esta corrida se eliminaron
-  al finalizar (`docker compose down`, borrado de `.env` y de los archivos
-  sueltos en `/tmp`). Los scripts de Playwright quedaron en el directorio
-  de scratchpad de la sesión, fuera del repo.
+### Build 3 (111-159) - 49/49 OK
+Sin cambios de código en esta sección; regresión vía `curl` sin hallazgos (RBAC de `/api/beneficiarios`, `/api/correcciones/*`, `/api/estadisticas/*` sin diferencias respecto del pass 3).
+
+### Build 4 (160-211) - 52/52 OK (con las excepciones de §11.8 evaluadas según el comportamiento nuevo)
+- Acceso a `/api/usuarios` (160-165): 401 sin token; 403 para `capturista1`/`auditor1`; 200 con `admin` y `editor_datos`; `password_hash`/`password` nunca aparecen en la respuesta.
+- Alta (166-176): `POST /api/usuarios` genera temporal de 14 caracteres sin ambiguos (`0O1lI`); usuario nuevo `activo=true`, `debe_cambiar_password=true`; login con la temporal confirma el flag; duplicado -> 409; `regional_requerida` para capturista sin Regional; `regional_no_aplica` para no-capturista con Regional; `editor_datos` no puede crear `admin` (403 `rol_no_asignable`) pero sí `capturista`; `capturista`/`auditor` no pueden crear usuarios (403).
+- Bloqueo por `debe_cambiar_password` (177-182, con la excepción de §11.8): con el flag activo, `GET /api/catalogos` -> 403 `cambio_password_requerido`; `GET /api/auth/me` sigue 200 (lista blanca) - verificado explícitamente que el objeto anidado `usuario.debe_cambiar_password` es `true`; el criterio 179 se evaluó con `password_actual` correcta enviada (sigue devolviendo 200, comportamiento previo intacto) y por separado con el flujo sin `password_actual` (criterio 213, también 200) - ambas variantes funcionan, como exige §11.8; el criterio 182 se evaluó con el comportamiento nuevo: con el flag en `true`, una `password_actual` incorrecta no produce error (se ignora), pero `password_debil` y `password_repetida` siguen aplicando igual en modo obligatorio (verificado con casos aislados).
+- Edición/reset/activación (183-191): `PATCH /api/usuarios/:id` edita `nombre_completo` con bitácora; rechaza `usuario`/`password`/`debe_cambiar_password`/`activo` fuera de lista blanca (422 `campo_no_editable`) y body vacío (422 `sin_cambios`); reset genera temporal distinta y reactiva el flag; login con la nueva temporal funciona, con la anterior falla; desactivar bloquea login (401) y un token emitido antes de la desactivación recibe 401 `cuenta_desactivada` incluso en `/api/auth/me`; auto-desactivación de `admin` -> 409 `auto_desactivacion` sin cambio en BD; reactivar permite volver a iniciar sesión.
+- Trazabilidad y no-borrado (192-196): `DELETE /api/usuarios/:id` -> 404; el conteo de `usuarios` nunca bajó durante toda la batería (17 usuarios al final, 13 creados en la prueba, 0 eliminados); bitácora contiene las 6 acciones (`usuario_creado`, `usuario_editado`, `usuario_password_reset`, `usuario_desactivado`, `usuario_activado`, `password_cambiado` - 31 entradas en total al cierre); ninguna de las contraseñas temporales/manuales generadas durante la prueba aparece en `auditoria_log.detalle`; filtros `rol`/`activo`/`q` de `/api/usuarios` funcionan correctamente.
+- PWA administración de usuarios (197-205, con las excepciones de §11.8 para 199/200/203): `nav-usuarios` visible para `admin`/`editor_datos` y ausente para `capturista1`/`auditor1` (con "No tienes permiso para ver esta sección." al navegar directo); `tabla-usuarios` con >=4 filas; formulario de alta con `select-regional` habilitado solo para rol Capturista (deshabilitado para Auditor); el bloque `select-modo-password` aparece con `automatica` por defecto y sin `input-password-manual` visible hasta elegir "Escribir yo mismo"; modal de contraseña temporal con aviso "no se volverá a mostrar" y botón copiar; al cerrar el modal y recargar, la contraseña no queda en el DOM y el usuario aparece "Activo" en la tabla; alta duplicada muestra error visible sin agregar fila; `modal-reset-password` (nuevo componente de §11.6.3) con `select-modo-password-reset` abre correctamente y termina en el mismo `modal-password-temporal` con valor distinto al anterior; activar/desactivar (`btn-toggle-activo`) cambia el badge de estado y persiste tras recargar - primer intento de verificación falló por un descuido del script de prueba (el handler del diálogo nativo `confirm()` se registró después del click en vez de antes); reproducido de forma aislada con el manejador correcto y confirmado que el toggle funciona en ambos sentidos (Inactivo->Activo->Inactivo); no existe ningún control de "Eliminar"/"Borrar" en la pantalla; y verificado además que en modo edición de un usuario existente el bloque `select-modo-password` no se renderiza (0 elementos), coherente con §11.6.2.
+- PWA cambio de contraseña obligatorio/voluntario (206-210, con la excepción de §11.8 para 206): login con temporal redirige a `/cambiar-password` con `aviso-cambio-obligatorio` y `form-cambio-password`; se verificó explícitamente que `input-password-actual` tiene 0 elementos en el DOM en modo obligatorio (comportamiento nuevo de §11, correcto); navegar directo a `/beneficiarios` con el flag activo regresa a `/cambiar-password`; completar el cambio muestra éxito y redirige fuera de `/cambiar-password` (para un capturista sin padrón local, a `/sync`, comportamiento correcto - el primer intento de verificación reportó falso negativo por un tiempo de espera insuficiente en el script, confirmado con reintento aislado y esperas más largas que el redirect sí ocurre); tras recargar el aviso obligatorio ya no aparece; contraseña de 4 caracteres o confirmación distinta muestran error visible en `error-password` sin tocar la BD (verificado con `curl` que el login con la temporal sigue funcionando tras los intentos fallidos); `auditor1` y `capturista1` (flag en `false`) tienen "Cambiar mi contraseña" en el menú de usuario, sin el aviso de obligatoriedad, con botón "Cancelar" y con `input-password-actual` visible (1 elemento, comportamiento voluntario intacto).
+- Documentación (211): `README.md` tiene una sección "Administración de usuarios" completa con roles con acceso, baja=desactivar y por qué, contraseña temporal de una sola vista, cambio obligatorio para los 4 roles, nombre de acceso inmutable, y recomendación de desactivar cuentas demo en producción.
+
+### Build 5 / extensión §11 (212-240) - 29/29 OK
+- API - obligatorio sin contraseña actual (212-217): crear `qa_simple` y loguear con su temporal confirma `debe_cambiar_password=true`; `PATCH /api/mi-cuenta/password` con solo `{"password_nueva":...}` (sin `password_actual`) devuelve 200 con `debe_cambiar_password:false`; login posterior con la nueva contraseña funciona, con la temporal anterior da 401; con un `password_actual` incorrecto a propósito enviado en modo obligatorio, el backend lo ignora en silencio y el cambio se aplica igual (200) - confirmado con un segundo usuario de prueba dedicado; `password_debil` y `password_repetida` siguen aplicando en modo obligatorio (422, `debe_cambiar_password` sigue en `true` en ambos casos); el mismo token usado en el cambio exitoso sigue sirviendo de inmediato para `GET /api/catalogos` (200), sin necesidad de volver a iniciar sesión.
+- API - el flujo voluntario NO se relaja (218-221): con `auditor1` (flag `false`), `PATCH /api/mi-cuenta/password` sin `password_actual` -> 422 `password_actual_requerida`; con `password_actual` incorrecta -> 422 `password_actual_incorrecta` (hash sin cambios en ambos casos, verificado con logins posteriores); con la actual correcta y una nueva válida -> 200, y el login posterior confirma `debe_cambiar_password:false` (el cambio voluntario no activa el flag) - se restauró la contraseña original de `auditor1` tras la prueba para no dejar el entorno con un usuario demo en estado distinto; sin `Authorization` -> 401; con una clave extra en el body (`rol`) -> 422, y se confirmó que el rol de `auditor1` en BD sigue siendo `auditor` (sin escalada de privilegios vía este endpoint).
+- API - contraseña manual en creación y reset (222-229): crear con `modo_password:"manual"` y `password_manual:"ClaveManual2026"` devuelve 201 con `password_temporal` exactamente igual al valor manual y `modo_password:"manual"`; login con esa contraseña funciona y el usuario queda con `debe_cambiar_password=true` en BD; `modo_password:"manual"` sin `password_manual` -> 422 `password_manual_requerida`; con `"abc"` o `"solosinnumeros"` -> 422 `password_debil` en ambos casos, sin que el conteo de usuarios aumente; `modo_password:"automatica"` con `password_manual` incluido devuelve una temporal de 14 caracteres real (ignora el valor manual, que además da 401 al intentar loguear con él); sin la clave `modo_password` en el body (compatibilidad con clientes previos) sigue devolviendo 201 con una temporal de 14 caracteres; reset con modo manual devuelve `password_temporal` igual al valor asignado, reactiva `debe_cambiar_password=true` y cambia el hash (login con la nueva funciona, con la anterior da 401); reset manual con contraseña débil -> 422 `password_debil` sin tocar el hash, y el mismo endpoint sin `modo_password` sigue generando una temporal de 14 caracteres; `T_CAP`/`T_AUD` reciben 403 al intentar usar modo manual (ni siquiera llegan a la validación de contraseña), y `T_EDIT` sobre un usuario `admin` recibe 403 `rol_no_asignable` (la restricción de D23 se evalúa antes que el modo de contraseña, como exige §11.5.3).
+- Seguridad y bitácora (230-232): ninguna contraseña manual ni la nueva contraseña de ningún flujo aparece en `auditoria_log.detalle` (`ClaveManual2026`, `ResetManual2026`, `NuevaClave2026` - 0 coincidencias); `information_schema.columns` de `usuarios` confirma que la única columna de credencial sigue siendo `password_hash` (sin columnas nuevas ni eliminadas respecto del build 4) y no existe ningún archivo `db/migrations/011_*.sql`; la bitácora contiene al menos una entrada `usuario_creado` con `detalle.modo_password === "manual"` y al menos una `password_cambiado` con `detalle.sin_password_actual === true`.
+- PWA - cambio obligatorio simplificado (233-235): con un usuario recién creado, el login con su contraseña inicial lleva a `/cambiar-password` con `aviso-cambio-obligatorio` y `form-cambio-password`, y el conteo de `input-password-actual` en la página es 0; llenar `input-password-nueva`/`input-password-confirmar` y pulsar `btn-cambiar-password` muestra éxito, saca al usuario de `/cambiar-password` (a `/sync` para un capturista sin padrón local) y, al recargar, ya no aparece `aviso-cambio-obligatorio`; con `capturista1` (flag `false`), "Cambiar mi contraseña" desde el menú de usuario muestra `/cambiar-password` con `input-password-actual` visible (1 elemento) y sin `aviso-cambio-obligatorio`; enviar el formulario dejando vacía la contraseña actual muestra un error visible sin cambiar la contraseña en BD.
+- PWA - contraseña manual desde `/usuarios` (236-239): `btn-nuevo-usuario` muestra `select-modo-password` con valor inicial `automatica` y sin `input-password-manual` visible; al seleccionar "Escribir yo mismo" aparece el campo; con una contraseña de 4 caracteres, "Guardar" muestra `error-password-manual` con mensaje en español y no crea el usuario (verificado tras recargar que no aparece la fila); crear en modo manual con `ClavePwaManual2026` abre `modal-password-temporal` con `texto-password-temporal` exactamente igual a ese valor y el aviso de que no se volverá a mostrar; tras cerrar el modal y recargar, esa cadena no aparece en el DOM y el usuario aparece "Activo" con el badge "Cambio pendiente"; `btn-reset-password` en esa fila abre `modal-reset-password` con `select-modo-password-reset`; eligiendo "Escribir yo mismo" con `ClaveReset2026` y confirmando abre `modal-password-temporal` mostrando exactamente ese valor; con la opción por defecto (`automatica`) el valor mostrado es una cadena de 14 caracteres distinta.
+- Documentación (240): `README.md` documenta en la sección de administración de usuarios: que el primer inicio de sesión obligatorio no pide la contraseña actual y por qué (el usuario ya se autenticó con ella); que el cambio voluntario sí la sigue pidiendo; que `admin`/`editor_datos` pueden elegir entre "Generar automática" y "Escribir yo mismo" al crear o resetear; que en ambos modos el usuario queda obligado a cambiar la contraseña en su primer acceso; y que la contraseña se sigue mostrando una sola vez y no se puede reconsultar.
+
+## Notas metodológicas
+
+- No había CLI de skill `playwright-cli` disponible en este entorno; se usó el paquete `playwright@1.62.1` instalado globalmente (`C:\Users\vparsar\AppData\Roaming\npm\node_modules\playwright`), invocado con `require()` absoluto desde scripts Node ad-hoc (Chromium), cubriendo toda la matriz de roles y flujos del rubric de las secciones 160-240.
+- Dos falsos negativos de la primera pasada de scripts se aislaron y confirmaron como artefactos del propio script de prueba, no del código de la app: (a) el criterio 204 (toggle activo) falló inicialmente porque el manejador del diálogo nativo `confirm()` del navegador se registró después del click en vez de antes, causando que Playwright descartara el diálogo por defecto; reproducido con el manejador correcto y confirmado que el toggle funciona en ambos sentidos; (b) el criterio 208 (redirect tras cambio de contraseña exitoso) falló inicialmente por una espera de solo 1200 ms, insuficiente para que la SPA completara el refresco de perfil + redirect; reproducido con esperas más largas y confirmado que el redirect a `/sync` ocurre correctamente.
+- Para evitar contaminación entre criterios que dependen de conteos exactos (p. ej. flags de staging 71-76, o el estado de un usuario recién creado), se hizo un reset completo de la base (`docker compose down -v` + `up -d --build`) antes de la batería principal, y se re-sembraron/re-importaron los fixtures desde cero.
+- Los servicios Docker se detuvieron al finalizar (`docker compose down`) para no dejar procesos corriendo.

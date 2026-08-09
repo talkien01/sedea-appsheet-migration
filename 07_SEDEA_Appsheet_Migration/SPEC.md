@@ -1598,3 +1598,225 @@ Continúa la numeración de §7, §8.11 y §9.9. Base: `API=http://localhost:300
 211. `README.md` incluye una sección de administración de usuarios que documenta: los roles con acceso (`admin` y `editor_datos`, y que `capturista`/`auditor` no entran), que **las bajas se hacen desactivando y nunca borrando** y por qué (trazabilidad de `capturas` y `auditoria_log`), que la contraseña temporal **se muestra una sola vez** y no se puede reconsultar, el **cambio obligatorio en el primer inicio de sesión** aplicable a todos los roles, que el nombre de acceso es inmutable, y la recomendación de crear los usuarios reales y **desactivar** las cuentas demo al pasar a producción.
 
 **Definición de "terminado" (build 4):** los **211** criterios pasan (60 del build original + 50 del staging + 49 de corrección/dashboard + 52 de esta extensión).
+
+# 11. EXTENSIÓN — Simplificación del cambio de contraseña obligatorio + contraseña manual asignada por el admin (build 5)
+
+> **CONTINUACIÓN LITERAL DE `SPEC.md`.** Esta sección se **agrega al final** de `SPEC.md` (después de la línea "Definición de 'terminado' (build 4)"). Nada de las secciones 1–10 se reescribe. Esta sección **ajusta** dos comportamientos concretos descritos en §10 (el endpoint de cambio de la propia contraseña y los formularios de alta/reset de `/usuarios`); donde §11 contradiga a §10, **manda §11**. Todo lo demás de §10 sigue vigente palabra por palabra. Mismo monorepo, mismo `docker-compose.yml`, mismos 3 servicios (`db`, `backend`, `pwa`). **No se crea ningún servicio nuevo, ninguna tabla nueva, ninguna migración nueva, ninguna dependencia npm nueva y ninguna variable de entorno nueva.**
+
+## 11.1 Objetivo de la extensión
+
+Quitar la fricción del primer inicio de sesión para personal de campo no técnico —dejando de pedir la contraseña temporal que el usuario **acaba de escribir** para autenticarse— y permitir que `admin` / `editor_datos` **asignen ellos mismos** la contraseña inicial de un usuario (al crearlo o al resetearlo), en lugar de estar obligados a usar siempre una temporal aleatoria.
+
+## 11.2 Decisiones de producto (ya acordadas con el usuario tras probar en producción — implementar tal cual)
+
+- **D25. El cambio de contraseña OBLIGATORIO ya no pide la contraseña actual.** Cuando el usuario autenticado tiene `debe_cambiar_password = true`, el endpoint de cambio de la propia contraseña **no exige** `password_actual`: el usuario ya demostró conocerla al iniciar sesión y obtener el token con el que llama a este endpoint, así que el backend confía en el token recién emitido. Si el cliente envía `password_actual` de todas formas, el backend **la ignora en silencio** (no la valida contra el hash, no devuelve error por ella).
+- **D26. El cambio de contraseña VOLUNTARIO no cambia en absoluto.** Cuando `debe_cambiar_password = false`, `password_actual` **sigue siendo obligatoria** y se sigue validando contra el hash (422 `password_actual_incorrecta` si no coincide). Es la protección contra que alguien que encuentre un dispositivo con la sesión abierta cambie la contraseña sin conocer la actual. Ninguna otra validación de §10.5 se relaja.
+- **D27. `admin` y `editor_datos` pueden asignar la contraseña manualmente.** En "Crear usuario" y en "Resetear contraseña" hay un selector de **modo de contraseña** con dos opciones:
+  - `automatica` (**default**, comportamiento actual): el backend genera la temporal aleatoria de 14 caracteres según §10.4.
+  - `manual`: el actor escribe la contraseña; el backend la usa tal cual (tras validarla) como contraseña inicial.
+- **D28. La política de "cambio obligatorio en el primer login" NO cambia.** Tanto en modo `automatica` como en modo `manual`, el usuario creado/reseteado queda con **`debe_cambiar_password = true`**. Lo único que cambia es **quién elige el valor inicial**, no la obligación de cambiarlo. No existe forma de crear/resetear un usuario dejándolo exento del cambio obligatorio.
+- **D29. La contraseña se sigue mostrando UNA SOLA VEZ** en el mismo `ModalPasswordTemporal` (§10.8.3), sea generada o escrita a mano, con el mismo aviso "Cópiala ahora: no se volverá a mostrar." Mostrar también la manual es intencional: confirma al actor exactamente lo que quedó guardado antes de comunicárselo al usuario.
+- **D30. La contraseña manual se valida con la MISMA política del cambio propio (§10.5):** mínimo **10** caracteres (máximo 128), al menos una letra y al menos un dígito. No se exigen símbolos ni el alfabeto sin ambiguos de §10.4 (esa restricción aplica solo al generador automático).
+- **D31. Compatibilidad total con producción.** Los usuarios que **ya** tienen `debe_cambiar_password = true` pendiente de un reset anterior completan su cambio con el nuevo flujo simplificado sin ninguna migración de datos, sin re-login y sin intervención del admin. **No hay migración `011`.**
+
+## 11.3 Modelo de datos
+
+**Sin cambios.** No se agregan, eliminan ni renombran columnas, tablas ni índices. `debe_cambiar_password`, `password_actualizado_en` y `password_hash` conservan exactamente el significado de §10.3. **No se persiste jamás la contraseña en claro** (tampoco la manual): la única representación guardada sigue siendo `password_hash` (bcrypt cost 10), y `auditoria_log.detalle` sigue sin contener nunca la contraseña.
+
+Los valores de `auditoria_log.accion` de §10.3.3 se mantienen; solo se enriquece el `detalle` (la columna es JSONB libre, el esquema no cambia):
+
+| `accion` | `detalle` (delta build 5) |
+|---|---|
+| `usuario_creado` | gana `modo_password: "automatica" \| "manual"` |
+| `usuario_password_reset` | gana `modo_password: "automatica" \| "manual"` |
+| `password_cambiado` | gana `sin_password_actual: true \| false` (true cuando se aceptó por token en flujo obligatorio) |
+
+## 11.4 Contrato actualizado — `PATCH /api/mi-cuenta/password` (E39, reemplaza la fila E39 de §10.7)
+
+Ruta, método, autenticación y pertenencia a la lista blanca de §10.6.2: **idénticos**. Cambia solo la validación del payload, que pasa a ser **condicional según `debe_cambiar_password` del usuario autenticado leído de BD** (§10.6.1), nunca según un campo del body ni un claim del token.
+
+**Body:** `{ password_actual?: string, password_nueva: string }` (Zod `.strict()`: cualquier otra clave → 422 `payload_invalido`).
+
+| Estado del usuario autenticado | `password_actual` | Comportamiento |
+|---|---|---|
+| `debe_cambiar_password = true` (**obligatorio**) | **Opcional; ignorada si viene** | No se compara contra el hash. No puede producir `password_actual_incorrecta` ni `password_actual_requerida`. |
+| `debe_cambiar_password = false` (**voluntario**) | **Obligatoria** | Se valida contra el hash exactamente como en §10.5. |
+
+**Validaciones que se mantienen SIEMPRE (ambos modos):**
+
+| Regla | HTTP | `codigo` | Mensaje |
+|---|---|---|---|
+| `password_nueva` entre 10 y 128 caracteres | 422 | `password_debil` | "La contraseña debe tener al menos 10 caracteres." |
+| `password_nueva` con al menos una letra y un dígito | 422 | `password_debil` | "La contraseña debe incluir al menos una letra y un número." |
+| `password_nueva` distinta de la contraseña vigente (comparada **contra el hash**, no contra el body) | 422 | `password_repetida` | "La nueva contraseña debe ser distinta de la actual." |
+| `password_actual` faltante **en modo voluntario** | 422 | `password_actual_requerida` | "Debes escribir tu contraseña actual." |
+| `password_actual` incorrecta **en modo voluntario** | 422 | `password_actual_incorrecta` | "La contraseña actual no es correcta." |
+
+> Nota: `password_repetida` se sigue evaluando en ambos modos comparando `password_nueva` con `password_hash` mediante `bcrypt.compare`, así que también funciona cuando no se envió `password_actual`.
+
+**Efectos y respuesta (sin cambios respecto de §10.7):** actualiza `password_hash`, pone `debe_cambiar_password = false` y `password_actualizado_en = now()`; devuelve `200 {ok:true, debe_cambiar_password:false}`; el token vigente sigue siendo válido; registra `password_cambiado` con `{obligatorio:<valor previo del flag>, sin_password_actual:<bool>}`.
+
+## 11.5 Contrato actualizado — creación y reset con modo de contraseña
+
+Se agregan **dos claves** al body de E35 y E37. Ambas siguen siendo `.strict()`: cualquier otra clave sigue dando 422 `campo_no_editable`/`payload_invalido` como en §10.7.1.
+
+```ts
+// packages/shared/src/usuarios.ts
+modo_password: z.enum(['automatica', 'manual']).optional().default('automatica')
+password_manual: z.string().optional()   // solo se lee si modo_password === 'manual'
+```
+
+### 11.5.1 `POST /api/usuarios` (E35, delta)
+
+Body: `{usuario, nombre_completo, rol, regional_id?, modo_password?, password_manual?}`.
+
+- `modo_password` ausente ⇒ `automatica` (retrocompatible: los clientes/scripts que ya llamaban a E35 con el body de §10.7 siguen funcionando **igual**, sin cambio de comportamiento).
+- `automatica`: se genera la temporal con §10.4 y **se ignora `password_manual` si viene** (no es error).
+- `manual`: `password_manual` es obligatoria y se valida con la política de §10.5 / D30.
+- En **ambos** modos: `activo = true`, `debe_cambiar_password = true`, hash bcrypt cost 10.
+
+**Respuesta 201 (misma forma que §10.7, con una clave añadida):**
+
+```json
+{
+  "ok": true,
+  "usuario": { "id": 12, "usuario": "qa_manual", "nombre_completo": "...", "rol": "capturista",
+               "regional_id": 1, "regional": "...", "activo": true,
+               "debe_cambiar_password": true, "creado_en": "..." },
+  "password_temporal": "<la generada o la escrita por el actor>",
+  "modo_password": "manual",
+  "aviso": "Cópiala ahora: no se volverá a mostrar."
+}
+```
+
+La clave sigue llamándose **`password_temporal`** (no se renombra, para no romper §10 ni el cliente existente): en modo `manual` contiene la contraseña que escribió el actor.
+
+### 11.5.2 `POST /api/usuarios/:id/reset-password` (E37, delta)
+
+Body: `{motivo?, modo_password?, password_manual?}`. Mismas reglas que 11.5.1. Efectos sin cambios: nuevo `password_hash`, `debe_cambiar_password = true`, `password_actualizado_en = NULL`. Respuesta `200 {ok:true, usuario_id, usuario, password_temporal, modo_password, aviso}`.
+
+### 11.5.3 Códigos de error nuevos (se suman a §10.7.1)
+
+| Caso | HTTP | `codigo` | Mensaje |
+|---|---|---|---|
+| `modo_password:"manual"` sin `password_manual` (o vacía) | **422** | `password_manual_requerida` | "Escribe la contraseña que quieres asignar." |
+| `password_manual` < 10 o > 128 caracteres, o sin letra y número | **422** | `password_debil` | "La contraseña debe tener al menos 10 caracteres e incluir una letra y un número." |
+| `modo_password` con un valor distinto de `automatica`/`manual` | **422** | `payload_invalido` | "Datos inválidos." |
+
+**Todas las reglas de §10.7 se mantienen intactas** y se evalúan **antes** que el modo de contraseña: solo `admin`/`editor_datos` (401/403 en otro caso), D23 `rol_no_asignable`, `usuario_duplicado` (409), `regional_requerida`/`regional_no_aplica`/`regional_invalida`, inmutabilidad del login, sin `DELETE`, auto-desactivación y último admin activo.
+
+## 11.6 Pantallas afectadas (delta sobre §10.8)
+
+### 11.6.1 `/cambiar-password` — `CambiarPassword.tsx` (reemplaza el diseño de §10.8.4 en lo relativo a `input-password-actual`)
+
+Sigue habiendo un solo componente con dos modos, entrada y redirecciones **idénticas** a §10.8.4. Único cambio: la visibilidad del campo de contraseña actual.
+
+| Modo | `input-password-actual` | Resto |
+|---|---|---|
+| **Obligatorio** (`debe_cambiar_password === true`) | **NO se renderiza** (0 elementos en el DOM). El body enviado **no** incluye `password_actual`. | Se muestra `[data-testid="aviso-cambio-obligatorio"]` con el texto: *"Por seguridad, define tu nueva contraseña para empezar a usar el sistema."* Navegación bloqueada igual que en §10.8.4 (solo "Cerrar sesión"). Sin botón "Cancelar". |
+| **Voluntario** (`debe_cambiar_password === false`) | **Se renderiza y es obligatorio** (`type="password"`), igual que hoy. | Sin aviso de obligatoriedad; con botón "Cancelar". Sin cambios respecto de §10.8.4. |
+
+- Campos en modo obligatorio: `input-password-nueva` + `input-password-confirmar` + `btn-cambiar-password` ("Cambiar contraseña"), dentro de `[data-testid="form-cambio-password"]`.
+- Validación en cliente (sin llamar a la API), mensaje en `[data-testid="error-password"]`: mínimo 10 caracteres, al menos una letra y un número, `nueva === confirmar`. La regla "distinta de la actual" solo se valida en cliente en modo voluntario (en obligatorio la valida el backend contra el hash y se muestra `error.mensaje`).
+- Éxito, refresco de perfil y redirect por rol: **exactamente** como §10.8.4.
+
+### 11.6.2 `FormUsuario.tsx` — bloque de modo de contraseña (solo en alta)
+
+Debajo de `select-regional`, en el formulario de **alta**, se agrega:
+
+- `[data-testid="select-modo-password"]` con dos opciones: **"Generar automática"** (`value="automatica"`, **seleccionada por defecto**) y **"Escribir yo mismo"** (`value="manual"`).
+- Al elegir `manual` aparece `[data-testid="input-password-manual"]` (`type="password"`) con la etiqueta "Contraseña para el usuario" y la ayuda *"Mínimo 10 caracteres, con al menos una letra y un número. El usuario deberá cambiarla en su primer inicio de sesión."*
+- Al elegir `automatica` el campo **se oculta y se limpia**, y el body enviado **no** incluye `password_manual`.
+- Validación en cliente antes de llamar a la API: si el modo es `manual` y la contraseña está vacía o no cumple la política, se muestra `[data-testid="error-password-manual"]` en español y **no** se llama a la API.
+- En **edición** de un usuario existente este bloque **no se renderiza** (la contraseña se cambia solo por "Resetear contraseña"), coherente con §10.7.1 `campo_no_editable`.
+
+### 11.6.3 Reset de contraseña — `ModalResetPassword.tsx` (nuevo, reemplaza el `confirm()` simple de §10.8.1)
+
+`btn-reset-password` de la fila ya no abre una confirmación de texto plano, sino un modal `[data-testid="modal-reset-password"]` con:
+
+- Título "Resetear contraseña de &lt;usuario&gt;" y el aviso *"Se asignará una contraseña nueva y el usuario deberá cambiarla al entrar."*
+- `[data-testid="select-modo-password-reset"]` con las mismas dos opciones (`automatica` por defecto) y, en modo manual, `[data-testid="input-password-manual-reset"]` con la misma validación y `[data-testid="error-password-manual"]`.
+- Botones `[data-testid="btn-confirmar-reset"]` ("Resetear contraseña") y `[data-testid="btn-cancelar-reset"]` ("Cancelar").
+- Al confirmar con éxito se cierra y se abre `[data-testid="modal-password-temporal"]` (§10.8.3) **sin cambios**: mismo aviso de "no se volverá a mostrar", `[data-testid="texto-password-temporal"]`, `btn-copiar-password` y `btn-cerrar-modal-password`; al cerrar, la contraseña se borra del estado de React y no queda en el DOM ni en almacenamiento local. Cuando el modo fue `manual`, el título del modal es **"Contraseña asignada"** en lugar de "Contraseña temporal generada" (el resto del contenido y los `data-testid` no cambian).
+
+### 11.6.4 Resto de la PWA
+
+Sin cambios: `/usuarios` (filtros, tabla, badges, toggle activo, ausencia total de borrado), menú de usuario, `RutaProtegida`, y los interceptores de `cambio_password_requerido` (403) y `cuenta_desactivada` (401) de §10.8.5 quedan **idénticos**.
+
+## 11.7 Archivos
+
+**Nuevo:** `pwa/src/componentes/ModalResetPassword.tsx`.
+
+**Modificados:** `backend/src/rutas/miCuenta.ts` (validación condicional), `backend/src/rutas/usuarios.ts` (modo de contraseña en E35/E37), `backend/src/servicios/usuarios.ts`, `packages/shared/src/usuarios.ts` (esquemas Zod y política reutilizada), `pwa/src/pantallas/CambiarPassword.tsx`, `pwa/src/componentes/FormUsuario.tsx`, `pwa/src/pantallas/Usuarios.tsx`, `pwa/src/componentes/ModalPasswordTemporal.tsx` (título condicional), `README.md`.
+
+**Sin migración nueva, sin dependencias npm nuevas, sin variables de entorno nuevas, sin comandos nuevos**: todo sigue corriendo con `docker compose up --build`. Código comentado en español, UI en español.
+
+## 11.8 Criterios de §10 que quedan MODIFICADOS por esta sección
+
+El texto original de §10 **no se toca**; esta lista le dice al Evaluator qué comportamiento viejo **ya no aplica**. Todo criterio de §10 no listado aquí sigue vigente sin cambios.
+
+| Criterio §10 | Qué cambia | Cómo se evalúa ahora |
+|---|---|---|
+| **179** | Sigue pasando tal cual (enviar `password_actual` correcta con el flag en `true` sigue devolviendo 200), pero **ya no es la única forma válida**: el mismo `PATCH` **sin** `password_actual` también debe devolver 200. Se evalúa como aprobado si cualquiera de las dos variantes funciona; la variante sin `password_actual` es obligatoria y se verifica en el criterio 213. |
+| **182** | Los sub-casos `password_actual_incorrecta` y el rechazo por contraseña actual **solo aplican en modo voluntario** (`debe_cambiar_password = false`). Con el flag en `true`, una `password_actual` incorrecta **NO** debe producir error. Los sub-casos `password_debil` y `password_repetida` siguen aplicando en ambos modos. |
+| **206** | **MODIFICADO.** Ya **no** debe existir `input-password-actual` en el flujo obligatorio: el criterio se considera aprobado si tras iniciar sesión con la contraseña temporal se llega a `/cambiar-password` con `[data-testid="aviso-cambio-obligatorio"]` y `[data-testid="form-cambio-password"]` conteniendo **solo** `input-password-nueva` e `input-password-confirmar`. La presencia de `input-password-actual` en este modo es **fallo** (ver criterio 212). |
+| **199 / 200** | El formulario de alta gana el bloque `select-modo-password`. Ambos criterios siguen aplicando tal cual (con el modo por defecto `automatica` el flujo es idéntico al de §10). |
+| **203** | El reset ahora pasa por `[data-testid="modal-reset-password"]` antes de abrir el modal de contraseña. El criterio sigue aplicando: el resultado final debe ser un `[data-testid="texto-password-temporal"]` con valor distinto al anterior. |
+
+---
+
+## 11.9 Rubric extendido (criterios 212–237)
+
+Continúa la numeración de §7, §8.11, §9.9 y §10.11. Base: `API=http://localhost:3000`, `APP=http://localhost:8080`. Tokens: `T_ADMIN`, `T_CAP`, `T_AUD`, `T_EDIT`.
+
+### API — cambio de contraseña obligatorio sin contraseña actual (212–217)
+
+212. Preparación: `POST $API/api/usuarios` con `T_ADMIN` crea `qa_simple` (rol `capturista`, con Regional) y devuelve **201** con `password_temporal`; `POST /api/auth/login` con esa temporal devuelve **200** con `token` (`T_SIMPLE`) y `usuario.debe_cambiar_password === true`.
+213. `PATCH $API/api/mi-cuenta/password` con `T_SIMPLE` y body **`{"password_nueva":"NuevaClave2026"}`** (sin `password_actual`) devuelve **200** con `ok:true` y `debe_cambiar_password:false`; en BD `debe_cambiar_password = false` y `password_actualizado_en IS NOT NULL`.
+214. Tras 213, `POST /api/auth/login` con `qa_simple` + `NuevaClave2026` devuelve **200** con `token`, y con la temporal anterior devuelve **401** sin `token`.
+215. Con un usuario en flujo obligatorio (crear `qa_simple2` y loguear con su temporal), `PATCH /api/mi-cuenta/password` con `{"password_actual":"ESTO_ES_INCORRECTO","password_nueva":"OtraClave2026"}` devuelve **200** (la `password_actual` se ignora cuando el flag está en `true`), y el login posterior con `OtraClave2026` devuelve **200**.
+216. Con un usuario en flujo obligatorio, `PATCH /api/mi-cuenta/password` con `{"password_nueva":"abc"}` devuelve **422** `password_debil`, y con `password_nueva` igual a su contraseña temporal vigente devuelve **422** `password_repetida`; en ambos casos `debe_cambiar_password` en BD sigue en **true**.
+217. Tras un cambio obligatorio exitoso, el **mismo token** usado en 213 (sin volver a iniciar sesión) permite `GET $API/api/catalogos` con **200**.
+
+### API — el flujo voluntario NO se relaja (218–221)
+
+218. Con `T_AUD` (usuario `auditor1`, `debe_cambiar_password = false`), `PATCH $API/api/mi-cuenta/password` con **`{"password_nueva":"IntentoSinActual1"}`** (sin `password_actual`) devuelve **422** con `error.codigo === "password_actual_requerida"`, y el `password_hash` de `auditor1` en BD **no** cambia.
+219. Con `T_AUD`, `PATCH /api/mi-cuenta/password` con `{"password_actual":"INCORRECTA","password_nueva":"IntentoValido1"}` devuelve **422** `password_actual_incorrecta` y el `password_hash` en BD **no** cambia.
+220. Con `T_AUD` y la contraseña actual correcta + `password_nueva` válida, `PATCH /api/mi-cuenta/password` devuelve **200**; el login con la nueva contraseña devuelve **200** y `usuario.debe_cambiar_password === false` (el cambio voluntario no activa el flag).
+221. `PATCH /api/mi-cuenta/password` sin header `Authorization` devuelve **401**, y con un body que incluya una clave extra (p. ej. `{"password_nueva":"Valida12345","rol":"admin"}`) devuelve **422** y el rol del usuario en BD no cambia.
+
+### API — contraseña manual en creación y reset (222–229)
+
+222. `POST $API/api/usuarios` con `T_ADMIN` y `{"usuario":"qa_manual","nombre_completo":"QA Manual","rol":"capturista","regional_id":<válido>,"modo_password":"manual","password_manual":"ClaveManual2026"}` devuelve **201** con `ok:true`, `modo_password:"manual"` y `password_temporal === "ClaveManual2026"`.
+223. `POST /api/auth/login` con `qa_manual` + `ClaveManual2026` devuelve **200** con `token` y `usuario.debe_cambiar_password === true`; en BD `SELECT activo, debe_cambiar_password FROM usuarios WHERE usuario='qa_manual'` devuelve `true, true`.
+224. `POST /api/usuarios` con `modo_password:"manual"` y **sin** `password_manual` devuelve **422** `password_manual_requerida`; con `"password_manual":"abc"` devuelve **422** `password_debil`; con `"password_manual":"solosinnumeros"` devuelve **422** `password_debil`. En los tres casos `SELECT count(*) FROM usuarios` **no** aumenta.
+225. `POST /api/usuarios` con `modo_password:"automatica"` y `password_manual:"ClaveIgnorada2026"` devuelve **201** y la `password_temporal` devuelta **no** es `"ClaveIgnorada2026"` (mide 14 caracteres y respeta el alfabeto sin ambiguos de §10.4); el login con `ClaveIgnorada2026` para ese usuario devuelve **401**.
+226. `POST /api/usuarios` **sin** la clave `modo_password` (body exacto de §10.7) sigue devolviendo **201** con una `password_temporal` de 14 caracteres (retrocompatibilidad).
+227. `POST $API/api/usuarios/<id de qa_manual>/reset-password` con `T_ADMIN` y `{"modo_password":"manual","password_manual":"ResetManual2026"}` devuelve **200** con `password_temporal === "ResetManual2026"` y `modo_password:"manual"`; en BD `debe_cambiar_password` vuelve a **true** y el `password_hash` cambió; el login con `ResetManual2026` devuelve **200** y con `ClaveManual2026` devuelve **401**.
+228. `POST /api/usuarios/<id>/reset-password` con `{"modo_password":"manual","password_manual":"corta1"}` devuelve **422** `password_debil` y el `password_hash` en BD **no** cambia; el mismo endpoint sin `modo_password` sigue devolviendo **200** con una temporal de 14 caracteres.
+229. `POST /api/usuarios` y `POST /api/usuarios/:id/reset-password` con `modo_password:"manual"` usando `T_CAP` o `T_AUD` devuelven **403**; con `T_EDIT` sobre un usuario de rol `admin` devuelven **403** `rol_no_asignable`. Ninguna de las restricciones de §10.7 se relajó.
+
+### Seguridad y bitácora (230–232)
+
+230. `SELECT count(*) FROM auditoria_log WHERE detalle::text ILIKE '%ClaveManual2026%' OR detalle::text ILIKE '%ResetManual2026%' OR detalle::text ILIKE '%NuevaClave2026%'` devuelve **0** (ninguna contraseña, ni manual ni nueva, se registra en la bitácora).
+231. `information_schema.columns` para `usuarios` sigue sin ninguna columna que guarde contraseña en claro (única columna de credencial: `password_hash`) y no se agregó ni eliminó ninguna columna respecto del build 4; **no existe** ningún archivo `db/migrations/011_*.sql`.
+232. `GET $API/api/auditoria/log` con `T_ADMIN` contiene al menos una entrada `usuario_creado` con `detalle.modo_password === "manual"` y al menos una entrada `password_cambiado` con `detalle.sin_password_actual === true`.
+
+### PWA — cambio obligatorio simplificado (233–235)
+
+233. Playwright: iniciar sesión con un usuario recién creado usando su contraseña inicial lleva a `/cambiar-password`, muestra `[data-testid="aviso-cambio-obligatorio"]` y `[data-testid="form-cambio-password"]`, y el conteo de `[data-testid="input-password-actual"]` en la página es **0**.
+234. Playwright: en ese estado, llenar `input-password-nueva` e `input-password-confirmar` con `NuevaClavePwa2026` y pulsar `btn-cambiar-password` muestra un mensaje de éxito en español, saca al usuario de `/cambiar-password` a la pantalla de su rol, y al recargar ya no aparece `[data-testid="aviso-cambio-obligatorio"]`.
+235. Playwright: con `capturista1` (flag en `false`), abrir "Cambiar mi contraseña" desde `[data-testid="menu-usuario"]` muestra `/cambiar-password` **con** `[data-testid="input-password-actual"]` visible (1 elemento) y **sin** `[data-testid="aviso-cambio-obligatorio"]`; enviar el formulario dejando vacía la contraseña actual muestra un error visible en español y no cambia la contraseña en BD.
+
+### PWA — contraseña manual desde `/usuarios` (236–239)
+
+236. Playwright con `admin` en `/usuarios`: pulsar `[data-testid="btn-nuevo-usuario"]` muestra `[data-testid="select-modo-password"]` con valor inicial `automatica` y **sin** `[data-testid="input-password-manual"]` visible; al seleccionar "Escribir yo mismo" aparece `[data-testid="input-password-manual"]`.
+237. Playwright: con modo manual y una contraseña de 4 caracteres, pulsar "Guardar" muestra `[data-testid="error-password-manual"]` con mensaje en español y **no** crea el usuario (no aparece fila nueva en `[data-testid="tabla-usuarios"]` tras recargar).
+238. Playwright: crear un usuario en modo manual con `ClavePwaManual2026` abre `[data-testid="modal-password-temporal"]` cuyo `[data-testid="texto-password-temporal"]` es exactamente `ClavePwaManual2026` y que muestra el aviso de que no se volverá a mostrar; tras cerrar el modal y recargar `/usuarios`, esa cadena **no** aparece en el DOM y el usuario sí aparece en la tabla como "Activo" con el badge "Cambio pendiente".
+239. Playwright: pulsar `[data-testid="btn-reset-password"]` en esa fila abre `[data-testid="modal-reset-password"]` con `[data-testid="select-modo-password-reset"]`; elegir "Escribir yo mismo", escribir `ClaveReset2026`, confirmar con `[data-testid="btn-confirmar-reset"]` abre `[data-testid="modal-password-temporal"]` mostrando exactamente `ClaveReset2026`; con la opción por defecto (`automatica`) el valor mostrado es una cadena de 14 caracteres distinta.
+
+### Documentación (240)
+
+240. `README.md` documenta, en la sección de administración de usuarios: (a) que en el **primer inicio de sesión obligatorio no se pide la contraseña actual** y por qué (el usuario ya se autenticó con ella); (b) que el **cambio voluntario sí la sigue pidiendo**; (c) que `admin`/`editor_datos` pueden elegir entre **"Generar automática"** y **"Escribir yo mismo"** al crear o resetear; (d) que en **ambos** modos el usuario queda obligado a cambiar la contraseña en su primer acceso; y (e) que la contraseña se sigue mostrando **una sola vez** y no se puede reconsultar.
+
+**Definición de "terminado" (build 5):** los **240** criterios pasan (211 acumulados de los builds 1–4, con las excepciones de §11.8 evaluadas según el comportamiento nuevo, + 29 de esta extensión).

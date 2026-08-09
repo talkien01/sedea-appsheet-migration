@@ -167,9 +167,24 @@ base de datos con SQL para crear capturistas.
 
 1. **Nuevo usuario** → nombre de acceso, nombre completo, rol y —solo si el rol es
    **Capturista**— su Dirección Regional. Los demás roles no llevan Regional.
-2. Al guardar, el sistema genera una **contraseña temporal de 14 caracteres** y la
-   muestra en un modal.
-3. **La contraseña temporal se muestra una sola vez.** No se envía por correo, no
+2. **Contraseña inicial:** el formulario incluye un selector con dos opciones.
+   - **Generar automática** (opción por defecto): el sistema genera una
+     **contraseña temporal de 14 caracteres**, sin caracteres ambiguos, y la
+     muestra en un modal.
+   - **Escribir yo mismo**: el `admin` o `editor_datos` **teclea la contraseña**
+     que quiere asignarle a esa persona. Debe tener mínimo 10 caracteres, con al
+     menos una letra y un número. Útil para acordar una clave por teléfono con
+     personal de campo sin obligarlo a copiar 14 caracteres aleatorios.
+
+   El mismo selector aparece en **Resetear contraseña**.
+
+   **En los dos modos el usuario queda obligado a cambiar la contraseña en su
+   primer acceso.** Lo único que cambia es quién elige el valor inicial, nunca la
+   obligación de cambiarlo: no existe forma de crear ni resetear una cuenta
+   dejándola exenta de ese cambio.
+3. **La contraseña se muestra una sola vez**, sea generada o escrita a mano (se
+   muestra también la manual para confirmar exactamente qué quedó guardado antes
+   de comunicárselo al usuario). No se envía por correo, no
    se guarda en claro en ninguna parte, no aparece en la bitácora y **no se puede
    volver a consultar**: ni por API, ni en la base, ni en los registros. Si se
    pierde, se hace un **Resetear contraseña**, que genera otra distinta.
@@ -177,6 +192,31 @@ base de datos con SQL para crear capturistas.
    la app lo lleva a `/cambiar-password` y **no le deja usar nada más** hasta que
    la cambie (el backend responde `cambio_password_requerido` a cualquier otra
    ruta). Esto aplica a **los cuatro roles**, no solo a los capturistas.
+
+### Cambio obligatorio vs. cambio voluntario
+
+Son dos flujos con la misma pantalla y con una diferencia deliberada:
+
+| | Contraseña actual |
+|---|---|
+| **Cambio obligatorio** (primer acceso, o tras un reseteo) | **No se pide.** El campo ni siquiera aparece en pantalla |
+| **Cambio voluntario** (*Cambiar mi contraseña*, en cualquier momento) | **Sí se pide** y se valida |
+
+**Por qué el obligatorio no la pide:** el usuario **acaba de escribir esa misma
+contraseña** para iniciar sesión y obtener el token con el que llama al endpoint.
+Volver a pedírsela un segundo después no aporta seguridad y sí fricción real para
+personal de campo que está tecleando 14 caracteres aleatorios en un teléfono. El
+backend confía en el token recién emitido; si el cliente manda `password_actual`
+de todas formas, la ignora en silencio.
+
+**Por qué el voluntario sí la sigue pidiendo:** ahí no hay ninguna autenticación
+reciente. Es la protección contra que alguien que encuentre un dispositivo con la
+sesión abierta se apropie de la cuenta cambiando la contraseña sin conocerla. Esa
+validación **no se relajó** en ningún caso.
+
+En ambos flujos se sigue exigiendo que la nueva contraseña tenga al menos 10
+caracteres con una letra y un número, y que sea **distinta de la vigente**
+(se compara contra el hash, nunca contra un valor enviado por el cliente).
 
 ### Reglas que conviene conocer
 
@@ -205,7 +245,8 @@ base de datos con SQL para crear capturistas.
 
 1. Entra con `admin` y crea desde `/usuarios` las cuentas reales de las Direcciones
    Regionales, con su Regional correspondiente.
-2. Entrega a cada persona su contraseña temporal; al entrar la cambiará.
+2. Entrega a cada persona su contraseña inicial (generada o escrita por ti); al
+   entrar la cambiará.
 3. **Desactiva —no borres— las cuentas demo** (`capturista1`, `auditor1`,
    `editor1`) que no se vayan a usar, y cambia la contraseña de `admin` desde
    *Cambiar mi contraseña*. Desactivarlas conserva el historial de las pruebas;
@@ -284,11 +325,11 @@ Rutas `/auditoria` y `/auditoria/beneficiario/:id`, accesibles solo para los rol
 | GET | `/api/estadisticas/avance` | `admin`, `auditor`, `editor_datos` |
 | GET | `/api/estadisticas/staging` | `admin`, `auditor`, `editor_datos` |
 | GET | `/api/usuarios` | `admin`, `editor_datos` |
-| POST | `/api/usuarios` | `admin`, `editor_datos` (devuelve la contraseña temporal) |
+| POST | `/api/usuarios` | `admin`, `editor_datos` (devuelve la contraseña inicial; acepta `modo_password`) |
 | PATCH | `/api/usuarios/:id` | `admin`, `editor_datos` |
-| POST | `/api/usuarios/:id/reset-password` | `admin`, `editor_datos` |
+| POST | `/api/usuarios/:id/reset-password` | `admin`, `editor_datos` (acepta `modo_password`) |
 | PATCH | `/api/usuarios/:id/activo` | `admin`, `editor_datos` (alta/baja lógica) |
-| PATCH | `/api/mi-cuenta/password` | autenticado (cualquier rol) |
+| PATCH | `/api/mi-cuenta/password` | autenticado (cualquier rol; `password_actual` solo en el cambio voluntario) |
 | GET | `/media/*` | autenticado (header o `?token=`) |
 
 **No existe `DELETE /api/usuarios/:id`:** las cuentas nunca se borran, se

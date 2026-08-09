@@ -8,7 +8,9 @@ import {
   CLAVES_EDICION_USUARIO,
   esquemaCrearUsuario,
   esquemaEditarUsuario,
-  type CambioUsuario
+  validarPasswordManual,
+  type CambioUsuario,
+  type ModoPassword
 } from '@sedea/shared';
 import { ErrorApi } from '../plugins/errores.js';
 import { contarAdminsActivos, regionalValida } from '../db/queries/usuarios.js';
@@ -46,6 +48,26 @@ export function validarAlta(cuerpo: unknown) {
   const parseado = esquemaCrearUsuario.safeParse(crudo);
   if (!parseado.success) throw error422('payload_invalido', 'Datos inválidos.');
   return parseado.data;
+}
+
+/**
+ * Resuelve la contrasena inicial de un alta o un reset segun el modo (11.5).
+ * En modo `automatica` se ignora `password_manual` aunque venga (no es error);
+ * en modo `manual` se exige y se valida con la politica de 10.5 / D30.
+ * Devuelve siempre la cadena en claro, que solo vive en memoria y en la
+ * respuesta HTTP: nunca se persiste ni se registra en la bitacora.
+ */
+export function resolverPasswordInicial(
+  modo: ModoPassword,
+  passwordManual: string | undefined,
+  generar: () => string
+): { password: string; modo: ModoPassword } {
+  if (modo === 'manual') {
+    const fallo = validarPasswordManual(passwordManual);
+    if (fallo) throw error422(fallo.codigo, fallo.mensaje);
+    return { password: passwordManual as string, modo: 'manual' };
+  }
+  return { password: generar(), modo: 'automatica' };
 }
 
 /** Valida el payload de edicion (E36). `usuario` queda fuera por D21. */

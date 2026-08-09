@@ -1,6 +1,9 @@
 // Cambio de la propia contrasena (E39). Disponible para los 4 roles, tanto en
 // el cambio obligatorio de la primera entrada como en el cambio voluntario.
 // Es ruta de lista blanca: funciona aunque debe_cambiar_password sea true.
+// Build 5 (11.4): la contrasena actual solo se exige en el cambio VOLUNTARIO.
+// En el obligatorio se omite (D25) porque el usuario ya demostro conocerla al
+// iniciar sesion y obtener el token con el que llama a este endpoint.
 import type { FastifyInstance } from 'fastify';
 import { esquemaCambioPassword, validarFuerzaPassword } from '@sedea/shared';
 import { ErrorApi } from '../plugins/errores.js';
@@ -27,8 +30,23 @@ export default async function rutasMiCuenta(app: FastifyInstance): Promise<void>
       const hashActual = await obtenerHash(actor.id);
       if (!hashActual) throw error422('payload_invalido', 'Datos inválidos.');
 
-      if (!verificarPassword(password_actual, hashActual)) {
-        throw error422('password_actual_incorrecta', 'La contraseña actual no es correcta.');
+      // El modo se decide SIEMPRE con el flag leido de BD, nunca con un campo
+      // del body ni con un claim del token (11.4).
+      const perfil = await perfilVigente(actor.id);
+      const eraObligatorio = perfil?.debe_cambiar_password === true;
+
+      if (eraObligatorio) {
+        // D25: el usuario acaba de autenticarse con la contrasena temporal para
+        // obtener este token, asi que no se le vuelve a pedir. Si el cliente
+        // envia `password_actual` de todas formas, se ignora en silencio.
+      } else {
+        // D26: el cambio voluntario no se relaja en absoluto.
+        if (password_actual === undefined) {
+          throw error422('password_actual_requerida', 'Debes escribir tu contraseña actual.');
+        }
+        if (!verificarPassword(password_actual, hashActual)) {
+          throw error422('password_actual_incorrecta', 'La contraseña actual no es correcta.');
+        }
       }
 
       const debil = validarFuerzaPassword(password_nueva);
@@ -38,10 +56,6 @@ export default async function rutasMiCuenta(app: FastifyInstance): Promise<void>
         throw error422('password_repetida', 'La nueva contraseña debe ser distinta de la actual.');
       }
 
-      // El flag previo se registra en la bitacora para distinguir el cambio
-      // obligatorio del voluntario.
-      const perfil = await perfilVigente(actor.id);
-      const eraObligatorio = perfil?.debe_cambiar_password === true;
       const hashNuevo = hashearPassword(password_nueva);
 
       await enTransaccion(async (cliente) => {
@@ -52,7 +66,8 @@ export default async function rutasMiCuenta(app: FastifyInstance): Promise<void>
           entidad: 'usuario',
           entidadId: actor.id,
           // Sin rastro de la contrasena, ni de la anterior ni de la nueva.
-          detalle: { obligatorio: eraObligatorio },
+          // `sin_password_actual` deja constancia de que se acepto por token.
+          detalle: { obligatorio: eraObligatorio, sin_password_actual: eraObligatorio },
           ip: peticion.ip,
           userAgent: (peticion.headers['user-agent'] as string | undefined)?.slice(0, 300) ?? null
         });

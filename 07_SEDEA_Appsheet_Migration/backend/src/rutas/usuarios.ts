@@ -31,6 +31,7 @@ import {
   error422,
   exigirQuedaOtroAdmin,
   exigirRolAdministrable,
+  resolverPasswordInicial,
   resolverRegional,
   validarAlta,
   validarEdicion
@@ -85,8 +86,13 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
 
     const regionalId = await resolverRegional(datos.rol, datos.regional_id);
 
-    // La cadena en claro solo vive en memoria y en la respuesta HTTP.
-    const passwordTemporal = generarPasswordTemporal();
+    // La cadena en claro solo vive en memoria y en la respuesta HTTP, sea
+    // generada por el backend o escrita por el actor (D27/D29).
+    const { password: passwordTemporal, modo: modoPassword } = resolverPasswordInicial(
+      datos.modo_password,
+      datos.password_manual,
+      generarPasswordTemporal
+    );
     const hash = hashearPassword(passwordTemporal);
 
     const id = await enTransaccion(async (cliente) => {
@@ -105,12 +111,14 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
         accion: 'usuario_creado',
         entidad: 'usuario',
         entidadId: nuevoId,
-        // NUNCA se registra la contrasena temporal.
+        // NUNCA se registra la contrasena, ni la generada ni la manual:
+        // solo el MODO con el que se eligio.
         detalle: {
           usuario: datos.usuario,
           rol: datos.rol,
           regional_id: regionalId,
-          creado_por_rol: actor.rol
+          creado_por_rol: actor.rol,
+          modo_password: modoPassword
         },
         ip: peticion.ip,
         userAgent: (peticion.headers['user-agent'] as string | undefined)?.slice(0, 300) ?? null
@@ -123,6 +131,7 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
       ok: true,
       usuario: creado,
       password_temporal: passwordTemporal,
+      modo_password: modoPassword,
       aviso: AVISO_PASSWORD_TEMPORAL
     });
   });
@@ -219,7 +228,13 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
       if (!actual) throw error404('no_encontrado', 'El usuario no existe.');
       exigirRolAdministrable(actor.rol, actual.rol);
 
-      const passwordTemporal = generarPasswordTemporal();
+      // Igual que en el alta: automatica por defecto, manual si el actor la
+      // escribio. En ambos casos el usuario queda obligado a cambiarla (D28).
+      const { password: passwordTemporal, modo: modoPassword } = resolverPasswordInicial(
+        parseado.data.modo_password,
+        parseado.data.password_manual,
+        generarPasswordTemporal
+      );
       const hash = hashearPassword(passwordTemporal);
 
       await enTransaccion(async (cliente) => {
@@ -233,7 +248,8 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
           detalle: {
             usuario: actual.usuario,
             motivo: parseado.data.motivo ?? null,
-            reseteado_por_rol: actor.rol
+            reseteado_por_rol: actor.rol,
+            modo_password: modoPassword
           },
           ip: peticion.ip,
           userAgent: (peticion.headers['user-agent'] as string | undefined)?.slice(0, 300) ?? null
@@ -245,6 +261,7 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
         usuario_id: id,
         usuario: actual.usuario,
         password_temporal: passwordTemporal,
+        modo_password: modoPassword,
         aviso: AVISO_PASSWORD_TEMPORAL
       });
     }

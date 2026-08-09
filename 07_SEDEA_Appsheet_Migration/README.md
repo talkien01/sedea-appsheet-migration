@@ -140,10 +140,76 @@ define, reutiliza la de los demás.
 | `editor1` | `editor_datos` | Depuración de staging y corrección de datos en producción (perfil de gabinete central, sin Regional asignada) |
 
 > **Advertencia:** estos usuarios existen únicamente para pruebas.
-> **Cámbialos o elimínalos antes de operar en producción**, y define un
+> **Desactívalos desde `/usuarios` (nunca los borres) antes de operar en
+> producción** —ver *Administración de usuarios*—, y define un
 > `SEED_ADMIN_PASSWORD` propio. Ninguna contraseña está escrita en el código
 > fuente ni en los archivos SQL: el seeder genera los hashes bcrypt en tiempo de
 > ejecución a partir del entorno.
+
+---
+
+## Administración de usuarios
+
+Las cuentas reales se dan de alta **desde la propia aplicación**, en la pantalla
+`/usuarios` (enlace **Usuarios** de la barra superior). Ya no hace falta tocar la
+base de datos con SQL para crear capturistas.
+
+### Quién entra
+
+| Rol | Acceso a `/usuarios` |
+|---|---|
+| `admin` | Sí, sobre todas las cuentas, incluidas las de otros administradores |
+| `editor_datos` | Sí, pero **no puede crear ni modificar cuentas con rol `admin`** (evita la escalada de privilegios) |
+| `capturista` | **No.** La API responde 403 y la PWA muestra "No tienes permiso para ver esta sección." |
+| `auditor` | **No.** Mismo comportamiento que `capturista` |
+
+### Alta de una cuenta
+
+1. **Nuevo usuario** → nombre de acceso, nombre completo, rol y —solo si el rol es
+   **Capturista**— su Dirección Regional. Los demás roles no llevan Regional.
+2. Al guardar, el sistema genera una **contraseña temporal de 14 caracteres** y la
+   muestra en un modal.
+3. **La contraseña temporal se muestra una sola vez.** No se envía por correo, no
+   se guarda en claro en ninguna parte, no aparece en la bitácora y **no se puede
+   volver a consultar**: ni por API, ni en la base, ni en los registros. Si se
+   pierde, se hace un **Resetear contraseña**, que genera otra distinta.
+4. Se le entrega al usuario por un canal seguro. En su **primer inicio de sesión**
+   la app lo lleva a `/cambiar-password` y **no le deja usar nada más** hasta que
+   la cambie (el backend responde `cambio_password_requerido` a cualquier otra
+   ruta). Esto aplica a **los cuatro roles**, no solo a los capturistas.
+
+### Reglas que conviene conocer
+
+- **El nombre de acceso es inmutable.** Una vez creado no se puede cambiar: es la
+  clave con la que se lee el historial. Si quedó mal escrito, se desactiva esa
+  cuenta y se crea otra.
+- **Las bajas se hacen desactivando la cuenta, nunca borrándola.** No existe botón
+  de eliminar ni endpoint `DELETE`. La fila se conserva para que
+  `capturas.usuario_id`, `staging_beneficiarios.revisado_por` y
+  `auditoria_log.usuario_id` sigan apuntando a un nombre real: borrar un usuario
+  destruiría la trazabilidad de las evidencias que capturó y de las decisiones que
+  tomó sobre el padrón.
+- Una cuenta desactivada **deja de servir de inmediato**: no puede iniciar sesión y
+  sus tokens vigentes dejan de funcionar sin esperar a que expiren.
+- No se puede desactivar la **propia** cuenta ni dejar al sistema **sin ningún
+  administrador activo**.
+- Cualquier usuario, de cualquier rol, puede cambiar su contraseña cuando quiera
+  desde **Cambiar mi contraseña**, en la barra superior. La contraseña debe tener
+  al menos 10 caracteres con una letra y un número. **No hay recuperación por
+  correo**: quien la olvide le pide a un `admin` o `editor_datos` un reseteo.
+- Todo queda en la bitácora (`usuario_creado`, `usuario_editado`,
+  `usuario_password_reset`, `usuario_activado`, `usuario_desactivado`,
+  `password_cambiado`) **sin registrar nunca la contraseña**.
+
+### Primer paso al pasar a producción
+
+1. Entra con `admin` y crea desde `/usuarios` las cuentas reales de las Direcciones
+   Regionales, con su Regional correspondiente.
+2. Entrega a cada persona su contraseña temporal; al entrar la cambiará.
+3. **Desactiva —no borres— las cuentas demo** (`capturista1`, `auditor1`,
+   `editor1`) que no se vayan a usar, y cambia la contraseña de `admin` desde
+   *Cambiar mi contraseña*. Desactivarlas conserva el historial de las pruebas;
+   borrarlas lo rompería.
 
 ---
 
@@ -217,7 +283,16 @@ Rutas `/auditoria` y `/auditoria/beneficiario/:id`, accesibles solo para los rol
 | GET | `/api/estadisticas/apoyos` | `admin`, `auditor`, `editor_datos` |
 | GET | `/api/estadisticas/avance` | `admin`, `auditor`, `editor_datos` |
 | GET | `/api/estadisticas/staging` | `admin`, `auditor`, `editor_datos` |
+| GET | `/api/usuarios` | `admin`, `editor_datos` |
+| POST | `/api/usuarios` | `admin`, `editor_datos` (devuelve la contraseña temporal) |
+| PATCH | `/api/usuarios/:id` | `admin`, `editor_datos` |
+| POST | `/api/usuarios/:id/reset-password` | `admin`, `editor_datos` |
+| PATCH | `/api/usuarios/:id/activo` | `admin`, `editor_datos` (alta/baja lógica) |
+| PATCH | `/api/mi-cuenta/password` | autenticado (cualquier rol) |
 | GET | `/media/*` | autenticado (header o `?token=`) |
+
+**No existe `DELETE /api/usuarios/:id`:** las cuentas nunca se borran, se
+desactivan (ver *Administración de usuarios*).
 
 **No existe `POST /api/beneficiarios` ni `DELETE /api/beneficiarios/:id`:** no hay
 alta ni baja manual de beneficiarios; todo beneficiario nace de una importación de

@@ -2,14 +2,17 @@
 // Al cerrarlo, quien lo abrio borra el valor de su estado: no se guarda en
 // localStorage ni en IndexedDB y no hay forma de volver a consultarlo.
 import { useState } from 'react';
+import type { ModoPassword } from '@sedea/shared';
 
 interface Props {
   password: string;
   usuario: string;
+  /** Modo con que se decidio: solo cambia el titulo (D29). */
+  modo?: ModoPassword;
   alCerrar: () => void;
 }
 
-export default function ModalPasswordTemporal({ password, usuario, alCerrar }: Props) {
+export default function ModalPasswordTemporal({ password, usuario, modo, alCerrar }: Props) {
   const [copiada, setCopiada] = useState(false);
 
   const copiar = async () => {
@@ -34,7 +37,7 @@ export default function ModalPasswordTemporal({ password, usuario, alCerrar }: P
   return (
     <div className="modal-fondo" role="dialog" aria-modal="true">
       <div className="modal tarjeta" data-testid="modal-password-temporal">
-        <h2>Contraseña temporal generada</h2>
+        <h2>{modo === 'manual' ? 'Contraseña asignada' : 'Contraseña temporal generada'}</h2>
 
         <div className="mensaje aviso" role="alert">
           Cópiala ahora: no se volverá a mostrar. Entrégasela al usuario por un canal seguro;

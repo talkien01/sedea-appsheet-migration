@@ -261,6 +261,9 @@ export const api = {
     nombre_completo: string;
     rol: string;
     regional_id?: number | null;
+    /** Build 5: ausente ⇒ el backend genera la temporal automatica. */
+    modo_password?: 'automatica' | 'manual';
+    password_manual?: string;
   }): Promise<RespuestaAltaUsuario> {
     return peticion<RespuestaAltaUsuario>('/usuarios', {
       method: 'POST',
@@ -275,10 +278,18 @@ export const api = {
     return peticion(`/usuarios/${id}`, { method: 'PATCH', body: JSON.stringify(cambios) });
   },
 
-  async resetearPassword(id: number, motivo?: string): Promise<RespuestaResetPassword> {
+  async resetearPassword(
+    id: number,
+    opciones?: { motivo?: string; modo_password?: 'automatica' | 'manual'; password_manual?: string }
+  ): Promise<RespuestaResetPassword> {
+    const cuerpo: Record<string, unknown> = { motivo: opciones?.motivo || null };
+    // Solo se envia el modo cuando el actor lo eligio; sin el, el backend
+    // aplica `automatica` (retrocompatible con el build 4).
+    if (opciones?.modo_password) cuerpo.modo_password = opciones.modo_password;
+    if (opciones?.modo_password === 'manual') cuerpo.password_manual = opciones.password_manual;
     return peticion<RespuestaResetPassword>(`/usuarios/${id}/reset-password`, {
       method: 'POST',
-      body: JSON.stringify({ motivo: motivo || null })
+      body: JSON.stringify(cuerpo)
     });
   },
 
@@ -293,13 +304,19 @@ export const api = {
     });
   },
 
+  /**
+   * Cambio de la propia contrasena (11.4). En el flujo obligatorio se llama
+   * SIN `password_actual`: el body ni siquiera incluye la clave (D25).
+   */
   async cambiarMiPassword(
-    passwordActual: string,
+    passwordActual: string | null,
     passwordNueva: string
   ): Promise<{ ok: true; debe_cambiar_password: false }> {
+    const cuerpo: Record<string, unknown> = { password_nueva: passwordNueva };
+    if (passwordActual !== null) cuerpo.password_actual = passwordActual;
     return peticion('/mi-cuenta/password', {
       method: 'PATCH',
-      body: JSON.stringify({ password_actual: passwordActual, password_nueva: passwordNueva })
+      body: JSON.stringify(cuerpo)
     });
   }
 };

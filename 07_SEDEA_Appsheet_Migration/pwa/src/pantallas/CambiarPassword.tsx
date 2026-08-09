@@ -1,8 +1,10 @@
 // Cambio de contrasena para cualquier rol autenticado.
 // Dos modos con el mismo componente:
-//  - Obligatorio: debe_cambiar_password = true (contrasena temporal recien
-//    entregada). La navegacion queda bloqueada hasta completarlo.
-//  - Voluntario: desde el menu de usuario, en cualquier momento.
+//  - Obligatorio: debe_cambiar_password = true (contrasena inicial recien
+//    entregada). La navegacion queda bloqueada hasta completarlo y NO se pide
+//    la contrasena actual (D25): el usuario ya se autentico con ella.
+//  - Voluntario: desde el menu de usuario, en cualquier momento. Aqui la
+//    contrasena actual SI se pide y se valida (D26).
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { validarFuerzaPassword } from '@sedea/shared';
@@ -38,6 +40,10 @@ export default function CambiarPassword() {
     setError(null);
 
     // Validacion en cliente: si falla, no se llama a la API.
+    if (!obligatorio && actual.length === 0) {
+      setError('Debes escribir tu contraseña actual.');
+      return;
+    }
     const debil = validarFuerzaPassword(nueva);
     if (debil) {
       setError(debil.mensaje);
@@ -47,14 +53,17 @@ export default function CambiarPassword() {
       setError('La confirmación no coincide con la nueva contraseña.');
       return;
     }
-    if (nueva === actual) {
+    // En modo obligatorio no hay contrasena actual con que comparar: esa regla
+    // la valida el backend contra el hash y se muestra su mensaje.
+    if (!obligatorio && nueva === actual) {
       setError('La nueva contraseña debe ser distinta de la actual.');
       return;
     }
 
     setEnviando(true);
     try {
-      await api.cambiarMiPassword(actual, nueva);
+      // En modo obligatorio el body NO incluye `password_actual`.
+      await api.cambiarMiPassword(obligatorio ? null : actual, nueva);
       setExito(true);
       const actualizado = await refrescarPerfil();
       const destino = obligatorio ? await destinoPorRol(actualizado ?? perfil) : null;
@@ -76,7 +85,7 @@ export default function CambiarPassword() {
 
       {obligatorio && (
         <div className="mensaje aviso" role="alert" data-testid="aviso-cambio-obligatorio">
-          Por seguridad, debes cambiar tu contraseña temporal antes de usar el sistema.
+          Por seguridad, define tu nueva contraseña para empezar a usar el sistema.
         </div>
       )}
 
@@ -87,17 +96,21 @@ export default function CambiarPassword() {
       )}
 
       <form data-testid="form-cambio-password" onSubmit={(e) => void enviar(e)}>
-        <div className="campo">
-          <label htmlFor="input-password-actual">Contraseña actual</label>
-          <input
-            id="input-password-actual"
-            data-testid="input-password-actual"
-            type="password"
-            autoComplete="current-password"
-            value={actual}
-            onChange={(e) => setActual(e.target.value)}
-          />
-        </div>
+        {/* En el cambio obligatorio este campo NO se renderiza (D25): el
+            usuario ya demostro conocer su contrasena al iniciar sesion. */}
+        {!obligatorio && (
+          <div className="campo">
+            <label htmlFor="input-password-actual">Contraseña actual</label>
+            <input
+              id="input-password-actual"
+              data-testid="input-password-actual"
+              type="password"
+              autoComplete="current-password"
+              value={actual}
+              onChange={(e) => setActual(e.target.value)}
+            />
+          </div>
+        )}
 
         <div className="campo">
           <label htmlFor="input-password-nueva">Nueva contraseña</label>

@@ -3,12 +3,18 @@
 // Las bajas se hacen desactivando la cuenta; no existe ningun control de
 // borrado, para conservar la trazabilidad de capturas y auditoria (D16).
 import { useCallback, useEffect, useState } from 'react';
-import { ETIQUETAS_ROL, ROLES_USUARIO, type UsuarioAdmin } from '@sedea/shared';
+import {
+  ETIQUETAS_ROL,
+  ROLES_USUARIO,
+  type ModoPassword,
+  type UsuarioAdmin
+} from '@sedea/shared';
 import { useSesion } from '../App';
 import { api, ErrorPeticion } from '../api/cliente';
 import { useEstadoRed } from '../sync/estadoRed';
 import FormUsuario from '../componentes/FormUsuario';
 import ModalPasswordTemporal from '../componentes/ModalPasswordTemporal';
+import ModalResetPassword from '../componentes/ModalResetPassword';
 
 interface RegionalOpcion {
   id: number;
@@ -35,11 +41,17 @@ export default function Usuarios() {
   const [guardando, setGuardando] = useState(false);
   const [errorForm, setErrorForm] = useState<string | null>(null);
 
-  // La temporal vive solo en este estado y se borra al cerrar el modal.
+  // La contrasena vive solo en este estado y se borra al cerrar el modal.
   const [passwordTemporal, setPasswordTemporal] = useState<{
     valor: string;
     usuario: string;
+    modo: ModoPassword;
   } | null>(null);
+
+  // Reseteo: fila elegida, estado de envio y error de la API (11.6.3).
+  const [reseteando, setReseteando] = useState<UsuarioAdmin | null>(null);
+  const [enviandoReset, setEnviandoReset] = useState(false);
+  const [errorReset, setErrorReset] = useState<string | null>(null);
 
   // Debounce de 300 ms para no consultar en cada tecla.
   useEffect(() => {
@@ -101,6 +113,8 @@ export default function Usuarios() {
     nombre_completo: string;
     rol: string;
     regional_id: number | null;
+    modo_password?: ModoPassword;
+    password_manual?: string;
   }) => {
     setGuardando(true);
     setErrorForm(null);
@@ -117,7 +131,8 @@ export default function Usuarios() {
         setFormAbierto(false);
         setPasswordTemporal({
           valor: respuesta.password_temporal,
-          usuario: respuesta.usuario.usuario
+          usuario: respuesta.usuario.usuario,
+          modo: respuesta.modo_password ?? 'automatica'
         });
       }
       await cargar();
@@ -128,18 +143,31 @@ export default function Usuarios() {
     }
   };
 
-  const resetear = async (fila: UsuarioAdmin) => {
-    const confirmado = window.confirm(
-      'Se generará una contraseña temporal y el usuario deberá cambiarla al entrar. ¿Continuar?'
-    );
-    if (!confirmado) return;
-    setError(null);
+  const abrirReset = (fila: UsuarioAdmin) => {
+    setErrorReset(null);
+    setReseteando(fila);
+  };
+
+  const confirmarReset = async (opciones: {
+    modo_password: ModoPassword;
+    password_manual?: string;
+  }) => {
+    if (!reseteando) return;
+    setEnviandoReset(true);
+    setErrorReset(null);
     try {
-      const respuesta = await api.resetearPassword(fila.id);
-      setPasswordTemporal({ valor: respuesta.password_temporal, usuario: respuesta.usuario });
+      const respuesta = await api.resetearPassword(reseteando.id, opciones);
+      setReseteando(null);
+      setPasswordTemporal({
+        valor: respuesta.password_temporal,
+        usuario: respuesta.usuario,
+        modo: respuesta.modo_password ?? 'automatica'
+      });
       await cargar();
     } catch (fallo) {
-      setError((fallo as Error).message);
+      setErrorReset((fallo as Error).message);
+    } finally {
+      setEnviandoReset(false);
     }
   };
 
@@ -292,7 +320,7 @@ export default function Usuarios() {
                       type="button"
                       className="secundario"
                       data-testid="btn-reset-password"
-                      onClick={() => void resetear(fila)}
+                      onClick={() => abrirReset(fila)}
                     >
                       Resetear contraseña
                     </button>
@@ -324,10 +352,21 @@ export default function Usuarios() {
         />
       )}
 
+      {reseteando && (
+        <ModalResetPassword
+          usuario={reseteando}
+          enviando={enviandoReset}
+          errorApi={errorReset}
+          alConfirmar={(opciones) => void confirmarReset(opciones)}
+          alCancelar={() => setReseteando(null)}
+        />
+      )}
+
       {passwordTemporal && (
         <ModalPasswordTemporal
           password={passwordTemporal.valor}
           usuario={passwordTemporal.usuario}
+          modo={passwordTemporal.modo}
           // Al cerrar se borra del estado: no queda en el DOM ni se puede reabrir.
           alCerrar={() => setPasswordTemporal(null)}
         />

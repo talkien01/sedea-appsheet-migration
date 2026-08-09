@@ -2,7 +2,14 @@
 // En edicion, el nombre de acceso se muestra bloqueado: es la clave con la que
 // se lee el historial de capturas y auditoria, por eso es inmutable (D21).
 import { useState, type FormEvent } from 'react';
-import { ETIQUETAS_ROL, PATRON_USUARIO, type UsuarioAdmin } from '@sedea/shared';
+import {
+  AYUDA_PASSWORD_MANUAL,
+  ETIQUETAS_ROL,
+  PATRON_USUARIO,
+  validarPasswordManual,
+  type ModoPassword,
+  type UsuarioAdmin
+} from '@sedea/shared';
 
 interface RegionalOpcion {
   id: number;
@@ -22,6 +29,9 @@ interface Props {
     nombre_completo: string;
     rol: string;
     regional_id: number | null;
+    /** Solo en alta: como se decide la contrasena inicial (D27). */
+    modo_password?: ModoPassword;
+    password_manual?: string;
   }) => void;
   alCancelar: () => void;
 }
@@ -44,9 +54,24 @@ export default function FormUsuario({
     usuario?.regional_id ? String(usuario.regional_id) : ''
   );
 
+  // Modo de contrasena: solo aplica al alta; por defecto, automatica (D27).
+  const [modoPassword, setModoPassword] = useState<ModoPassword>('automatica');
+  const [passwordManual, setPasswordManual] = useState('');
+
   const [errorUsuario, setErrorUsuario] = useState<string | null>(null);
   const [errorNombre, setErrorNombre] = useState<string | null>(null);
   const [errorRegional, setErrorRegional] = useState<string | null>(null);
+  const [errorPasswordManual, setErrorPasswordManual] = useState<string | null>(null);
+
+  /** Al volver a "automatica" el campo se oculta y se limpia (11.6.2). */
+  const cambiarModoPassword = (nuevo: string) => {
+    const modo = nuevo === 'manual' ? 'manual' : 'automatica';
+    setModoPassword(modo);
+    if (modo === 'automatica') {
+      setPasswordManual('');
+      setErrorPasswordManual(null);
+    }
+  };
 
   // La Regional solo aplica al capturista (D22).
   const regionalAplica = rol === 'capturista';
@@ -64,6 +89,7 @@ export default function FormUsuario({
     setErrorUsuario(null);
     setErrorNombre(null);
     setErrorRegional(null);
+    setErrorPasswordManual(null);
 
     let valido = true;
     const acceso = nombreAcceso.trim().toLowerCase();
@@ -89,6 +115,15 @@ export default function FormUsuario({
       valido = false;
     }
 
+    // La contrasena manual se valida con la misma politica del backend (D30).
+    if (esAlta && modoPassword === 'manual') {
+      const fallo = validarPasswordManual(passwordManual);
+      if (fallo) {
+        setErrorPasswordManual(fallo.mensaje);
+        valido = false;
+      }
+    }
+
     // Si la validacion de cliente falla no se llama a la API.
     if (!valido) return;
 
@@ -96,7 +131,11 @@ export default function FormUsuario({
       usuario: acceso,
       nombre_completo: nombre,
       rol,
-      regional_id: regionalAplica ? Number(regionalId) : null
+      regional_id: regionalAplica ? Number(regionalId) : null,
+      // En edicion no se manda modo alguno: la contrasena solo se cambia con
+      // "Resetear contraseña" (campo_no_editable).
+      ...(esAlta ? { modo_password: modoPassword } : {}),
+      ...(esAlta && modoPassword === 'manual' ? { password_manual: passwordManual } : {})
     });
   };
 
@@ -194,6 +233,43 @@ export default function FormUsuario({
             </p>
           )}
         </div>
+
+        {/* Modo de contrasena: solo en el alta (11.6.2). */}
+        {esAlta && (
+          <div className="campo">
+            <label htmlFor="select-modo-password">Contraseña inicial</label>
+            <select
+              id="select-modo-password"
+              data-testid="select-modo-password"
+              value={modoPassword}
+              onChange={(e) => cambiarModoPassword(e.target.value)}
+            >
+              <option value="automatica">Generar automática</option>
+              <option value="manual">Escribir yo mismo</option>
+            </select>
+
+            {modoPassword === 'manual' && (
+              <>
+                <label htmlFor="input-password-manual">Contraseña para el usuario</label>
+                <input
+                  id="input-password-manual"
+                  data-testid="input-password-manual"
+                  type="password"
+                  autoComplete="new-password"
+                  value={passwordManual}
+                  onChange={(e) => setPasswordManual(e.target.value)}
+                />
+                <p className="dato">{AYUDA_PASSWORD_MANUAL}</p>
+              </>
+            )}
+
+            {errorPasswordManual && (
+              <p className="mensaje error" data-testid="error-password-manual">
+                {errorPasswordManual}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="acciones">
           <button type="submit" data-testid="btn-guardar-usuario" disabled={guardando}>

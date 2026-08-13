@@ -1,0 +1,33 @@
+{
+  "descripcion": "Padrón folio por folio del Programa Institucional Emergente por Sequía para Productores del Campo (ejercicio 2023, maíz para consumo humano). Layout SIPROS de 114 columnas de las hojas consolidadas por región '23_Emer_Sequía_<REG>'.",
+  "fuente_primaria": [
+    "SDAproyectos23cadSequia.xlsx",
+    "SDAproyectos23jalSequia.xlsx",
+    "SDAproyectos23qroSequia.xlsx",
+    "SDAproyectos23sjrSequia.xlsx"
+  ],
+  "hoja_patron": "Emer",
+  "fila_encabezado": 1,
+  "anio_por_defecto": 2023,
+  "programa_por_defecto": "PROGRAMA INSTITUCIONAL EMERGENTE POR SEQUÍA PARA PRODUCTORES DEL CAMPO",
+  "columnas": {
+    "folio": ["FOLIO SOLICITUD", "FOLIO"],
+    "curp": ["CURP"],
+    "municipio": ["MUNICIPIO PROYECTO", "MUNICIPIO SOLICITANTE", "MUNICIPIO"],
+    "programa": ["PROGRAMA"],
+    "anio": ["EJERCICIO", "AÑO"],
+    "concepto": ["DETALLE CONCEPTO DICTAMINADO", "CONCEPTO DE APOYO DICTAMINADO"],
+    "dictamen": ["DICTAMEN"],
+    "apoyo_federal": ["APOYO FEDERAL"],
+    "apoyo_estatal": ["APOYO ESTATAL DICTAMINADO"],
+    "apoyo_municipal": ["APOYO MUNICIPAL"],
+    "aportacion_productor": ["APORTACIÓN PRODUCTOR(ES)", "APORTACION PRODUCTORES"],
+    "monto_total": ["TOTAL PROYECTO", "MONTO TOTAL"],
+    "cantidad": ["CANTIDAD DICTAMINADA"],
+    "unidad": ["UNIDAD DE MEDIDA"]
+  },
+  "filtro_estatus": {
+    "columna": "dictamen",
+    "valores_aceptados": ["DICTAMINADA POSITIVA"]
+  }
+}

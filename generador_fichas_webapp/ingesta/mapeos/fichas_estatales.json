@@ -1,0 +1,44 @@
+{
+  "descripcion": "Mapeo de las fichas estatales por cadena productiva (apicultores, azúcar). Encabezados verificados en los archivos reales el 2026-08-13.",
+  "archivos": {
+    "Ficha_Estatal_Apicultores_2026_AJUSTADA.xlsx": {
+      "hoja": "ESTATAL",
+      "titulo_en": "A1",
+      "fila_encabezado": 3,
+      "fila_datos_desde": 4,
+      "programa": "APÍCOLAS",
+      "columnas": {
+        "municipio": ["MUNICIPIO"],
+        "beneficiarios": ["BENEF."],
+        "metrica_apoyo_ton": ["APOYO (TON)"],
+        "total": ["MONTO"]
+      }
+    },
+    "Ficha_Estatal_Azucar_2026.xlsx": {
+      "hoja": "ESTATAL",
+      "fila_encabezado": 3,
+      "fila_subencabezado": 4,
+      "fila_datos_desde": 5,
+      "programa": "IMPULSO A LA PRODUCTIVIDAD FERTILIZANTE",
+      "layout": "encabezado_de_dos_niveles",
+      "grupos": ["MAQUINARIA Y EQUIPO", "FERTILIZANTE", "TOTAL"],
+      "subcolumnas": ["BENEF.", "MONTO"],
+      "columnas": {"municipio": ["MUNICIPIO"]}
+    },
+    "Ficha_Estatal_Azucar_2026_Actualizada.xlsx": {
+      "hoja": "ESTATAL",
+      "fila_encabezado": 3,
+      "fila_subencabezado": 4,
+      "fila_datos_desde": 5,
+      "programa": "IMPULSO A LA PRODUCTIVIDAD FERTILIZANTE",
+      "layout": "encabezado_de_dos_niveles",
+      "grupos": ["MAQUINARIA Y EQUIPO", "FERTILIZANTE", "TOTAL"],
+      "subcolumnas": ["BENEF.", "APOYO (TON)", "MONTO"],
+      "preferido": true
+    }
+  },
+  "notas": [
+    "Las dos versiones de la ficha de azúcar NO coinciden entre sí (la 'Actualizada' duplica montos y cambia el encabezado de la 2ª columna de MONTO a APOYO (TON)). Se usa la Actualizada y la diferencia se registra como incidencia; no se promedia ni se elige en silencio.",
+    "BENEF. de estos archivos es conteo de apoyos, no de personas únicas (R2)."
+  ]
+}

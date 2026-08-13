@@ -41,7 +41,7 @@ DB_NAME = os.environ.get("SEDEA_DB_NAME", "sedea")
 
 # --- Extensión 2026: acceso directo a Postgres, fecha de corte y rango de años ---
 DATABASE_URL = os.environ.get(
-    "DATABASE_URL", f"postgresql://{DB_USER}@localhost:5432/{DB_NAME}"
+    "DATABASE_URL", f"postgresql://{DB_USER}@127.0.0.1:5433/{DB_NAME}"
 )
 MODO_DATOS = os.environ.get("MODO_DATOS", "auto")  # auto | postgres | csv
 FECHA_CORTE = os.environ.get("FECHA_CORTE", "2026-12-31")

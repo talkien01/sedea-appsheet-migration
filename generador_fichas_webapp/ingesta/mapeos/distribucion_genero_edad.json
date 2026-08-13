@@ -1,0 +1,23 @@
+{
+  "descripcion": "Mapeo del archivo de distribución por género y grupo de edad de la región Cadereyta (bloques apilados por municipio). Verificado en el archivo real el 2026-08-13.",
+  "archivo_esperado": "Regional_Cadereyta_Distribucion_Cadereyta_Colon_Ezequiel.xlsx",
+  "hoja": "DISTRIBUCIÓN MUNICIPIOS",
+  "layout": "bloques_por_municipio",
+  "deteccion_bloque": {
+    "encabezado_municipio": "celda de la columna A en mayúsculas que coincide con un municipio del catálogo",
+    "subtabla_genero": {"encabezado": ["GÉNERO", "PERSONAS", "%"], "filas": ["Hombres", "Mujeres", "Total"]},
+    "subtabla_edad": {"encabezado": ["GRUPO DE EDAD", "HOMBRES", "MUJERES", "TOTAL", "%"],
+                       "filas": ["Jóvenes (18-29)", "Adultos (30-59)", "Adultos mayores (60+)", "Total"]}
+  },
+  "mapeo_genero": {"Hombres": "H", "Mujeres": "M"},
+  "mapeo_rango_edad": {
+    "Jóvenes (18-29)": "18-29",
+    "Adultos (30-59)": ["30-44", "45-59"],
+    "Adultos mayores (60+)": "60+"
+  },
+  "notas": [
+    "Los grupos del archivo NO son los 5 rangos normalizados: 'Adultos (30-59)' agrupa dos rangos del criterio. Por eso este archivo se usa solo como CONTRASTE de los agregados derivados de CURP, no como fuente primaria; repartir 30-59 entre 30-44 y 45-59 sería inventar (R1).",
+    "La fuente primaria de género y edad es analitica.beneficiario_curp, derivada de la CURP (R6).",
+    "El bloque final 'TOTAL — CADEREYTA, COLÓN Y EZEQUIEL MONTES' (91 benef., 75 H, 16 M) es un agregado, no se carga como fila."
+  ]
+}

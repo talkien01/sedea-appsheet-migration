@@ -1,0 +1,22 @@
+{
+  "descripcion": "Mapeo de los machotes regionales con resumen por municipio (encabezados verificados en los archivos reales el 2026-08-13).",
+  "archivos_esperados": [
+    "Regional_Cadereyta_2026_CURP.xlsx",
+    "Regional_Cadereyta_Machote.xlsx"
+  ],
+  "hoja": "REGIONAL CADEREYTA",
+  "fila_encabezado": 3,
+  "fila_datos_desde": 4,
+  "filas_a_omitir": ["TOTAL", "SUBTOTAL", "SUMATORIA"],
+  "columnas": {
+    "municipio": ["MUNICIPIO"],
+    "beneficiarios": ["BENEF.", "BENEFICIARIOS"],
+    "estatal": ["APOYO ESTATAL"],
+    "beneficiario": ["APORTACIÓN BENEFICIARIO", "APORTACION BENEFICIARIO"],
+    "total": ["INVERSIÓN TOTAL", "INVERSION TOTAL", "MONTO"]
+  },
+  "notas": [
+    "BENEF. es conteo de apoyos/folios del padrón, no de personas únicas (R2): se carga como numero_apoyos y NUNCA como beneficiarios_unicos.",
+    "Estos archivos no traen aportación federal ni municipal: esas columnas quedan NULL, nunca 0 (R1/R3)."
+  ]
+}

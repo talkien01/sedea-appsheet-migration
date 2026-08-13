@@ -160,11 +160,13 @@ SELECT
   round(100.0 * estatal      / nullif(total,0), 2)            AS pct_estatal,
   round(100.0 * municipal    / nullif(total,0), 2)            AS pct_municipal,
   round(100.0 * beneficiario / nullif(total,0), 2)            AS pct_beneficiario,
-  (coalesce(federal,0) + coalesce(estatal,0)
-   + coalesce(municipal,0) + coalesce(beneficiario,0))        AS suma_partes,
-  CASE WHEN total IS NULL THEN NULL
-       ELSE abs((coalesce(federal,0) + coalesce(estatal,0)
-                 + coalesce(municipal,0) + coalesce(beneficiario,0)) - total) <= 1.00
+  -- R1: si una parte es desconocida, la suma es desconocida (NULL), no cero.
+  (federal + estatal + municipal + beneficiario)              AS suma_partes,
+  -- cuadra = NULL cuando no se puede verificar (algún componente o el total es NULL).
+  CASE WHEN total IS NULL
+         OR federal IS NULL OR estatal IS NULL
+         OR municipal IS NULL OR beneficiario IS NULL THEN NULL
+       ELSE abs((federal + estatal + municipal + beneficiario) - total) <= 1.00
   END                                                         AS cuadra
 FROM analitica.vw_matriz_historica;
 

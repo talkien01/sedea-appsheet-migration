@@ -1,0 +1,34 @@
+{
+  "descripcion": "Mapeo de columnas para cargar beneficiario_curp desde el padrón por folio de la región Cadereyta 2026. Encabezados verificados abriendo el archivo real el 2026-08-13 (A1 del SPEC cerrado).",
+  "archivo_esperado": "Base Cadereyta Programas sedea.xlsx",
+  "hoja": "Hoja1",
+  "fila_encabezado": 1,
+  "anio_por_defecto": 2026,
+  "filtro_estatus": {
+    "columna": "ESTATUS",
+    "valores_aceptados": ["AUTORIZADA"],
+    "criterio": "Solo solicitudes AUTORIZADAS (criterio confirmado en 'Control de criterios')."
+  },
+  "columnas": {
+    "curp": ["CURP"],
+    "folio": ["FOLIO SOLICITUD", "FOLIO"],
+    "municipio": ["MUNICIPIO PROYECTO", "MUNICIPIO SOLICITANTE", "MUNICIPIO"],
+    "programa": ["COMPONENTE", "PROGRAMA"],
+    "monto_total": ["MONTO TOTAL DICTAMINADO", "MONTO TOTAL", "INVERSIÓN TOTAL"],
+    "anio": ["AÑO", "ANIO", "EJERCICIO"],
+    "estatus": ["ESTATUS"]
+  },
+  "no_mapeadas_conocidas": [
+    "NOMBRE COMPLETO",
+    "LOCALIDAD PROYECTO",
+    "CONCEPTO APOYO",
+    "DESCRIPCIÓN DEL APOYO",
+    "PROVEEDOR",
+    "MONTO ESTATAL DICTAMINADO",
+    "MONTO BENEFICIARIO DICTAMINADO"
+  ],
+  "notas": [
+    "Regional_Cadereyta_2026_CURP.xlsx NO contiene CURP a nivel persona: es un resumen por municipio (MUNICIPIO / BENEF. / APOYO ESTATAL / APORTACIÓN BENEFICIARIO / INVERSIÓN TOTAL). El padrón con CURP real es este archivo.",
+    "NOMBRE COMPLETO se lee pero nunca se usa para derivar género: el género sale solo de la posición 11 de la CURP (R6)."
+  ]
+}

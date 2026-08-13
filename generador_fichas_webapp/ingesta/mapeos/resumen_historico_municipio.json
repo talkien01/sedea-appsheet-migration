@@ -1,0 +1,44 @@
+{
+  "descripcion": "Mapeo del machote 'Resumen Histórico por Municipio' (y su versión llenada 2026 Cadereyta). Encabezados verificados en el archivo real el 2026-08-13.",
+  "archivos_esperados": [
+    "Resumen Histórico por Municipio.xlsx",
+    "Resumen_Historico_por_Municipio_llenado_2026_Cadereyta.xlsx"
+  ],
+  "hojas": {
+    "Por Emer-Prod": {
+      "layout": "encabezado_de_tres_niveles",
+      "fila_anios": 2,
+      "fila_metrica": 3,
+      "fila_subcolumna": 4,
+      "fila_datos_desde": 5,
+      "columna_municipio": 1,
+      "metricas": ["APOYOS", "MONTO"],
+      "subcolumnas": ["EMERGENTES", "PRODUCTIVIDAD", "SUBTOTAL"],
+      "anios_presentes": [2022, 2023, 2024, 2025, 2026, 2027]
+    },
+    "Por Aportaciones": {
+      "layout": "encabezado_de_dos_niveles",
+      "fila_anios": 2,
+      "fila_subcolumna": 3,
+      "fila_datos_desde": 4,
+      "columna_municipio": 1,
+      "subcolumnas": ["FEDERAL", "ESTATAL", "MUNICIPAL", "BENEFICIARIOS", "SUBTOTAL"],
+      "anios_presentes": [2022, 2023, 2024, 2025, 2026]
+    },
+    "Control de criterios": {
+      "layout": "tabla_simple",
+      "fila_encabezado": 1,
+      "columnas": ["Campo", "Criterio aplicado", "Fuente", "Observación", "Estado", "Fecha"],
+      "uso": "solo referencia documental"
+    }
+  },
+  "filas_agregadas_a_omitir": [
+    "SUBTOTAL", "TOTAL", "SUMATORIA REGIONES", "OTRAS INVER ESTATALES",
+    "REGIÓN SJR", "REGIÓN CADEREYTA", "REGIÓN QUERÉTARO", "REGIÓN JALPAN"
+  ],
+  "notas": [
+    "La columna del año 2027 existe en el machote y está VACÍA por diseño: no se carga ni como 0 (R4).",
+    "En 'Resumen Histórico por Municipio.xlsx' TODAS las celdas de datos están vacías: es la plantilla en blanco. No hay 2021 ni 2022 que cargar; se registra incidencia ANIO_SIN_DATOS en vez de inventar.",
+    "En la versión llenada solo hay datos de 2026 para los 6 municipios de la región Cadereyta, y coinciden con el padrón por folio (127 apoyos, $7,416,651.66)."
+  ]
+}

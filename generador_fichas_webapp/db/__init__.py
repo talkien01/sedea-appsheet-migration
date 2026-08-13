@@ -175,6 +175,31 @@ def ejecutar(sql, params=None):
     raise SinDatos("Base de datos no disponible: no se puede escribir.")
 
 
+def ejecutar_muchos(sql, filas, tam_lote=200):
+    """Ejecuta la misma sentencia parametrizada para muchas filas, en lotes y en
+    una sola conexión. Devuelve el número de filas enviadas."""
+    filas = list(filas)
+    if not filas:
+        return 0
+    t = transporte()
+    if t == "psycopg":
+        import psycopg
+        with psycopg.connect(config.DATABASE_URL, connect_timeout=10) as cx:
+            with cx.cursor() as cur:
+                cur.executemany(sql, filas)
+            cx.commit()
+        return len(filas)
+    if t == "docker":
+        for i in range(0, len(filas), tam_lote):
+            lote = filas[i:i + tam_lote]
+            script = "\n".join(
+                sql.replace("%s", "{}").format(*[_sql_literal(v) for v in f]).rstrip().rstrip(";") + ";"
+                for f in lote)
+            ejecutar_script(script)
+        return len(filas)
+    raise SinDatos("Base de datos no disponible: no se puede escribir.")
+
+
 def ejecutar_script(sql):
     """Ejecuta un script completo (varias sentencias) de forma transaccional."""
     t = transporte()

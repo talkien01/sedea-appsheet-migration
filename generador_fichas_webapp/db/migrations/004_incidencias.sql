@@ -23,7 +23,11 @@ CREATE TABLE IF NOT EXISTS analitica.incidencia_carga (
   detectada_en    timestamptz DEFAULT now()
 );
 
+-- Clave de idempotencia: una incidencia por (tipo, entidad, id, año, municipio,
+-- programa, fila). Recorrer la carga dos veces actualiza, no duplica.
+DROP INDEX IF EXISTS analitica.incidencia_carga_uniq;
 CREATE UNIQUE INDEX IF NOT EXISTS incidencia_carga_uniq
   ON analitica.incidencia_carga
-     (tipo, entidad, coalesce(entidad_id,-1), coalesce(anio,-1), coalesce(fila_origen,-1));
+     (tipo, entidad, coalesce(entidad_id,-1), coalesce(anio,-1),
+      coalesce(municipio_id,-1), coalesce(programa_id,-1), coalesce(fila_origen,-1));
 CREATE INDEX IF NOT EXISTS incidencia_carga_tipo_idx ON analitica.incidencia_carga (tipo, severidad);

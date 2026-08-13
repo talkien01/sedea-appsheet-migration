@@ -1,0 +1,88 @@
+{
+  "descripcion": "Agregado por año y programa de los EMERGENTES 2021-2022 para los que NO existe padrón folio por folio en el Drive de SEDEA (seguros catastróficos, emergente pecuario, D.R. 023 y capitalización hidroagrícolas). Cada fila se marca granularidad='AGREGADO' y nunca se mezcla en silencio con datos de folio (R1/R2/R8).",
+  "fuente_archivo": "Emergenes 2021-2024.xlsx",
+  "fuente_hoja": "ResumenEstatalAdmón ok",
+  "fuente_drive_id": "1HvlG1Ftc6sFSFOIEzgjdShrG5iYb0FAS",
+  "municipio_agregado": "ALCANCE ESTATAL",
+  "busqueda_padron": "Se revisó la carpeta «Bases Seguros Catastróficos Benef 2022» (1swbl6f0EUtueKoD8LWxaR_8rQxq1a8V-, sin archivos enumerables) y «HISTORICO SEGUROS CATASTROFICOS DEL 2011-2021 (1).xlsx» (1GwCv0gtX4DYFnaE4LJPyjizNWQsCal5A, 82 filas de resumen por esquema y año, sin CURP ni folio). No existe padrón individual: por eso se carga solo el agregado.",
+  "filas": [
+    {
+      "anio": 2021,
+      "programa": "SEGURO AGRÍCOLA CATASTRÓFICO",
+      "renglon_origen": "Seguro AGRÍCOLA CATASTRÓFICO 2021 (maíz para consumo humano)",
+      "beneficiarios_directos": 13281,
+      "beneficiarios_indirectos": 53124,
+      "apoyo_federal": 0,
+      "apoyo_estatal": 32804105,
+      "apoyo_municipal": 0,
+      "aportacion_productor": 0,
+      "total": 32804105,
+      "nota": "Primas gestionadas por la administración anterior; los apoyos se entregaron en especie en 2022 (indemnizaciones de maíz para consumo humano)."
+    },
+    {
+      "anio": 2021,
+      "programa": "SEGURO PECUARIO CATASTRÓFICO",
+      "renglon_origen": "Seguro PECUARIO CATASTRÓFICO 2021 (suplementos concentrados uso pecuario)",
+      "beneficiarios_directos": 146,
+      "beneficiarios_indirectos": 584,
+      "apoyo_federal": 0,
+      "apoyo_estatal": 1175293,
+      "apoyo_municipal": 0,
+      "aportacion_productor": 0,
+      "total": 1175293,
+      "nota": "Primas gestionadas por la administración anterior; apoyos entregados en especie en 2022 (suplementos concentrados de uso pecuario)."
+    },
+    {
+      "anio": 2021,
+      "programa": "EMERGENTE PECUARIO",
+      "renglon_origen": "EMERGENTE PECUARIO 2021 (apoyos diversos pecuarios a través de la UGRQ)",
+      "beneficiarios_directos": 1,
+      "beneficiarios_indirectos": 3178,
+      "apoyo_federal": 0,
+      "apoyo_estatal": 15000000,
+      "apoyo_municipal": 0,
+      "aportacion_productor": 0,
+      "total": 15000000,
+      "nota": "Ejercido a través de la Unión Ganadera Regional de Querétaro: 1 beneficiario directo (la organización) y 3,178 indirectos. No hay padrón individual de productores."
+    },
+    {
+      "anio": 2021,
+      "programa": "EMERGENTE REACTIVACIÓN ECONÓMICA MÓDULOS D.R. 023, S.J.R.",
+      "renglon_origen": "EMERGENTE Reactivación económica módulos D.R. 023, S.J.R.",
+      "beneficiarios_directos": 407,
+      "beneficiarios_indirectos": 1628,
+      "apoyo_federal": 5843485,
+      "apoyo_estatal": 7949132,
+      "apoyo_municipal": 0,
+      "aportacion_productor": 2757634,
+      "total": 16550251,
+      "nota": "Obra hidroagrícola (5 sistemas electromecánicos de pozos, 1 perforación con equipamiento y línea de conducción en La Lira, y 1 interconexión de pozos en La Palma), no entrega individual."
+    },
+    {
+      "anio": 2022,
+      "programa": "EMERGENTE CAPITALIZACIÓN A USUARIOS HIDROAGRÍCOLAS",
+      "renglon_origen": "EMERGENTE capitalización a usuarios hidroagrícolas",
+      "beneficiarios_directos": 3,
+      "beneficiarios_indirectos": 85,
+      "apoyo_federal": 6357394,
+      "apoyo_estatal": 3600000,
+      "apoyo_municipal": 0,
+      "aportacion_productor": 2688339.49,
+      "total": 12645733,
+      "nota": "8 obras de rehabilitación y tecnificación hidroagrícola en Pedro Escobedo y San Juan del Río. 3 beneficiarios directos (módulos de riego)."
+    },
+    {
+      "anio": 2022,
+      "programa": "SEGURO PORCÍCOLA",
+      "renglon_origen": "SEGURO PORCÍCOLA (bloque TOTAL 2022 de la hoja ResumenEstatalAdmón NO)",
+      "beneficiarios_directos": 1,
+      "beneficiarios_indirectos": 452,
+      "apoyo_federal": 0,
+      "apoyo_estatal": 3000000,
+      "apoyo_municipal": 0,
+      "aportacion_productor": 3000000,
+      "total": 6000000,
+      "nota": "Contratación de seguro porcícola contra enfermedades exóticas a través de la asociación; 1 beneficiario directo y 452 indirectos."
+    }
+  ]
+}

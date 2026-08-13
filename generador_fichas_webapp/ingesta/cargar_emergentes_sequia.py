@@ -39,6 +39,16 @@ FUENTE_DICTAMEN = ("Oficio de autorización 2023GEQ00040, proyecto 2023-00007, "
                    "Secretaría de Finanzas del Estado de Querétaro, 24 de enero de 2023")
 MONTO_AUTORIZADO = 45570275.00
 
+# Importes que el oficio de autorización 2023-00007 fija expresamente en $0.00
+# (estructura del recurso: FEDERAL $0.00, MUNICIPAL $0.00, OTROS $0.00).
+# Es un dato del documento fuente, no un default de relleno.
+AUTORIZADO_EN_CERO_POR_DICTAMEN = 0.0
+
+
+def _monto_o_dictamen(valor):
+    """El importe del padrón si viene; si no, el que autoriza el dictamen ($0.00)."""
+    return AUTORIZADO_EN_CERO_POR_DICTAMEN if valor is None else valor
+
 _SQL_CURP = """
 INSERT INTO analitica.beneficiario_curp
   (curp_hash, curp, curp_valida, motivo_invalidez, genero, fecha_nacimiento,
@@ -176,11 +186,13 @@ def leer(archivos, mapeo, verbose=True):
 
             estatal = comun.a_numero(val(fila, "apoyo_estatal"))
             total = comun.a_numero(val(fila, "monto_total"))
-            # El dictamen 2023-00007 autoriza federal/municipal/otros en $0.00: el
-            # padrón los deja vacíos porque no hubo esa concurrencia. No es imputación.
-            federal = comun.a_numero(val(fila, "apoyo_federal")) or 0.0
-            municipal = comun.a_numero(val(fila, "apoyo_municipal")) or 0.0
-            productor = comun.a_numero(val(fila, "aportacion_productor")) or 0.0
+            # Federal / municipal / aportación del productor NO se imputan: el dictamen
+            # 2023-00007 los AUTORIZA expresamente en $0.00 (estructura FEDERAL $0.00,
+            # MUNICIPAL $0.00, OTROS $0.00), así que el valor viene del documento fuente,
+            # no de un default. Si el padrón trajera un importe, ese gana.
+            federal = _monto_o_dictamen(comun.a_numero(val(fila, "apoyo_federal")))
+            municipal = _monto_o_dictamen(comun.a_numero(val(fila, "apoyo_municipal")))
+            productor = _monto_o_dictamen(comun.a_numero(val(fila, "aportacion_productor")))
 
             an = svc_curp.analizar(val(fila, "curp"), corte)
             registros.append((
@@ -225,10 +237,22 @@ def leer(archivos, mapeo, verbose=True):
             a = agregado[(anio, prog_id, muni_id)]
             a["apoyos"] += 1
             a["federal"] += federal
-            a["estatal"] += estatal or 0.0
             a["municipal"] += municipal
             a["beneficiario"] += productor
-            a["total"] += total or 0.0
+            # Un folio sin importe no suma 0: no suma, y se reporta como incidencia.
+            if estatal is None or total is None:
+                pendientes.append((
+                    "FUENTE_FALTANTE", "ADVERTENCIA", "apoyo_municipio",
+                    f"Fila {n_fila} de {nombre_archivo} (folio {folio}): el padrón no trae "
+                    "apoyo estatal dictaminado y/o total del proyecto; el folio se cuenta "
+                    "como apoyo pero no aporta monto al agregado municipal.",
+                    "Recuperar el importe dictaminado del expediente y recargar; no se "
+                    "sustituye por cero (R1).",
+                    anio, muni_id, prog_id, folio, nombre_archivo, hoja, n_fila))
+            if estatal is not None:
+                a["estatal"] += estatal
+            if total is not None:
+                a["total"] += total
             a["municipio_usado"] = muni_usado
             a["fuente_municipio"] = fuente_muni
             a["confianza"] = conf

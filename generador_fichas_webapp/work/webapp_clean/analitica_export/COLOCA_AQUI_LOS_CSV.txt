@@ -1,0 +1,2 @@
+Copia aquí los 16 CSV que genera exportar_analitica.sql (o usa el botón
+"Actualizar datos" de la app, que los genera solo si Docker está corriendo).

@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
+fichas_generadas/
+exportaciones/
+work/node_modules/

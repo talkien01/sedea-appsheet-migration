@@ -89,9 +89,14 @@ def total_abiertas():
 def detectar_descuadres_aportaciones():
     """A8/R8: cada fila de vw_matriz_aportaciones con cuadra=false genera su
     incidencia SUMA_APORTACIONES_NO_CUADRA."""
-    # La detección es derivada: se recalcula completa en cada corrida.
+    # La detección es derivada: se recalcula completa en cada corrida, pero solo
+    # sobre lo que esta función produce (entidad='vw_matriz_aportaciones'). Las
+    # incidencias del mismo tipo registradas por otros orígenes —p. ej. la
+    # comparación machote-vs-base de ingesta/cargar_resumen_historico.py, con
+    # entidad='resumen_historico_xlsx'— no se tocan: nada se pierde en silencio (R8).
     db.ejecutar("DELETE FROM analitica.incidencia_carga "
-                "WHERE tipo = 'SUMA_APORTACIONES_NO_CUADRA'")
+                "WHERE tipo = 'SUMA_APORTACIONES_NO_CUADRA' "
+                "  AND entidad = 'vw_matriz_aportaciones'")
     db.ejecutar("""
         INSERT INTO analitica.incidencia_carga
           (tipo, severidad, entidad, anio, municipio_id, programa_id,
@@ -112,7 +117,8 @@ def detectar_descuadres_aportaciones():
         DO UPDATE SET descripcion = EXCLUDED.descripcion, detectada_en = now()
     """)
     return db.contar("SELECT count(*)::int FROM analitica.incidencia_carga "
-                          "WHERE tipo = 'SUMA_APORTACIONES_NO_CUADRA'")
+                          "WHERE tipo = 'SUMA_APORTACIONES_NO_CUADRA' "
+                          "  AND entidad = 'vw_matriz_aportaciones'")
 
 
 def detectar_anios_sin_datos(anio_min=2009, anio_max=2027):

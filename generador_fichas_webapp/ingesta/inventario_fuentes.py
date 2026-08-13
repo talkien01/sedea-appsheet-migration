@@ -104,7 +104,7 @@ def _conteos_tablas():
     out = {}
     for t in tablas:
         try:
-            out[t] = int(db.escalar(f"SELECT count(*)::int FROM analitica.{t}", default=0) or 0)
+            out[t] = db.contar(f"SELECT count(*)::int FROM analitica.{t}")
         except db.SinDatos:
             out[t] = None
     return out

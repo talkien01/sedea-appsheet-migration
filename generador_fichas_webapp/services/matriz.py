@@ -112,9 +112,9 @@ def _matriz_csv(filtros):
     def pasa(f):
         if "anio" in filtros and f["anio"] != filtros["anio"]:
             return False
-        if "anio_desde" in filtros and (f["anio"] or 0) < filtros["anio_desde"]:
+        if "anio_desde" in filtros and (f["anio"] is None or f["anio"] < filtros["anio_desde"]):
             return False
-        if "anio_hasta" in filtros and (f["anio"] or 0) > filtros["anio_hasta"]:
+        if "anio_hasta" in filtros and (f["anio"] is None or f["anio"] > filtros["anio_hasta"]):
             return False
         for campo in ("region", "municipio", "programa"):
             if campo in filtros and (f.get(campo) or "").upper() != filtros[campo].upper():
@@ -137,8 +137,8 @@ def matriz(filtros, con_paginado=True):
     page_size = filtros.get("page_size", 100) if con_paginado else None
     try:
         w, params = _where(filtros)
-        total = int(db.escalar(
-            f"SELECT count(*)::int FROM analitica.vw_matriz_historica{w}", params, default=0) or 0)
+        total = db.contar(
+            f"SELECT count(*)::int FROM analitica.vw_matriz_historica{w}", params)
         sql = (f"SELECT {', '.join(COLUMNAS_MATRIZ)} FROM analitica.vw_matriz_historica{w} "
                f"ORDER BY anio, municipio, programa")
         if page_size:
@@ -147,7 +147,8 @@ def matriz(filtros, con_paginado=True):
     except db.SinDatos:
         filas = _matriz_csv(filtros)
         total = len(filas)
-        filas.sort(key=lambda f: (f["anio"] or 0, f["municipio"] or "", f["programa"] or ""))
+        filas.sort(key=lambda f: (f["anio"] if f["anio"] is not None else -1,
+                                  f["municipio"] or "", f["programa"] or ""))
         if page_size:
             ini = (page - 1) * page_size
             filas = filas[ini:ini + page_size]
@@ -162,7 +163,8 @@ def totales(filtros):
             "SELECT sum(numero_apoyos)::bigint AS numero_apoyos, sum(federal) AS federal, "
             "sum(estatal) AS estatal, sum(municipal) AS municipal, "
             "sum(beneficiario) AS beneficiario, sum(total) AS total, "
-            "count(DISTINCT municipio_id)::int AS municipios "
+            # A6: los pseudo-municipios (sin región) no cuentan como municipios
+            "nullif(count(DISTINCT municipio_id) FILTER (WHERE region_id IS NOT NULL),0)::int AS municipios "
             f"FROM analitica.vw_matriz_historica{w}", params)
         return _normalizar(filas)[0] if filas else {}
     except db.SinDatos:
@@ -208,7 +210,7 @@ def serie_inversion_anual(filtros):
                                            "total": None, "numero_apoyos": None})
             for k in ("federal", "estatal", "municipal", "beneficiario", "total", "numero_apoyos"):
                 if f[k] is not None:
-                    a[k] = (a[k] or 0) + f[k]
+                    a[k] = f[k] if a[k] is None else a[k] + f[k]
         return [acc[k] for k in sorted(acc)]
 
 

@@ -232,6 +232,16 @@ def escalar(sql, params=None, default=None):
 # --------------------------------------------------------------------------
 # Fallback CSV
 # --------------------------------------------------------------------------
+def contar(sql, params=None):
+    """Cuenta filas. Devuelve siempre un entero (un conteo vacío es 0 de verdad,
+    no un monto imputado)."""
+    filas = consultar(sql, params)
+    if not filas:
+        return 0
+    v = list(filas[0].values())[0]
+    return 0 if v is None else int(v)
+
+
 def leer_csv(nombre):
     path = os.path.join(config.DATA_DIR, nombre)
     if not os.path.exists(path):

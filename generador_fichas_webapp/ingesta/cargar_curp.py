@@ -51,7 +51,7 @@ DO UPDATE SET
 
 
 def _contar():
-    return int(db.escalar("SELECT count(*)::int FROM analitica.beneficiario_curp", default=0) or 0)
+    return db.contar("SELECT count(*)::int FROM analitica.beneficiario_curp")
 
 
 def _volcar(registros, contadores, dry_run):

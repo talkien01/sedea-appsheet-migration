@@ -36,9 +36,9 @@ def clasificar_programas(dry_run=False):
         resumen = {"EMERGENTE": 0, "PRODUCTIVIDAD": 0, "por_defecto": 0}
         ya = "false"
         for r in rs:
-            n = int(db.escalar(
+            n = db.contar(
                 f"SELECT count(*)::int FROM analitica.programa WHERE NOT ({ya}) AND nombre ~* %s",
-                (r["patron"],), default=0) or 0)
+                (r["patron"],))
             resumen[r["clasificacion"]] += n
             if r["patron"] == ".*":
                 resumen["por_defecto"] += n
@@ -56,9 +56,9 @@ def clasificar_programas(dry_run=False):
             "clasificacion_fuente=%s, clasificado_en=now() "
             "WHERE clasificado_en IS NULL AND nombre ~* %s",
             (r["clasificacion"], criterio, r["fuente"], r["patron"]))
-        n = int(db.escalar(
+        n = db.contar(
             "SELECT count(*)::int FROM analitica.programa WHERE clasificacion_criterio = %s",
-            (criterio,), default=0) or 0)
+            (criterio,))
         resumen[r["clasificacion"]] += n
         if r["patron"] == ".*":
             resumen["por_defecto"] += n
@@ -95,8 +95,8 @@ def backfill_trazabilidad(dry_run=False):
     pseudo = _pseudo_lista_sql()
     for tabla in ("apoyo_municipio", "accion"):
         if dry_run:
-            hechos[tabla] = int(db.escalar(
-                f"SELECT count(*)::int FROM analitica.{tabla} WHERE municipio_usado IS NULL", default=0) or 0)
+            hechos[tabla] = db.contar(
+                f"SELECT count(*)::int FROM analitica.{tabla} WHERE municipio_usado IS NULL")
             continue
         # 1) pseudo-municipios (A6): no se reparten, se marcan y se excluyen de totales municipales
         db.ejecutar(f"""
@@ -127,9 +127,8 @@ def backfill_trazabilidad(dry_run=False):
               confianza_municipio = 'BAJA'
             WHERE t.municipio_id IS NULL
         """)
-        pendientes = int(db.escalar(
-            f"SELECT count(*)::int FROM analitica.{tabla} WHERE fuente_municipio = 'DESCONOCIDO'",
-            default=0) or 0)
+        pendientes = db.contar(
+            f"SELECT count(*)::int FROM analitica.{tabla} WHERE fuente_municipio = 'DESCONOCIDO'")
         if pendientes:
             incidencias.registrar(
                 "MUNICIPIO_NO_RESUELTO", "ADVERTENCIA", tabla,
@@ -137,9 +136,8 @@ def backfill_trazabilidad(dry_run=False):
                 accion_sugerida=("Agregar el alias faltante en analitica.municipio_alias y volver a "
                                  "correr el backfill; no se asigna municipio por aproximación."),
                 valor_origen=str(pendientes))
-        hechos[tabla] = int(db.escalar(
-            f"SELECT count(*)::int FROM analitica.{tabla} WHERE municipio_usado IS NOT NULL",
-            default=0) or 0)
+        hechos[tabla] = db.contar(
+            f"SELECT count(*)::int FROM analitica.{tabla} WHERE municipio_usado IS NOT NULL")
     return hechos
 
 

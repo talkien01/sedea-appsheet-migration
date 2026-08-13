@@ -27,7 +27,11 @@ def matriz():
 
 @bp.get("/dashboard")
 def dashboard():
-    return render_template("dashboard.html", catalogos=svc_matriz.catalogos(),
+    cat = svc_matriz.catalogos()
+    # A9/R4: el filtro de año cubre todo el rango del sistema (2009-2027). 2027
+    # existe como opción y devuelve vacío, nunca ceros.
+    anios_filtro = sorted(set(cat["anios"]) | set(range(config.ANIO_MIN, config.ANIO_MAX + 1)))
+    return render_template("dashboard.html", catalogos=cat, anios_filtro=anios_filtro,
                            fecha_corte=config.FECHA_CORTE)
 
 

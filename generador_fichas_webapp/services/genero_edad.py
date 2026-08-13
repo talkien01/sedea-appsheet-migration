@@ -37,8 +37,8 @@ def resumen_por_rango(filtros):
 def hay_datos(filtros):
     try:
         w, params = _where(filtros)
-        n = db.escalar(f"SELECT count(*)::int FROM analitica.vw_genero_edad{w}", params, default=0)
-        return int(n or 0) > 0
+        n = db.escalar(f"SELECT count(*)::int FROM analitica.vw_genero_edad{w}", params)
+        return n is not None and int(n) > 0
     except db.SinDatos:
         return False
 

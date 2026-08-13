@@ -1,0 +1,47 @@
+# Despliegue de la app + la base.
+#
+# El proyecto de compose se llama igual que el que ya creó el contenedor
+# `sedea_db` (00_migracion_bd_local) y reutiliza su volumen existente: así
+# `docker compose up -d` adopta la base que ya está en uso en vez de crear una
+# vacía y perder los datos cargados.
+name: 00_migracion_bd_local
+
+services:
+  db:
+    image: postgres:16
+    container_name: sedea_db
+    environment:
+      POSTGRES_USER: ${SEDEA_DB_USER:-sedea_admin}
+      POSTGRES_PASSWORD: ${SEDEA_DB_PASSWORD:-cambiame}
+      POSTGRES_DB: ${SEDEA_DB_NAME:-sedea}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SEDEA_DB_USER:-sedea_admin} -d ${SEDEA_DB_NAME:-sedea}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build: .
+    container_name: sedea_app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${SEDEA_DB_USER:-sedea_admin}:${SEDEA_DB_PASSWORD:-cambiame}@db:5432/${SEDEA_DB_NAME:-sedea}
+      MODO_DATOS: auto
+      FECHA_CORTE: ${FECHA_CORTE:-2026-12-31}
+      ANALITICA_DATA_DIR: /app/analitica_export
+      PUERTO: "5000"
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+    name: 00_migracion_bd_local_pgdata
+    external: true

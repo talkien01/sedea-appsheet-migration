@@ -185,7 +185,7 @@ def _acumular(filas):
         for k in acc:
             v = f.get(k)
             if v is not None:
-                acc[k] = (acc[k] or 0) + v
+                acc[k] = v if acc[k] is None else acc[k] + v
     return acc
 
 

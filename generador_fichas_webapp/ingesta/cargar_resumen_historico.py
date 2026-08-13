@@ -133,7 +133,7 @@ def main(argv=None):
         for a in faltantes:
             existe = db.escalar(
                 "SELECT count(*)::int FROM analitica.apoyo_municipio WHERE anio=%s", (a,), default=0)
-            if int(existe or 0) == 0 and not args.dry_run:
+            if not existe and not args.dry_run:
                 incidencias.registrar(
                     "ANIO_SIN_DATOS", "ADVERTENCIA", "apoyo_municipio",
                     descripcion=(f"El ejercicio {a} no está en apoyo_municipio y el machote "

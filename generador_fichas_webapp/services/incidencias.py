@@ -80,8 +80,8 @@ def conteo_por_tipo():
 
 def total_abiertas():
     try:
-        return int(db.escalar(
-            "SELECT count(*)::int FROM analitica.incidencia_carga WHERE NOT resuelta", default=0) or 0)
+        return db.contar(
+            "SELECT count(*)::int FROM analitica.incidencia_carga WHERE NOT resuelta")
     except db.SinDatos:
         return None
 
@@ -111,8 +111,8 @@ def detectar_descuadres_aportaciones():
                      coalesce(municipio_id,-1), coalesce(programa_id,-1), coalesce(fila_origen,-1))
         DO UPDATE SET descripcion = EXCLUDED.descripcion, detectada_en = now()
     """)
-    return int(db.escalar("SELECT count(*)::int FROM analitica.incidencia_carga "
-                          "WHERE tipo = 'SUMA_APORTACIONES_NO_CUADRA'", default=0) or 0)
+    return db.contar("SELECT count(*)::int FROM analitica.incidencia_carga "
+                          "WHERE tipo = 'SUMA_APORTACIONES_NO_CUADRA'")
 
 
 def detectar_anios_sin_datos(anio_min=2009, anio_max=2027):

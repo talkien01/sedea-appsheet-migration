@@ -61,6 +61,31 @@ FUENTES = [
     ("0_indice Drive.docx / 0 Índice Drive.pdf",
      "índice documental del Drive",
      "—", "solo referencia"),
+    # --- Emergentes 2021-2024 (ver docs/CARGA_EMERGENTES_2021_2024.md) ---
+    ("SDAproyectos23cadSequia.xlsx",
+     "beneficiario_curp + apoyo_municipio 2023 (Sequía, región Cadereyta) — FUENTE PRIMARIA",
+     "ingesta/cargar_emergentes_sequia.py", "cargado"),
+    ("SDAproyectos23jalSequia.xlsx",
+     "beneficiario_curp + apoyo_municipio 2023 (Sequía, región Jalpan) — FUENTE PRIMARIA",
+     "ingesta/cargar_emergentes_sequia.py", "cargado"),
+    ("SDAproyectos23qroSequia.xlsx",
+     "beneficiario_curp + apoyo_municipio 2023 (Sequía, región Querétaro) — FUENTE PRIMARIA",
+     "ingesta/cargar_emergentes_sequia.py", "cargado"),
+    ("SDAproyectos23sjrSequia.xlsx",
+     "beneficiario_curp + apoyo_municipio 2023 (Sequía, región San Juan del Río) — FUENTE PRIMARIA",
+     "ingesta/cargar_emergentes_sequia.py", "cargado"),
+    ("Emergenes 2021-2024.xlsx (Drive 1HvlG1Ftc6sFSFOIEzgjdShrG5iYb0FAS)",
+     "apoyo_municipio + resumen_estatal 2021-2022 como AGREGADO sin padrón individual",
+     "ingesta/cargar_emergentes_agregado.py", "cargado"),
+    ("20230123 2023-00007 Programa Institucional Emergente por Sequía para Productores "
+     "del Campo.pdf (Drive 1hKlA5SINTQSiBCCoJN9xidcdO3q_Z9QN)",
+     "dictamen: nombre oficial del programa y monto autorizado ($45,570,275.00) para "
+     "contrastar contra el padrón cargado",
+     "—", "solo referencia"),
+    ("HISTORICO SEGUROS CATASTROFICOS DEL 2011-2021 (1).xlsx "
+     "(Drive 1GwCv0gtX4DYFnaE4LJPyjizNWQsCal5A)",
+     "resumen por esquema y año de seguros catastróficos; NO trae CURP ni folio",
+     "—", "solo referencia"),
 ]
 
 CSVS = [
@@ -163,8 +188,13 @@ def construir(ahora=None):
     A("")
     A("## 4. Huecos conocidos")
     A("")
-    A("- `apoyo_municipio` cubre 2023–2025; **2022 no existe en ningún origen** "
-      "(incidencia `ANIO_SIN_DATOS`). 2021 solo está en `accion`.")
+    A("- `apoyo_municipio` cubre 2021–2026. 2021 y 2022 existen **solo como agregado estatal** "
+      "de los emergentes (`granularidad='AGREGADO'`, pseudo-municipio ALCANCE ESTATAL): no hay "
+      "padrón folio por folio de seguros catastróficos ni de emergente pecuario. El resto de "
+      "2021 solo está en `accion`.")
+    A("- Emergentes: Sequía 2023 sí está folio por folio (14,058 apoyos / $44,871,550). "
+      "**Falta el padrón de pacas forrajeras 2023** (2,415 apoyos / $5,000,000 según el resumen "
+      "estatal) y el de Gestión de Riesgos 2024. Ver `docs/CARGA_EMERGENTES_2021_2024.md`.")
     A("- 2026 vive en las vistas `v_oficial_*` (dictaminado); trae estatal y total, "
       "no federal/municipal/beneficiario.")
     A("- 2027 va **vacío por definición** (R4): no es un hueco, es la regla.")

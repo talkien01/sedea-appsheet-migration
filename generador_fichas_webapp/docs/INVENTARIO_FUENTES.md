@@ -3,7 +3,7 @@
 > Fase F1 del SPEC. La sección autogenerada se reescribe con `python -m ingesta.inventario_fuentes`; las notas manuales del final **no se tocan**.
 
 <!-- AUTOGENERADO:INICIO -->
-_Generado por `python -m ingesta.inventario_fuentes` el 2026-08-13 10:53._
+_Generado por `python -m ingesta.inventario_fuentes` el 2026-08-13 16:36._
 
 ## 1. Archivos fuente
 
@@ -21,6 +21,29 @@ _Generado por `python -m ingesta.inventario_fuentes` el 2026-08-13 10:53._
 | 10 | `Ficha_Estatal_Azucar_2026.xlsx` | **ESTATAL**: ESTATAL | resumen_estatal 2026 (azúcar, versión previa) | `ingesta/cargar_fichas_estatales.py` | solo referencia |
 | 11 | `Ficha_Estatal_Azucar_2026_Actualizada.xlsx` | **ESTATAL**: ESTATAL | resumen_estatal 2026 (azúcar, versión vigente) | `ingesta/cargar_fichas_estatales.py` | solo referencia |
 | 12 | `0_indice Drive.docx / 0 Índice Drive.pdf` | no es xlsx | índice documental del Drive | `—` | solo referencia |
+| 13 | `SDAproyectos23cadSequia.xlsx` | **Resúmen**: Secretaría de Desarrollo Agropecuario<br>**23_Emer_Sequía_CAD**: FOLIO SOLICITUD, FECHA SOLICITUD, SUBPROGRAMA, COMPONENTE, VENTANILLA, TIPO PERSONA<br>**Guía para la captura**: Referencia, Observaciones<br>**CapturaOriginalRegionales**: FOLIO SOLICITUD, FECHA SOLICITUD, SUBPROGRAMA, COMPONENTE, VENTANILLA, TIPO PERSONA<br>**Revisiones**: 1.-, Range Dynamic Table Fields, 3311<br>**Config**: File, Ref<br>**Formulas**: CONS 
+ORIG, CONCEPTO REGLAS, UNIDAD DE 
+REFERENCIA, TOPE, % MÁXIMO 
+REGLAS, MONTO 
+PROYECTO<br>**Catálogos**: CATÁLOGOS, ************* NO MOVER NI CAMBIAR ORDEN DE LOS DATOS DE COLUMNAS EN CYAN *******************, ************* NO MOVER NI CAMBIAR ORDEN DE LOS DATOS DE COLUMNAS EN CYAN *******************, ************* NO MOVER NI CAMBIAR ORDEN DE LOS DATOS DE COLUMNAS EN CYAN *******************, ************** SORT LAS TRES COLUMNAS REFERENTE A LOS CONCEPTOS *******, ************** ORDENAR LAS TRES COLUMNAS REFERENTE A LOS CONCEPTOS *******<br>**Padrón**: EJERCICIO, CURP, NOMBRE, APELLIDO PATERNO, APELLIDO MATERNO, PROYECTO, PROGRAMA O COMPONENTE | beneficiario_curp + apoyo_municipio 2023 (Sequía, región Cadereyta) — FUENTE PRIMARIA | `ingesta/cargar_emergentes_sequia.py` | cargado |
+| 14 | `SDAproyectos23jalSequia.xlsx` | **Resúmen**: Secretaría de Desarrollo Agropecuario<br>**23_Emer_Sequía_JAL**: FOLIO SOLICITUD, FECHA SOLICITUD, SUBPROGRAMA, COMPONENTE, VENTANILLA, TIPO PERSONA<br>**Guía para la captura**: Referencia, Observaciones<br>**CapturaOriginalRegionales**: FOLIO SOLICITUD, FECHA SOLICITUD, SUBPROGRAMA, COMPONENTE, VENTANILLA, TIPO PERSONA<br>**Revisiones**: 1.-, Range Dynamic Table Fields, 1483<br>**Config**: File, Ref<br>**Formulas**: CONS 
+ORIG, CONCEPTO REGLAS, UNIDAD DE 
+REFERENCIA, TOPE, % MÁXIMO 
+REGLAS, MONTO 
+PROYECTO<br>**Catálogos**: CATÁLOGOS, ************* NO MOVER NI CAMBIAR ORDEN DE LOS DATOS DE COLUMNAS EN CYAN *******************, ************* NO MOVER NI CAMBIAR ORDEN DE LOS DATOS DE COLUMNAS EN CYAN *******************, ************* NO MOVER NI CAMBIAR ORDEN DE LOS DATOS DE COLUMNAS EN CYAN *******************, ************** SORT LAS TRES COLUMNAS REFERENTE A LOS CONCEPTOS *******, ************** ORDENAR LAS TRES COLUMNAS REFERENTE A LOS CONCEPTOS *******<br>**Padrón**: EJERCICIO, CURP, NOMBRE, APELLIDO PATERNO, APELLIDO MATERNO, PROYECTO, PROGRAMA O COMPONENTE | beneficiario_curp + apoyo_municipio 2023 (Sequía, región Jalpan) — FUENTE PRIMARIA | `ingesta/cargar_emergentes_sequia.py` | cargado |
+| 15 | `SDAproyectos23qroSequia.xlsx` | **Resúmen**: Secretaría de Desarrollo Agropecuario<br>**23_Emer_Sequía_QRO**: FOLIO SOLICITUD, FECHA SOLICITUD, SUBPROGRAMA, COMPONENTE, VENTANILLA, TIPO PERSONA<br>**Guía para la captura**: Referencia, Observaciones<br>**CapturaOriginalRegionales**: FOLIO SOLICITUD, FECHA SOLICITUD, SUBPROGRAMA, COMPONENTE, VENTANILLA, TIPO PERSONA<br>**Revisiones**: 1.-, Range Dynamic Table Fields, 3037<br>**Config**: File, Ref<br>**Formulas**: CONS 
+ORIG, CONCEPTO REGLAS, UNIDAD DE 
+REFERENCIA, TOPE, % MÁXIMO 
+REGLAS, MONTO 
+PROYECTO<br>**Catálogos**: CATÁLOGOS, ************* NO MOVER NI CAMBIAR ORDEN DE LOS DATOS DE COLUMNAS EN CYAN *******************, ************* NO MOVER NI CAMBIAR ORDEN DE LOS DATOS DE COLUMNAS EN CYAN *******************, ************* NO MOVER NI CAMBIAR ORDEN DE LOS DATOS DE COLUMNAS EN CYAN *******************, ************** SORT LAS TRES COLUMNAS REFERENTE A LOS CONCEPTOS *******, ************** ORDENAR LAS TRES COLUMNAS REFERENTE A LOS CONCEPTOS *******<br>**Padrón**: EJERCICIO, CURP, NOMBRE, APELLIDO PATERNO, APELLIDO MATERNO, PROYECTO, PROGRAMA O COMPONENTE | beneficiario_curp + apoyo_municipio 2023 (Sequía, región Querétaro) — FUENTE PRIMARIA | `ingesta/cargar_emergentes_sequia.py` | cargado |
+| 16 | `SDAproyectos23sjrSequia.xlsx` | **Resúmen**: Secretaría de Desarrollo Agropecuario<br>**23_Emer_Sequía_SJR**: FOLIO SOLICITUD, FECHA SOLICITUD, SUBPROGRAMA, COMPONENTE, VENTANILLA, TIPO PERSONA<br>**Guía para la captura**: Referencia, Observaciones<br>**CapturaOriginalRegionales**: FOLIO SOLICITUD, FECHA SOLICITUD, SUBPROGRAMA, COMPONENTE, VENTANILLA, TIPO PERSONA<br>**Revisiones**: 1.-, Range Dynamic Table Fields, 6231<br>**Config**: File, Ref<br>**Formulas**: CONS 
+ORIG, CONCEPTO REGLAS, UNIDAD DE 
+REFERENCIA, TOPE, % MÁXIMO 
+REGLAS, MONTO 
+PROYECTO<br>**Catálogos**: CATÁLOGOS, ************* NO MOVER NI CAMBIAR ORDEN DE LOS DATOS DE COLUMNAS EN CYAN *******************, ************* NO MOVER NI CAMBIAR ORDEN DE LOS DATOS DE COLUMNAS EN CYAN *******************, ************* NO MOVER NI CAMBIAR ORDEN DE LOS DATOS DE COLUMNAS EN CYAN *******************, ************** SORT LAS TRES COLUMNAS REFERENTE A LOS CONCEPTOS *******, ************** ORDENAR LAS TRES COLUMNAS REFERENTE A LOS CONCEPTOS *******<br>**Padrón**: EJERCICIO, CURP, NOMBRE, APELLIDO PATERNO, APELLIDO MATERNO, PROYECTO, PROGRAMA O COMPONENTE | beneficiario_curp + apoyo_municipio 2023 (Sequía, región San Juan del Río) — FUENTE PRIMARIA | `ingesta/cargar_emergentes_sequia.py` | cargado |
+| 17 | `Emergenes 2021-2024.xlsx (Drive 1HvlG1Ftc6sFSFOIEzgjdShrG5iYb0FAS)` | archivo no encontrado | apoyo_municipio + resumen_estatal 2021-2022 como AGREGADO sin padrón individual | `ingesta/cargar_emergentes_agregado.py` | cargado |
+| 18 | `20230123 2023-00007 Programa Institucional Emergente por Sequía para Productores del Campo.pdf (Drive 1hKlA5SINTQSiBCCoJN9xidcdO3q_Z9QN)` | archivo no encontrado | dictamen: nombre oficial del programa y monto autorizado ($45,570,275.00) para contrastar contra el padrón cargado | `—` | solo referencia |
+| 19 | `HISTORICO SEGUROS CATASTROFICOS DEL 2011-2021 (1).xlsx (Drive 1GwCv0gtX4DYFnaE4LJPyjizNWQsCal5A)` | archivo no encontrado | resumen por esquema y año de seguros catastróficos; NO trae CURP ni folio | `—` | solo referencia |
 
 ## 2. CSV de respaldo (`DATA_DIR`)
 
@@ -52,20 +75,21 @@ Carpeta en uso: `C:\Users\vparsar\Downloads\01_CLAUDE_2026_Repositorio\generador
 | `analitica.region` | 4 |
 | `analitica.municipio` | 24 |
 | `analitica.municipio_alias` | 13 |
-| `analitica.programa` | 675 |
+| `analitica.programa` | 677 |
 | `analitica.programa_alias` | 1 |
-| `analitica.apoyo_municipio` | 191 |
+| `analitica.apoyo_municipio` | 215 |
 | `analitica.apoyo_metrica` | 129 |
-| `analitica.resumen_estatal` | 65 |
+| `analitica.resumen_estatal` | 67 |
 | `analitica.accion` | 53180 |
 | `analitica.beneficiarios_demografia` | 0 |
-| `analitica.beneficiario_curp` | 2225 |
-| `analitica.incidencia_carga` | 675 |
+| `analitica.beneficiario_curp` | 16282 |
+| `analitica.incidencia_carga` | 1008 |
 | `analitica.glosa_insumo` | 8 |
 
 ## 4. Huecos conocidos
 
-- `apoyo_municipio` cubre 2023–2025; **2022 no existe en ningún origen** (incidencia `ANIO_SIN_DATOS`). 2021 solo está en `accion`.
+- `apoyo_municipio` cubre 2021–2026. 2021 y 2022 existen **solo como agregado estatal** de los emergentes (`granularidad='AGREGADO'`, pseudo-municipio ALCANCE ESTATAL): no hay padrón folio por folio de seguros catastróficos ni de emergente pecuario. El resto de 2021 solo está en `accion`.
+- Emergentes: Sequía 2023 sí está folio por folio (14,058 apoyos / $44,871,550). **Falta el padrón de pacas forrajeras 2023** (2,415 apoyos / $5,000,000 según el resumen estatal) y el de Gestión de Riesgos 2024. Ver `docs/CARGA_EMERGENTES_2021_2024.md`.
 - 2026 vive en las vistas `v_oficial_*` (dictaminado); trae estatal y total, no federal/municipal/beneficiario.
 - 2027 va **vacío por definición** (R4): no es un hueco, es la regla.
 - `Resumen Histórico por Municipio.xlsx` es la plantilla en blanco: no tiene datos que cargar.
@@ -78,3 +102,15 @@ _(Esta sección la edita el equipo a mano; el script nunca la sobreescribe.)_
 
 ### Nota manual de prueba
 Esta linea debe sobrevivir.
+
+### Emergentes 2021–2024 (carga del 2026-08-13)
+
+La bitácora completa —qué se cargó, de qué archivo exacto, por qué se eligió la hoja
+consolidada por región y no los archivos divididos por municipio, y qué quedó pendiente
+para el área— está en **`docs/CARGA_EMERGENTES_2021_2024.md`**.
+
+Resumen: Sequía 2023 se cargó **folio por folio** (14,058 apoyos / $44,871,550.00, cuadra
+municipio por municipio con el resumen oficial del Drive); los emergentes 2021–2022
+(seguros catastróficos, emergente pecuario, D.R. 023, capitalización hidroagrícolas) se
+cargaron **solo como agregado**, marcados `granularidad='AGREGADO'` con incidencia
+`FUENTE_FALTANTE`, porque el padrón individual no existe en el Drive.

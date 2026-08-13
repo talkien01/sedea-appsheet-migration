@@ -13,6 +13,7 @@ Informe de Gobierno**.
 - Criterios y reglas de negocio: [`docs/CRITERIOS.md`](docs/CRITERIOS.md)
 - Diccionario de datos: [`docs/DICCIONARIO.md`](docs/DICCIONARIO.md)
 - Inventario de fuentes: [`docs/INVENTARIO_FUENTES.md`](docs/INVENTARIO_FUENTES.md)
+- Bitácora de la carga de emergentes 2021–2024: [`docs/CARGA_EMERGENTES_2021_2024.md`](docs/CARGA_EMERGENTES_2021_2024.md)
 
 ---
 
@@ -73,6 +74,15 @@ python -m ingesta.cargar_curp --desde-oficial          # padrón 2026 completo
 python -m ingesta.cargar_resumen_historico --archivo "Resumen Histórico por Municipio.xlsx" --dry-run
 python -m ingesta.cargar_distribucion --archivo "Regional_Cadereyta_Distribucion_Cadereyta_Colon_Ezequiel.xlsx"
 python -m ingesta.cargar_fichas_estatales
+
+# 7b. Emergentes 2021-2024 (ver docs/CARGA_EMERGENTES_2021_2024.md)
+#     Sequía 2023 folio por folio: 14,058 apoyos / $44,871,550 en los 18 municipios
+python -m ingesta.cargar_emergentes_sequia --dry-run
+python -m ingesta.cargar_emergentes_sequia
+#     Seguros catastróficos y demás emergentes 2021-2022: solo agregado estatal,
+#     porque el padrón individual no existe en el Drive (se marca AGREGADO, no se inventa)
+python -m ingesta.cargar_emergentes_agregado --dry-run
+python -m ingesta.cargar_emergentes_agregado
 
 # 8. Insumos de la Glosa
 python -m services.glosa --anio 2026

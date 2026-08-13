@@ -197,6 +197,9 @@ def generar(anio=2026, responsable=RESPONSABLE_POR_DEFECTO):
              indicador="Inversión total en programas clasificados como EMERGENTE",
              valor_numerico=emergentes, unidad="MXN", verificado=True,
              verificado_por=responsable,
+             valor_texto=(None if emergentes is not None else
+                          f"Sin dato: en {anio} no hay ninguna fila clasificada como EMERGENTE en "
+                          f"los orígenes cargados. Se rinde vacío, no como cero (R1/R4)."),
              fuente_vista="analitica.vw_matriz_emer_prod",
              criterio_calculo=(
                  "SELECT sum(total) FROM analitica.vw_matriz_historica WHERE anio = "

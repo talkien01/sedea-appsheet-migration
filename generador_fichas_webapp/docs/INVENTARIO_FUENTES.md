@@ -3,7 +3,7 @@
 > Fase F1 del SPEC. La sección autogenerada se reescribe con `python -m ingesta.inventario_fuentes`; las notas manuales del final **no se tocan**.
 
 <!-- AUTOGENERADO:INICIO -->
-_Generado por `python -m ingesta.inventario_fuentes` el 2026-08-13 10:27._
+_Generado por `python -m ingesta.inventario_fuentes` el 2026-08-13 10:53._
 
 ## 1. Archivos fuente
 
@@ -61,7 +61,7 @@ Carpeta en uso: `C:\Users\vparsar\Downloads\01_CLAUDE_2026_Repositorio\generador
 | `analitica.beneficiarios_demografia` | 0 |
 | `analitica.beneficiario_curp` | 2225 |
 | `analitica.incidencia_carga` | 675 |
-| `analitica.glosa_insumo` | 0 |
+| `analitica.glosa_insumo` | 8 |
 
 ## 4. Huecos conocidos
 
@@ -75,3 +75,6 @@ Carpeta en uso: `C:\Users\vparsar\Downloads\01_CLAUDE_2026_Repositorio\generador
 ## Notas manuales
 
 _(Esta sección la edita el equipo a mano; el script nunca la sobreescribe.)_
+
+### Nota manual de prueba
+Esta linea debe sobrevivir.

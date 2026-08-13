@@ -1,0 +1,46 @@
+:root{
+  --tinta:#12212f; --azul:#366092; --azul-claro:#7fa8d4; --gris:#eef2f6;
+  --borde:#cbd5e1; --rojo:#a6192e; --verde:#2e7d32; --ambar:#b45309;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;color:var(--tinta);background:#f7f9fb}
+a{color:var(--azul)}
+nav.barra{background:var(--azul);padding:10px 18px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+nav.barra a{color:#fff;text-decoration:none;font-size:14px;padding:4px 8px;border-radius:5px}
+nav.barra a:hover,nav.barra a.activo{background:rgba(255,255,255,.18)}
+nav.barra .marca{font-weight:bold;color:#fff;margin-right:8px}
+nav.barra .estado{margin-left:auto;color:#dbe7f3;font-size:12px}
+main{max-width:1200px;margin:22px auto;padding:0 18px 60px}
+h1{font-size:22px;color:var(--azul);margin:0 0 4px}
+h2{font-size:16px;color:var(--azul);margin:26px 0 8px}
+.sub{color:#5b6b7c;font-size:13px;margin-bottom:16px}
+.card{background:#fff;border:1px solid var(--borde);border-radius:10px;padding:18px;margin-bottom:18px}
+.filtros{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.filtros label{display:flex;flex-direction:column;font-size:12px;color:#5b6b7c;gap:4px}
+select,input,button{padding:7px 10px;border:1px solid var(--borde);border-radius:6px;font-size:14px;background:#fff}
+button{background:var(--azul);color:#fff;border:none;cursor:pointer}
+button:hover{background:#2a4d73}
+button.secundario{background:#64748b}
+.kpis{display:flex;gap:14px;flex-wrap:wrap;margin:16px 0}
+.kpi{flex:1 1 200px;background:#fff;border:1px solid var(--borde);border-radius:10px;padding:14px}
+.kpi .t{font-size:11px;text-transform:uppercase;color:#5b6b7c;letter-spacing:.5px}
+.kpi .v{font-size:24px;font-weight:bold;margin-top:4px}
+table{border-collapse:collapse;width:100%;font-size:12.5px;background:#fff}
+th{background:var(--azul);color:#fff;padding:7px 6px;text-align:left}
+td{border-bottom:1px solid var(--borde);padding:5px 6px}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.total td{font-weight:bold;background:var(--gris)}
+.vacio{color:#94a3b8}
+.tabla-scroll{overflow-x:auto;border:1px solid var(--borde);border-radius:10px}
+.graficas{display:flex;flex-wrap:wrap;gap:18px}
+.grafica{flex:1 1 420px;min-width:320px;background:#fff;border:1px solid var(--borde);border-radius:10px;padding:12px}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:bold;color:#fff}
+.badge.BLOQUEANTE{background:var(--rojo)}
+.badge.ADVERTENCIA{background:var(--ambar)}
+.badge.INFO{background:#475569}
+.aviso{background:#fde9e9;border:1px solid var(--rojo);color:var(--rojo);padding:10px 12px;border-radius:8px;font-size:13px;margin:12px 0}
+.nota{font-size:12px;color:#5b6b7c;margin-top:8px}
+.fuente{background:var(--gris);border-left:4px solid var(--azul);padding:8px 10px;font-size:12px;margin-top:8px;border-radius:0 6px 6px 0}
+.fuente div{margin:2px 0}
+.ok{color:var(--verde)} .bad{color:var(--rojo)}
+.paginado{display:flex;gap:10px;align-items:center;margin-top:10px;font-size:13px}

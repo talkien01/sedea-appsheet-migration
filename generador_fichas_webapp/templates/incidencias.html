@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block titulo %}Incidencias de calidad — SEDEA{% endblock %}
+{% block contenido %}
+<h1>Tablero de calidad de datos</h1>
+<div class="sub">Lo que no cuadra se reporta, no se rellena (R8). Cada incidencia trae su acción sugerida.</div>
+
+{% if error %}<div class="aviso">{{ error }}</div>{% endif %}
+
+<div class="kpis" id="conteo-severidad">
+  {% for s in por_severidad %}
+  <div class="kpi"><div class="t">{{ s.severidad }}</div><div class="v">{{ s.n }}</div></div>
+  {% else %}
+  <div class="kpi"><div class="t">Incidencias abiertas</div><div class="v">0</div></div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <form method="get" class="filtros">
+    <label>Tipo
+      <select name="tipo"><option value="">Todos</option>
+        {% for t in por_tipo %}<option value="{{ t.tipo }}" {% if filtros.get('tipo')==t.tipo %}selected{% endif %}>{{ t.tipo }} ({{ t.n }})</option>{% endfor %}
+      </select></label>
+    <label>Severidad
+      <select name="severidad"><option value="">Todas</option>
+        {% for s in ['BLOQUEANTE','ADVERTENCIA','INFO'] %}<option value="{{ s }}" {% if filtros.get('severidad')==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select></label>
+    <label>Año<input type="number" name="anio" value="{{ filtros.get('anio','') }}"></label>
+    <label>Resuelta
+      <select name="resuelta"><option value="">Todas</option>
+        <option value="false" {% if filtros.get('resuelta')=='false' %}selected{% endif %}>Abiertas</option>
+        <option value="true" {% if filtros.get('resuelta')=='true' %}selected{% endif %}>Resueltas</option>
+      </select></label>
+    <button type="submit">Filtrar</button>
+    <a href="/incidencias"><button type="button" class="secundario">Limpiar</button></a>
+  </form>
+</div>
+
+<h2>Conteo por tipo</h2>
+<div class="tabla-scroll">
+<table>
+  <thead><tr><th>Tipo</th><th>Severidad</th><th class="num">Abiertas</th></tr></thead>
+  <tbody>
+  {% for t in por_tipo %}
+  <tr><td>{{ t.tipo }}</td><td><span class="badge {{ t.severidad }}">{{ t.severidad }}</span></td>
+      <td class="num">{{ t.n }}</td></tr>
+  {% else %}<tr><td colspan="3">Sin incidencias registradas.</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Detalle</h2>
+<div class="tabla-scroll">
+<table>
+  <thead><tr>
+    <th>#</th><th>Severidad</th><th>Tipo</th><th>Entidad</th><th>Año</th><th>Municipio</th>
+    <th>Descripción</th><th>Acción sugerida</th><th>Fuente</th>
+  </tr></thead>
+  <tbody>
+  {% for f in filas %}
+  <tr>
+    <td>{{ f.incidencia_id }}</td>
+    <td><span class="badge {{ f.severidad }}">{{ f.severidad }}</span></td>
+    <td>{{ f.tipo }}</td><td>{{ f.entidad }}</td>
+    <td>{{ f.anio if f.anio is not none else '—' }}</td>
+    <td>{{ f.municipio or '—' }}</td>
+    <td>{{ f.descripcion }}</td><td>{{ f.accion_sugerida }}</td>
+    <td>{{ f.fuente_archivo or '—' }}{% if f.fuente_hoja %} / {{ f.fuente_hoja }}{% endif %}</td>
+  </tr>
+  {% else %}<tr><td colspan="9" id="sin-datos">Sin incidencias para los filtros seleccionados.</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

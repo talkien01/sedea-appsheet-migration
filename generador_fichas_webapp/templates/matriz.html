@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block titulo %}Matriz histórica — SEDEA{% endblock %}
+{% macro celda(v) %}{% if v is none or v == '' %}<span class="vacio">—</span>{% else %}{{ v }}{% endif %}{% endmacro %}
+{% macro dinero(v) %}{% if v is none or v == '' %}<span class="vacio">—</span>{% else %}${{ '{:,.0f}'.format(v) }}{% endif %}{% endmacro %}
+{% block contenido %}
+<h1>Matriz histórica municipio × año × programa</h1>
+<div class="sub">Une los tres orígenes: <code>accion</code> (2009–2021),
+  <code>apoyo_municipio</code> (2023–2025) y <code>v_oficial_*</code> (2026).
+  2027 aparece vacío por definición, nunca en cero.</div>
+
+{% if error %}<div class="aviso">{{ error }}</div>{% endif %}
+
+<div class="card">
+  <form method="get" class="filtros">
+    <label>Año desde<input type="number" name="anio_desde" value="{{ filtros.get('anio_desde','') }}"></label>
+    <label>Año hasta<input type="number" name="anio_hasta" value="{{ filtros.get('anio_hasta','') }}"></label>
+    <label>Región
+      <select name="region"><option value="">Todas</option>
+      {% for r in catalogos.regiones %}<option value="{{ r }}" {% if filtros.get('region')==r %}selected{% endif %}>{{ r }}</option>{% endfor %}
+      </select></label>
+    <label>Municipio
+      <select name="municipio"><option value="">Todos</option>
+      {% for m in catalogos.municipios %}<option value="{{ m }}" {% if filtros.get('municipio')==m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+      </select></label>
+    <label>Clasificación
+      <select name="clasificacion"><option value="">Todas</option>
+      {% for c in catalogos.clasificaciones %}<option value="{{ c }}" {% if filtros.get('clasificacion')==c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+      </select></label>
+    <button type="submit">Aplicar</button>
+    <a href="/matriz"><button type="button" class="secundario">Limpiar</button></a>
+  </form>
+  <div class="paginado">
+    <span>{{ total }} fila(s) · página {{ page }}</span>
+    <a href="/exportar/matriz.csv?{{ request.query_string.decode() }}"><button type="button" class="secundario">Descargar CSV</button></a>
+    <a href="/exportar/matriz.xlsx?{{ request.query_string.decode() }}"><button type="button" class="secundario">Descargar XLSX</button></a>
+    <a href="/exportar/html?{{ request.query_string.decode() }}"><button type="button" class="secundario">HTML autocontenido</button></a>
+  </div>
+</div>
+
+<div class="tabla-scroll">
+<table>
+<thead><tr>
+  <th>Año</th><th>Región</th><th>Municipio</th><th>Programa</th><th>Clasificación</th>
+  <th class="num">Apoyos</th><th class="num">Federal</th><th class="num">Estatal</th>
+  <th class="num">Municipal</th><th class="num">Beneficiario (productor)</th>
+  <th class="num">Total</th><th>Origen</th>
+</tr></thead>
+<tbody>
+{% for f in filas %}
+<tr>
+  <td>{{ celda(f.anio) }}</td><td>{{ celda(f.region) }}</td><td>{{ celda(f.municipio) }}</td>
+  <td>{{ celda(f.programa) }}</td><td>{{ celda(f.clasificacion) }}</td>
+  <td class="num">{{ celda(f.numero_apoyos) }}</td>
+  <td class="num">{{ dinero(f.federal) }}</td><td class="num">{{ dinero(f.estatal) }}</td>
+  <td class="num">{{ dinero(f.municipal) }}</td><td class="num">{{ dinero(f.beneficiario) }}</td>
+  <td class="num">{{ dinero(f.total) }}</td><td>{{ celda(f.origen) }}</td>
+</tr>
+{% else %}
+<tr><td colspan="12" id="sin-datos">Sin datos para los filtros seleccionados</td></tr>
+{% endfor %}
+{% if filas %}
+<tr class="total">
+  <td colspan="5">TOTAL (todos los filtros aplicados)</td>
+  <td class="num">{{ celda(totales.numero_apoyos) }}</td>
+  <td class="num">{{ dinero(totales.federal) }}</td>
+  <td class="num">{{ dinero(totales.estatal) }}</td>
+  <td class="num">{{ dinero(totales.municipal) }}</td>
+  <td class="num">{{ dinero(totales.beneficiario) }}</td>
+  <td class="num">{{ dinero(totales.total) }}</td>
+  <td></td>
+</tr>
+{% endif %}
+</tbody>
+</table>
+</div>
+<p class="nota">«—» significa sin dato en la fuente, no cero. Los pseudo-municipios estatales
+   (<em>TODO EL ESTADO</em>, <em>ALCANCE ESTATAL</em>, <em>* REGIÓN</em>) no se reparten entre
+   municipios; solo suman al total estatal.</p>
+{% endblock %}

@@ -1,41 +1,60 @@
+"""Aplicación Flask del Sistema Histórico de Apoyos SEDEA.
+
+Se conserva el comportamiento original (`GET /`, `POST /generar`,
+`POST /actualizar-datos`) y se agregan matriz, dashboard, glosa, incidencias,
+API JSON y exportadores mediante blueprints.
+
+Dev:   python app.py
+Nube:  gunicorn -w 3 -b 0.0.0.0:5000 "app:crear_app()"
+"""
 import os
-from flask import Flask, render_template, request, send_file, jsonify
+
+from flask import Flask, render_template
 
 import config
+import db
 import ficha_engine
-import docx_writer
-import refresh_data
+from blueprints.api import bp as bp_api
+from blueprints.dashboard import bp as bp_paginas
+from blueprints.export import bp as bp_export
+from blueprints.fichas import bp as bp_fichas
+from services import incidencias as svc_inc
+from services import matriz as svc_matriz
 
-app = Flask(__name__)
 
-@app.route("/")
-def index():
-    municipios = ficha_engine.cargar_municipios()
-    datos_ok = os.path.exists(config.DATA_DIR) and len(os.listdir(config.DATA_DIR)) > 0 if os.path.exists(config.DATA_DIR) else False
-    manual_ok = os.path.exists(config.MANUAL_XLSX)
-    return render_template("index.html", municipios=sorted(municipios), datos_ok=datos_ok, manual_ok=manual_ok)
+def crear_app():
+    app = Flask(__name__)
 
-@app.route("/generar", methods=["POST"])
-def generar():
-    municipio = request.form.get("municipio")
-    if not municipio:
-        return "Falta seleccionar municipio", 400
+    @app.get("/")
+    def index():
+        municipios = ficha_engine.cargar_municipios()
+        if not municipios:
+            municipios = svc_matriz.catalogos()["municipios"]
+        datos_ok = (os.path.isdir(config.DATA_DIR)
+                    and any(f.endswith(".csv") for f in os.listdir(config.DATA_DIR)))
+        manual_ok = os.path.exists(config.MANUAL_XLSX)
+        try:
+            regiones = svc_matriz.catalogos()["regiones"]
+        except Exception:
+            regiones = []
+        return render_template("index.html", municipios=sorted(municipios), regiones=regiones,
+                               datos_ok=datos_ok, manual_ok=manual_ok,
+                               modo=db.modo_datos(),
+                               incidencias_abiertas=svc_inc.total_abiertas())
 
-    data = ficha_engine.generar(municipio)
-    os.makedirs(config.OUTPUT_DIR, exist_ok=True)
-    fname = f"Ficha_{municipio.replace(' ', '_')}.docx"
-    out_path = os.path.join(config.OUTPUT_DIR, fname)
-    docx_writer.escribir_ficha(data, out_path)
+    app.register_blueprint(bp_fichas)
+    app.register_blueprint(bp_paginas)
+    app.register_blueprint(bp_api)
+    app.register_blueprint(bp_export)
+    return app
 
-    return send_file(out_path, as_attachment=True, download_name=fname)
 
-@app.route("/actualizar-datos", methods=["POST"])
-def actualizar_datos():
-    resultados = refresh_data.refrescar()
-    return jsonify(resultados)
+app = crear_app()
+
 
 if __name__ == "__main__":
-    print(f"Datos esperados en: {config.DATA_DIR}")
-    print(f"Plantilla manual esperada en: {config.MANUAL_XLSX}")
-    print("Abre http://localhost:5000 en tu navegador")
-    app.run(debug=True, port=5000)
+    print(f"Datos CSV (fallback) en: {config.DATA_DIR}")
+    print(f"Plantilla manual: {config.MANUAL_XLSX}")
+    print(f"Modo de datos: {db.modo_datos()}")
+    print(f"Abre http://localhost:{config.PUERTO} en tu navegador")
+    app.run(debug=True, port=config.PUERTO)

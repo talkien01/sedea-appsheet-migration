@@ -124,4 +124,134 @@ def generar(municipio):
         "precipitacion": precipitacion,
         "demografia": demografia,
         "warnings": warnings,
+        **secciones_extendidas({"municipio": municipio}, ambito="MUNICIPIO", clave=municipio),
+    }
+
+
+# ===========================================================================
+# Extensión 2026: secciones 7-10 (Emergentes/Productividad, aportaciones,
+# género y edad, incidencias) y fichas regional y estatal.
+# Todo lo que no tiene fuente se reporta como leyenda, nunca como cero (R1).
+# ===========================================================================
+import db  # noqa: E402
+from services import aportaciones as _aport  # noqa: E402
+from services import genero_edad as _gen  # noqa: E402
+from services import incidencias as _inc  # noqa: E402
+from services import matriz as _matriz  # noqa: E402
+
+
+def secciones_extendidas(filtros, ambito, clave):
+    """Devuelve las 4 secciones nuevas para cualquier ámbito.
+    Si la base está apagada, cada sección trae su leyenda explicativa."""
+    salida = {
+        "ambito": ambito,
+        "clave_ambito": clave,
+        "emer_prod": [],
+        "aportaciones": {},
+        "genero_edad": [],
+        "genero_edad_leyenda": None,
+        "incidencias": [],
+        "incidencias_leyenda": None,
+    }
+    try:
+        salida["emer_prod"] = _matriz.emer_prod(filtros)
+    except db.SinDatos as e:
+        salida["emer_prod_leyenda"] = f"Sin conexión a la base: {e}"
+    try:
+        salida["aportaciones"] = _aport.resumen(filtros)
+    except db.SinDatos as e:
+        salida["aportaciones_leyenda"] = f"Sin conexión a la base: {e}"
+    try:
+        filas = _gen.resumen_por_rango(filtros)
+        salida["genero_edad"] = filas
+        if not filas:
+            salida["genero_edad_leyenda"] = _gen.leyenda_sin_datos(f"{ambito.lower()} {clave}")
+    except db.SinDatos as e:
+        salida["genero_edad_leyenda"] = f"Sin conexión a la base: {e}"
+    try:
+        salida["incidencias"] = _inc.listar(municipio=filtros.get("municipio"),
+                                            resuelta=False, limite=50)
+        if not salida["incidencias"]:
+            salida["incidencias_leyenda"] = "Sin incidencias abiertas para este ámbito."
+    except db.SinDatos as e:
+        salida["incidencias_leyenda"] = f"Sin conexión a la base: {e}"
+    return salida
+
+
+def _acumular(filas):
+    acc = {"numero_apoyos": None, "federal": None, "estatal": None, "municipal": None,
+           "beneficiario": None, "total": None}
+    for f in filas:
+        for k in acc:
+            v = f.get(k)
+            if v is not None:
+                acc[k] = (acc[k] or 0) + v
+    return acc
+
+
+def generar_region(region):
+    """Ficha a nivel región: agrega los municipios de la región (A15)."""
+    municipios = _matriz.municipios_de_region(region)
+    if not municipios:
+        raise ValueError(f"La región «{region}» no existe en el catálogo.")
+    filtros = {"region": region}
+    warnings = []
+    filas, total_filas = _matriz.matriz(dict(filtros, page_size=100000, page=1), con_paginado=False)
+    if not filas:
+        warnings.append(f"No hay ninguna fila cargada para la región {region}.")
+    por_municipio = {}
+    for f in filas:
+        d = por_municipio.setdefault(f["municipio"], [])
+        d.append(f)
+    resumen_municipios = []
+    for m in municipios:
+        sub = por_municipio.get(m, [])
+        if not sub:
+            warnings.append(f"{m}: sin datos cargados en ningún origen; se rinde vacío, no en cero.")
+        fila = _acumular(sub)
+        fila["municipio"] = m
+        fila["anios"] = sorted({s["anio"] for s in sub if s.get("anio")})
+        resumen_municipios.append(fila)
+    return {
+        "region": region,
+        "municipios": municipios,
+        "resumen_municipios": resumen_municipios,
+        "serie_anual": _matriz.serie_inversion_anual(filtros),
+        "total": _matriz.totales(filtros),
+        "filas": filas,
+        "total_filas": total_filas,
+        "warnings": warnings,
+        **secciones_extendidas(filtros, ambito="REGION", clave=region),
+    }
+
+
+def generar_estatal():
+    """Ficha estatal: resumen_estatal + v_oficial_componente + matriz completa."""
+    warnings = []
+    filtros = {}
+    resumen_estatal = _leer_csv("07_resumen_estatal_full.csv")
+    if not resumen_estatal:
+        try:
+            resumen_estatal = db.consultar(
+                "SELECT re.*, p.nombre AS programa_nombre FROM analitica.resumen_estatal re "
+                "JOIN analitica.programa p USING (programa_id) ORDER BY re.anio, p.nombre")
+        except db.SinDatos:
+            warnings.append("No se pudo leer resumen_estatal (ni CSV ni base).")
+    componentes_2026 = _leer_csv("13_v_oficial_componente.csv")
+    if not componentes_2026:
+        try:
+            componentes_2026 = db.consultar(
+                "SELECT * FROM analitica.v_oficial_componente ORDER BY anio, componente")
+        except db.SinDatos:
+            warnings.append("No se pudo leer v_oficial_componente (ni CSV ni base).")
+    serie = _matriz.serie_inversion_anual(filtros)
+    if not any(s.get("anio") == 2027 for s in serie):
+        warnings.append("2027 no tiene ninguna cifra cargada: se rinde vacío, nunca como cero (R4).")
+    return {
+        "resumen_estatal": resumen_estatal,
+        "componentes_2026": componentes_2026,
+        "serie_anual": serie,
+        "total": _matriz.totales(filtros),
+        "warnings": warnings,
+        **secciones_extendidas(filtros, ambito="ESTATAL", clave="QUERÉTARO"),
     }

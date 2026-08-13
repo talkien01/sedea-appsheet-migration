@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block titulo %}Dashboard — SEDEA{% endblock %}
+{% block contenido %}
+<h1>Dashboard de apoyos SEDEA</h1>
+<div class="sub">Filtros combinables por año, región, municipio, programa y clasificación.
+  Fecha de corte: {{ fecha_corte }}. Los años sin carga no se dibujan como cero.</div>
+
+<div class="card">
+  <div class="filtros">
+    <label>Año
+      <select id="f-anio"><option value="">Todos</option>
+        {% for a in catalogos.anios %}<option value="{{ a }}">{{ a }}</option>{% endfor %}
+      </select></label>
+    <label>Región
+      <select id="f-region"><option value="">Todas</option>
+        {% for r in catalogos.regiones %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+      </select></label>
+    <label>Municipio
+      <select id="f-municipio"><option value="">Todos</option>
+        {% for m in catalogos.municipios %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+      </select></label>
+    <label>Programa
+      <select id="f-programa"><option value="">Todos</option>
+        {% for p in catalogos.programas %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+      </select></label>
+    <label>Clasificación
+      <select id="f-clasificacion"><option value="">Todas</option>
+        {% for c in catalogos.clasificaciones %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select></label>
+    <button id="btn-aplicar" type="button">Aplicar</button>
+    <button id="btn-limpiar" type="button" class="secundario">Limpiar</button>
+  </div>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="t">Inversión total</div><div class="v" id="kpi-total">—</div></div>
+  <div class="kpi"><div class="t">Apoyos (folios)</div><div class="v" id="kpi-apoyos">—</div></div>
+  <div class="kpi"><div class="t">Municipios con apoyo</div><div class="v" id="kpi-municipios">—</div></div>
+  <div class="kpi"><div class="t">Incidencias abiertas</div><div class="v" id="kpi-incidencias">—</div></div>
+</div>
+
+<div id="sin-datos" class="aviso" style="display:none">Sin datos para los filtros seleccionados</div>
+
+<div class="graficas">
+  <div class="grafica"><h2>Inversión por año</h2><canvas id="chart-inversion-anual" height="230"></canvas></div>
+  <div class="grafica"><h2>Emergentes vs Productividad</h2><canvas id="chart-emer-prod" height="230"></canvas></div>
+  <div class="grafica"><h2>Distribución de aportaciones</h2><canvas id="chart-aportaciones" height="230"></canvas></div>
+  <div class="grafica"><h2>Personas por género (CURP)</h2><canvas id="chart-genero" height="230"></canvas></div>
+  <div class="grafica"><h2>Top municipios por inversión</h2><canvas id="chart-top-municipios" height="230"></canvas></div>
+</div>
+
+<h2>Resumen por municipio</h2>
+<div class="tabla-scroll">
+<table id="tabla-resumen">
+  <thead><tr>
+    <th>Municipio</th><th class="num">Apoyos</th><th class="num">Federal</th>
+    <th class="num">Estatal</th><th class="num">Municipal</th>
+    <th class="num">Beneficiario (productor)</th><th class="num">Total</th>
+  </tr></thead>
+  <tbody id="cuerpo-resumen"></tbody>
+</table>
+</div>
+<p class="nota">«—» es ausencia de dato, no cero. Los conteos son de apoyos (folios);
+   las personas se cuentan por CURP distinta y se reportan aparte.</p>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

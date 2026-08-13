@@ -1,57 +1,72 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<title>Generador de Fichas — SEDEA</title>
-<style>
-  body { font-family: Arial, sans-serif; max-width: 720px; margin: 40px auto; color: #222; }
-  h1 { color: #366092; font-size: 22px; }
-  .card { border: 1px solid #d9e1f2; border-radius: 8px; padding: 24px; margin-bottom: 20px; }
-  select, button { font-size: 15px; padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; }
-  button { background: #366092; color: white; border: none; cursor: pointer; margin-left: 8px; }
-  button:hover { background: #2a4d73; }
-  button.secondary { background: #888; }
-  .status { font-size: 13px; margin-top: 10px; }
-  .ok { color: #2e7d32; } .bad { color: #c62828; }
-  #resultado { white-space: pre-wrap; font-size: 12px; background: #f7f7f7; padding: 10px; border-radius: 6px; margin-top: 12px; display:none; }
-</style>
-</head>
-<body>
-  <h1>Generador de Fichas Municipales — SEDEA</h1>
+{% extends "base.html" %}
+{% block titulo %}Generador de Fichas — SEDEA{% endblock %}
+{% block contenido %}
+<h1>Generador de fichas — SEDEA</h1>
+<div class="sub">
+  Municipal, regional y estatal. Los montos son totales (federal + estatal + municipal +
+  aportación del productor); los conteos son de apoyos (folios), no de personas únicas.
+</div>
 
-  <div class="card">
-    <h3>1. Generar ficha</h3>
-    <form action="/generar" method="post">
-      <select name="municipio" required>
+<div class="card">
+  <h3>1. Ficha municipal</h3>
+  <form action="/generar" method="post" class="filtros">
+    <label>Municipio
+      <select name="municipio" id="municipio" required>
         <option value="" disabled selected>Elige un municipio…</option>
-        {% for m in municipios %}
-        <option value="{{ m }}">{{ m }}</option>
-        {% endfor %}
+        {% for m in municipios %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
       </select>
-      <button type="submit">Generar .docx</button>
-    </form>
-    <div class="status">
-      Datos de Postgres: {% if datos_ok %}<span class="ok">encontrados en analitica_export/</span>{% else %}<span class="bad">no encontrados — corre "Actualizar datos" abajo</span>{% endif %}<br>
-      Plantilla manual: {% if manual_ok %}<span class="ok">encontrada</span>{% else %}<span class="bad">no encontrada (Datos_referencia_manual_municipios.xlsx)</span>{% endif %}
-    </div>
+    </label>
+    <button type="submit">Generar .docx</button>
+  </form>
+  <div class="nota">
+    Datos de Postgres:
+    {% if datos_ok %}<span class="ok">CSV encontrados</span>{% else %}<span class="bad">no encontrados — usa «Actualizar datos»</span>{% endif %}
+    · Plantilla manual:
+    {% if manual_ok %}<span class="ok">encontrada</span>{% else %}<span class="bad">no encontrada</span>{% endif %}
+    · Modo de datos: <strong>{{ modo }}</strong>
+    {% if incidencias_abiertas is not none %} · Incidencias abiertas:
+      <a href="/incidencias">{{ incidencias_abiertas }}</a>{% endif %}
   </div>
+</div>
 
-  <div class="card">
-    <h3>2. Actualizar datos desde la base (opcional)</h3>
-    <p style="font-size:13px; color:#555;">Corre las consultas contra el contenedor Docker de la base y refresca los CSV locales. Requiere que Docker esté corriendo en esta máquina y el contenedor "sedea_db" activo.</p>
-    <button class="secondary" onclick="actualizar()">Actualizar datos</button>
-    <div id="resultado"></div>
-  </div>
+<div class="card">
+  <h3>2. Ficha regional</h3>
+  <form action="/generar/region" method="post" class="filtros">
+    <label>Región
+      <select name="region" id="region" required>
+        <option value="" disabled selected>Elige una región…</option>
+        {% for r in regiones %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit">Generar .docx regional</button>
+  </form>
+</div>
 
-  <script>
-    async function actualizar() {
-      const div = document.getElementById("resultado");
-      div.style.display = "block";
-      div.textContent = "Actualizando…";
-      const resp = await fetch("/actualizar-datos", { method: "POST" });
-      const data = await resp.json();
-      div.textContent = Object.entries(data).map(([k,v]) => k + " -> " + v).join("\n");
-    }
-  </script>
-</body>
-</html>
+<div class="card">
+  <h3>3. Ficha estatal</h3>
+  <form action="/generar/estatal" method="post">
+    <button type="submit">Generar .docx estatal</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>4. Actualizar datos desde la base (opcional)</h3>
+  <p class="nota">Refresca los 16 CSV de respaldo contra el contenedor <code>sedea_db</code>.
+     Requiere Docker corriendo en esta máquina.</p>
+  <button class="secundario" onclick="actualizar()">Actualizar datos</button>
+  <pre id="resultado" class="fuente" style="display:none"></pre>
+</div>
+
+<script>
+async function actualizar(){
+  const div = document.getElementById("resultado");
+  div.style.display = "block";
+  div.textContent = "Actualizando…";
+  try{
+    const resp = await fetch("/actualizar-datos", {method:"POST"});
+    const data = await resp.json();
+    div.textContent = Object.entries(data).map(([k,v]) => k + " -> " + v).join("\n");
+  }catch(e){ div.textContent = "No se pudo actualizar: " + e; }
+}
+</script>
+{% endblock %}

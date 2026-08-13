@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block titulo %}Insumos para la Glosa — SEDEA{% endblock %}
+{% block contenido %}
+<h1>Insumos para la Glosa del Informe de Gobierno</h1>
+<div class="sub">Cada cifra trae su fuente y su criterio de cálculo. Sin fuente completa,
+  el insumo no se publica (R7). Fecha de corte: {{ fecha_corte }}.</div>
+
+{% if error %}<div class="aviso">{{ error }}</div>{% endif %}
+
+<div class="card">
+  <form method="get" class="filtros">
+    <label>Año<input type="number" name="anio" value="{{ filtros.get('anio','') }}"></label>
+    <label>Tema
+      <select name="tema"><option value="">Todos</option>
+        {% for t in temas %}<option value="{{ t }}" {% if filtros.get('tema')==t %}selected{% endif %}>{{ t }}</option>{% endfor %}
+      </select></label>
+    <label>Ámbito
+      <select name="ambito"><option value="">Todos</option>
+        {% for a in ['ESTATAL','REGION','MUNICIPIO'] %}<option value="{{ a }}" {% if filtros.get('ambito')==a %}selected{% endif %}>{{ a }}</option>{% endfor %}
+      </select></label>
+    <label>Solo verificados
+      <input type="checkbox" name="solo_verificados" value="1" {% if filtros.get('solo_verificados') %}checked{% endif %}></label>
+    <button type="submit">Filtrar</button>
+    <a href="/exportar/glosa.xlsx?{{ request.query_string.decode() }}">
+      <button type="button" id="btn-exportar-glosa" class="secundario">Exportar paquete Glosa (.xlsx)</button></a>
+  </form>
+</div>
+
+{% for i in insumos %}
+<div class="card insumo">
+  <h3>{{ i.clave }} — {{ i.indicador }}</h3>
+  <p><strong>Pregunta prevista:</strong> {{ i.pregunta }}</p>
+  <p style="font-size:22px;font-weight:bold">
+    {% if i.valor_numerico is none %}<span class="vacio">—</span>
+      <span style="font-size:13px;font-weight:normal">(sin dato)</span>
+    {% else %}
+      {% if i.unidad == 'MXN' %}${{ '{:,.2f}'.format(i.valor_numerico) }}
+      {% else %}{{ '{:,.0f}'.format(i.valor_numerico) }} {{ i.unidad }}{% endif %}
+    {% endif %}
+  </p>
+  {% if i.valor_texto %}<p class="nota">{{ i.valor_texto }}</p>{% endif %}
+  <p class="nota">Tema: {{ i.tema }} · Ámbito: {{ i.ambito }} · Año: {{ i.anio }}
+     · {% if i.verificado %}<span class="ok">verificado</span>{% else %}<span class="bad">sin verificar</span>{% endif %}</p>
+  <div class="fuente">
+    <div><strong>Tabla:</strong> {{ i.fuente_tabla }}</div>
+    <div><strong>Vista:</strong> {{ i.fuente_vista }}</div>
+    <div><strong>Archivo:</strong> {{ i.fuente_archivo }}</div>
+    <div><strong>Hoja:</strong> {{ i.fuente_hoja }}</div>
+    <div><strong>Criterio de cálculo:</strong> {{ i.criterio_calculo }}</div>
+    <div><strong>Fecha de corte:</strong> {{ i.fecha_corte }} · <strong>Responsable:</strong> {{ i.responsable }}</div>
+  </div>
+</div>
+{% else %}
+<div class="card" id="sin-datos">Sin insumos para los filtros seleccionados.</div>
+{% endfor %}
+{% endblock %}

@@ -129,8 +129,9 @@ Reglas del importador:
 
 Se crean con `npm run seed` usando la contraseña de la variable
 `SEED_ADMIN_PASSWORD` (por defecto `cambiame123` en `.env.example`). El usuario
-`editor1` puede tener contraseña propia con `SEED_EDITOR_PASSWORD`; si no se
-define, reutiliza la de los demás.
+`editor1` puede tener contraseña propia con `SEED_EDITOR_PASSWORD` y los dos
+usuarios de ventanilla con `SEED_VENTANILLA_PASSWORD`; si no se definen,
+reutilizan la de los demás.
 
 | Usuario | Rol | Alcance |
 |---|---|---|
@@ -138,6 +139,8 @@ define, reutiliza la de los demás.
 | `capturista1` | capturista | Solo Regional Centro (`REG-01`) |
 | `auditor1` | auditor | Todas las Regionales (sin regional asignada) |
 | `editor1` | `editor_datos` | Depuración de staging y corrección de datos en producción (perfil de gabinete central, sin Regional asignada) |
+| `ventanilla1` | `ventanilla` | Ventanilla de San Juan del Río (`REG-04`) con **alcance restringido**: 2 municipios y el componente `TR` |
+| `ventanilla2` | `ventanilla` | Ventanilla SEDEA central, **sin restricción** (alcance "todos") |
 
 > **Advertencia:** estos usuarios existen únicamente para pruebas.
 > **Desactívalos desde `/usuarios` (nunca los borres) antes de operar en
@@ -254,6 +257,130 @@ caracteres con una letra y un número, y que sea **distinta de la vigente**
 
 ---
 
+## Ventanilla: captura de Solicitudes de Apoyo
+
+Hasta el build 5 la única forma de dar de alta beneficiarios era la importación
+masiva del padrón revisada en staging. El **módulo de ventanilla** agrega la vía
+uno por uno: personal de las Direcciones Regionales y de SEDEA central recibe la
+Solicitud de Apoyo en papel y la captura en vivo en `/solicitudes/nueva`.
+
+Es una pantalla **de oficina y en línea**: no usa la base local del navegador ni
+la cola de sincronización offline. Sin conexión muestra
+"Esta sección requiere conexión a internet."
+
+### Puesta en marcha sobre una base que ya tiene datos
+
+`docker compose up --build` aplica solas las migraciones nuevas (`012` y `013`),
+pero **el seed automático solo corre con la base vacía**, así que en una
+instalación que ya está operando hay que sembrar una vez los catálogos del
+módulo (componentes, ventanillas, proyecto, siglas de folio y las 42 reglas de
+documentación). El archivo es idempotente y **no toca ningún usuario ni
+contraseña**:
+
+```bash
+docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  < db/seeds/005_ventanilla_catalogos.sql
+```
+
+Los usuarios de ventanilla reales se crean después desde `/usuarios`, con su
+alcance. (`db/seeds/006_usuarios_ventanilla_demo.sql` solo crea las cuentas de
+demostración `ventanilla1` / `ventanilla2` y no debe usarse en producción.)
+
+### El rol `ventanilla`
+
+`ventanilla` es un rol nuevo con acceso **exclusivo** al módulo de solicitudes:
+
+- **Ve:** `/solicitudes`, `/solicitudes/nueva` y `/solicitudes/:id`.
+- **No ve:** `/beneficiarios`, `/sync`, `/auditoria`, `/depuracion`,
+  `/correcciones`, `/dashboard` ni `/usuarios`. Tampoco `/api/auditoria/*`,
+  `/api/staging/*`, `/api/usuarios` ni `/api/estadisticas/*`: el backend responde
+  403, no solo se ocultan los enlaces.
+
+`admin` también usa el módulo, sin ninguna restricción de alcance.
+
+### Alcance por municipios y componentes
+
+Un usuario de ventanilla puede quedar limitado a ciertos municipios y a ciertos
+componentes. Se administra desde `/usuarios`: al elegir el rol **Ventanilla**
+aparece el bloque de alcance con las casillas de municipios y componentes.
+
+> **Vacío = todos.** Cero filas en `usuario_municipios` / `usuario_componentes`
+> significa "sin restricción". Es lo que hace que los usuarios ya existentes no
+> queden bloqueados por la migración.
+
+El alcance **se aplica en el backend**, no solo en la interfaz:
+
+- Al guardar una solicitud, el municipio de la *ubicación del apoyo*, el
+  componente y la ventanilla deben estar dentro del alcance; si no, la API
+  responde **403** (`municipio_fuera_de_alcance`, `componente_fuera_de_alcance`,
+  `ventanilla_fuera_de_alcance`).
+- El listado y el detalle filtran **en SQL**: un usuario de ventanilla solo ve
+  las solicitudes de su alcance.
+
+### El folio oficial
+
+Lo genera **siempre el backend**; el usuario nunca lo escribe (en el formulario
+solo se lee "Se generará al guardar"). Formato:
+
+```
+{prefijo del proyecto}-{clave de la ventanilla}-{siglas del municipio}-{consecutivo}-{año}
+PEO-SJR-AME-0001-26
+```
+
+- La clave regional sale de la **ventanilla receptora** (identifica quién recibió
+  la solicitud), no del municipio.
+- Las siglas salen de `municipios.siglas_folio`. Si esa columna está vacía hay un
+  **fallback determinista**: el nombre del municipio sin acentos, en mayúsculas,
+  solo letras A-Z, los primeros 3 caracteres, rellenando con `X` si faltan
+  (`Amealco de Bonfil` → `AME`, `San Juan del Río` → `SAN`, `El Marqués` → `ELM`).
+- El consecutivo es **por combinación proyecto + regional + municipio + año** y se
+  reserva de forma atómica. Puede dejar huecos si una transacción falla después de
+  reservarlo: un consecutivo nunca se reutiliza.
+
+### Qué pasa al guardar
+
+La solicitud **entra directo a producción, sin pasar por staging ni por
+aprobación humana**: es captura dirigida por personal capacitado, una a una. En
+una sola transacción se escriben la solicitud, sus conceptos, su checklist de
+documentos, la bitácora y **un beneficiario por cada concepto solicitado**.
+
+Con un solo concepto el beneficiario hereda el folio de la solicitud; con varios,
+se numeran `<folio>-C1`, `<folio>-C2`, … Esos beneficiarios quedan disponibles de
+inmediato para el flujo de captura de campo ya existente.
+
+### Dos domicilios que no se mezclan
+
+El formulario captura **dos direcciones distintas y nunca se fusionan**:
+
+| Sección | Qué es | Para qué se usa |
+|---|---|---|
+| 2.2 Domicilio particular | Dónde vive el solicitante | Solo queda en la solicitud |
+| 4.1 Ubicación del apoyo | Dónde está el predio o proyecto | **Es la que hereda el beneficiario** |
+
+El capturista de campo debe ir al predio del proyecto, no a la casa del
+solicitante; por eso el beneficiario creado toma siempre el municipio, la
+localidad y el ejido de la sección 4.1.
+
+### Documentos requeridos
+
+El checklist se calcula solo, según componente, tipo de persona, proyecto y
+conceptos elegidos (42 reglas sembradas, incluidas exclusiones: las
+"Cotizaciones" no se piden si el único concepto es fertilizante, pero vuelven a
+pedirse si hay un segundo concepto no excluido). Al guardar, el checklist se
+**materializa copiando el texto**: cambiar las reglas después no altera las
+solicitudes ya recibidas. Desde el detalle se marca cada documento como recibido
+y se adjunta el archivo (JPG/PNG/WEBP/PDF).
+
+### La solicitud no se edita
+
+Una vez guardada **no hay edición ni borrado** (`PATCH`/`DELETE` sobre
+`/api/solicitudes/:id` responden 404): en ventanilla el papel firmado es la
+fuente de verdad. Lo único que sigue siendo modificable es el checklist de
+documentos. Si un dato del beneficiario derivado está mal, se corrige por
+**`/correcciones`**, que deja traza en la bitácora.
+
+---
+
 ## Flujo de trabajo en campo
 
 1. **Login** con conexión la primera vez. Después la sesión vive 12 h en
@@ -335,9 +462,25 @@ Rutas `/auditoria` y `/auditoria/beneficiario/:id`, accesibles solo para los rol
 **No existe `DELETE /api/usuarios/:id`:** las cuentas nunca se borran, se
 desactivan (ver *Administración de usuarios*).
 
+### Módulo de ventanilla (build 6)
+
+| Método | Ruta | Acceso |
+|---|---|---|
+| GET | `/api/solicitudes/catalogos` | `ventanilla`, `admin` |
+| POST | `/api/solicitudes/documentos-requeridos` | `ventanilla`, `admin` |
+| POST | `/api/solicitudes` | `ventanilla`, `admin` |
+| GET | `/api/solicitudes` | `ventanilla`, `admin` (aislado por alcance) |
+| GET | `/api/solicitudes/:id` | `ventanilla`, `admin` (aislado por alcance) |
+| PATCH | `/api/solicitudes/:id/documentos/:docId` | `ventanilla`, `admin` |
+| POST | `/api/solicitudes/:id/documentos/:docId/archivo` | `ventanilla`, `admin` |
+| GET | `/api/usuarios/:id/alcance` | `admin` |
+| PUT | `/api/usuarios/:id/alcance` | `admin` |
+
 **No existe `POST /api/beneficiarios` ni `DELETE /api/beneficiarios/:id`:** no hay
 alta ni baja manual de beneficiarios; todo beneficiario nace de una importación de
-padrón oficial revisada en staging.
+padrón oficial revisada en staging **o de una Solicitud de Apoyo capturada en
+ventanilla** (ver *Ventanilla: captura de Solicitudes de Apoyo*). Tampoco existe
+`PATCH` ni `DELETE` sobre `/api/solicitudes/:id`: la solicitud no se edita.
 
 Errores en formato `{"error":{"codigo":"...","mensaje":"..."}}`.
 
@@ -596,7 +739,7 @@ Medidas implementadas y obligaciones operativas:
 
 ```
 ├── db/migrations/   Migraciones SQL numeradas (001 crea la extensión postgis)
-├── db/seeds/        Datos demo (catálogos, usuarios, 30 beneficiarios)
+├── db/seeds/        Datos demo (catálogos, usuarios, 30 beneficiarios) + catálogos de ventanilla
 ├── packages/shared/ Tipos y validadores Zod compartidos backend <-> PWA
 ├── backend/         API Fastify 4 + TypeScript
 ├── pwa/             React 18 + Vite 5 + vite-plugin-pwa + Dexie + Leaflet

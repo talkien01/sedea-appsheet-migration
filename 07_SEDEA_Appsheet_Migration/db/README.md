@@ -36,6 +36,22 @@ npm run seed             # siembra siempre
 npm run seed -- --si-vacio   # siembra solo si no hay usuarios
 ```
 
+## Numeracion de las migraciones
+
+La secuencia salta del `010` al `012`: **no existe ningun archivo `011_*.sql` y
+no debe crearse**. El hueco es intencional y esta congelado porque un criterio
+de aceptacion del build 5 verifica explicitamente su ausencia. El modulo de
+ventanilla (build 6) usa por eso `012` y `013`.
+
+## Seeds del modulo de ventanilla (build 6)
+
+`005_ventanilla_catalogos.sql` siembra programas, subprogramas, los 3
+componentes, el proyecto PEO, las 5 ventanillas, las siglas de folio de los
+municipios y las 42 reglas de documentacion. `006_usuarios_ventanilla_demo.sql`
+crea `ventanilla1` (alcance restringido) y `ventanilla2` (alcance "todos"),
+sustituyendo el marcador `__HASH_VENTANILLA__` con `SEED_VENTANILLA_PASSWORD`
+(con fallback a `SEED_ADMIN_PASSWORD`). Ambos son idempotentes.
+
 ## Verificaciones utiles
 
 ```sql

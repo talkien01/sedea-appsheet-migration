@@ -119,6 +119,13 @@ export default function BarraEstado() {
         </Link>
       )}
 
+      {/* Ventanilla: captura de Solicitudes de Apoyo (D34). */}
+      {perfil && (perfil.rol === 'ventanilla' || perfil.rol === 'admin') && (
+        <Link className="boton secundario" to="/solicitudes" data-testid="nav-solicitudes">
+          Solicitudes
+        </Link>
+      )}
+
       {/* La administracion de usuarios es exclusiva de admin y editor de datos (D15). */}
       {perfil && (perfil.rol === 'admin' || perfil.rol === 'editor_datos') && (
         <Link className="boton secundario" to="/usuarios" data-testid="nav-usuarios">

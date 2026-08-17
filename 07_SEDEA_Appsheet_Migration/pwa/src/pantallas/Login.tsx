@@ -15,6 +15,8 @@ import { useEstadoRed } from '../sync/estadoRed';
 async function destinoPorRol(perfilUsuario: PerfilUsuario | null): Promise<string> {
   // Build 4: la contrasena temporal manda sobre el destino por rol.
   if (perfilUsuario?.debe_cambiar_password === true) return '/cambiar-password';
+  // Build 6: el usuario de ventanilla aterriza en su modulo.
+  if (perfilUsuario?.rol === 'ventanilla') return '/solicitudes';
   if (perfilUsuario?.rol === 'editor_datos') return '/depuracion';
   if (perfilUsuario?.rol === 'auditor') return '/auditoria';
   const total = await contarBeneficiarios();

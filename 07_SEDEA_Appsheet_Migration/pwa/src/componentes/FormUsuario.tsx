@@ -2,6 +2,7 @@
 // En edicion, el nombre de acceso se muestra bloqueado: es la clave con la que
 // se lee el historial de capturas y auditoria, por eso es inmutable (D21).
 import { useState, type FormEvent } from 'react';
+import BloqueAlcance, { type ValoresAlcance } from './BloqueAlcance';
 import {
   AYUDA_PASSWORD_MANUAL,
   ETIQUETAS_ROL,
@@ -20,6 +21,11 @@ interface Props {
   /** null = alta; con valor = edicion. */
   usuario: UsuarioAdmin | null;
   regionales: RegionalOpcion[];
+  /** Catalogos del bloque de alcance (build 6, solo rol ventanilla). */
+  municipios: { id: number; nombre: string }[];
+  componentes: { id: number; clave: string; nombre: string }[];
+  /** Alcance actual del usuario en edicion; en alta, "todos" por defecto. */
+  alcanceInicial?: ValoresAlcance;
   /** Rol de quien opera: el editor de datos no puede asignar "Administrador". */
   rolActor: string;
   guardando: boolean;
@@ -32,13 +38,25 @@ interface Props {
     /** Solo en alta: como se decide la contrasena inicial (D27). */
     modo_password?: ModoPassword;
     password_manual?: string;
+    /** Solo para rol ventanilla: se persiste con E48 tras guardar. */
+    alcance?: ValoresAlcance;
   }) => void;
   alCancelar: () => void;
 }
 
+const ALCANCE_TODOS: ValoresAlcance = {
+  municipiosTodos: true,
+  municipios: [],
+  componentesTodos: true,
+  componentes: []
+};
+
 export default function FormUsuario({
   usuario,
   regionales,
+  municipios,
+  componentes,
+  alcanceInicial,
   rolActor,
   guardando,
   errorApi,
@@ -57,6 +75,9 @@ export default function FormUsuario({
   // Modo de contrasena: solo aplica al alta; por defecto, automatica (D27).
   const [modoPassword, setModoPassword] = useState<ModoPassword>('automatica');
   const [passwordManual, setPasswordManual] = useState('');
+
+  // Alcance de ventanilla (12.8.4): vacio = todos.
+  const [alcance, setAlcance] = useState<ValoresAlcance>(alcanceInicial ?? ALCANCE_TODOS);
 
   const [errorUsuario, setErrorUsuario] = useState<string | null>(null);
   const [errorNombre, setErrorNombre] = useState<string | null>(null);
@@ -135,7 +156,9 @@ export default function FormUsuario({
       // En edicion no se manda modo alguno: la contrasena solo se cambia con
       // "Resetear contraseña" (campo_no_editable).
       ...(esAlta ? { modo_password: modoPassword } : {}),
-      ...(esAlta && modoPassword === 'manual' ? { password_manual: passwordManual } : {})
+      ...(esAlta && modoPassword === 'manual' ? { password_manual: passwordManual } : {}),
+      // El alcance solo viaja para el rol ventanilla; el resto no lo tiene.
+      ...(rol === 'ventanilla' ? { alcance } : {})
     });
   };
 
@@ -233,6 +256,16 @@ export default function FormUsuario({
             </p>
           )}
         </div>
+
+        {/* Alcance: solo para el rol Ventanilla (12.8.4). */}
+        {rol === 'ventanilla' && (
+          <BloqueAlcance
+            municipios={municipios}
+            componentes={componentes}
+            valores={alcance}
+            cambiar={setAlcance}
+          />
+        )}
 
         {/* Modo de contrasena: solo en el alta (11.6.2). */}
         {esAlta && (

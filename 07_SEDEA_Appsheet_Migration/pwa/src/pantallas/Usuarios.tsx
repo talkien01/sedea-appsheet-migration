@@ -13,6 +13,8 @@ import { useSesion } from '../App';
 import { api, ErrorPeticion } from '../api/cliente';
 import { useEstadoRed } from '../sync/estadoRed';
 import FormUsuario from '../componentes/FormUsuario';
+import type { ValoresAlcance } from '../componentes/BloqueAlcance';
+import { apiSolicitudes } from '../api/solicitudes';
 import ModalPasswordTemporal from '../componentes/ModalPasswordTemporal';
 import ModalResetPassword from '../componentes/ModalResetPassword';
 
@@ -21,12 +23,24 @@ interface RegionalOpcion {
   nombre: string;
 }
 
+/** Alcance "todos" (cero filas en BD) es el valor por defecto del alta. */
+const ALCANCE_TODOS: ValoresAlcance = {
+  municipiosTodos: true,
+  municipios: [],
+  componentesTodos: true,
+  componentes: []
+};
+
 export default function Usuarios() {
   const { perfil } = useSesion();
   const enLinea = useEstadoRed();
 
   const [filas, setFilas] = useState<UsuarioAdmin[]>([]);
   const [regionales, setRegionales] = useState<RegionalOpcion[]>([]);
+  // Catalogos del bloque de alcance del rol ventanilla (build 6).
+  const [municipios, setMunicipios] = useState<{ id: number; nombre: string }[]>([]);
+  const [componentes, setComponentes] = useState<{ id: number; clave: string; nombre: string }[]>([]);
+  const [alcanceInicial, setAlcanceInicial] = useState<ValoresAlcance>(ALCANCE_TODOS);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,8 +104,16 @@ export default function Usuarios() {
       try {
         const catalogos = await api.catalogos();
         setRegionales(catalogos.regionales.map((r) => ({ id: r.id, nombre: r.nombre })));
+        setMunicipios(catalogos.municipios.map((m) => ({ id: m.id, nombre: m.nombre })));
       } catch {
         setRegionales([]);
+      }
+      try {
+        // Los componentes solo los sirve el modulo de ventanilla (E40); si el
+        // actor no tiene acceso, el bloque de alcance queda sin opciones.
+        setComponentes((await apiSolicitudes.catalogos()).componentes);
+      } catch {
+        setComponentes([]);
       }
     })();
   }, []);
@@ -99,13 +121,39 @@ export default function Usuarios() {
   const abrirAlta = () => {
     setEnEdicion(null);
     setErrorForm(null);
+    setAlcanceInicial(ALCANCE_TODOS);
     setFormAbierto(true);
   };
 
   const abrirEdicion = (fila: UsuarioAdmin) => {
     setEnEdicion(fila);
     setErrorForm(null);
+    setAlcanceInicial(ALCANCE_TODOS);
     setFormAbierto(true);
+    // El alcance vigente se lee con E47 (solo admin) al abrir la edicion.
+    if (fila.rol === 'ventanilla') {
+      void (async () => {
+        try {
+          const actual = await apiSolicitudes.alcance(fila.id);
+          setAlcanceInicial({
+            municipiosTodos: actual.municipios === 'todos',
+            municipios: actual.municipios === 'todos' ? [] : actual.municipios.map((m) => m.id),
+            componentesTodos: actual.componentes === 'todos',
+            componentes: actual.componentes === 'todos' ? [] : actual.componentes.map((c) => c.id)
+          });
+        } catch {
+          setAlcanceInicial(ALCANCE_TODOS);
+        }
+      })();
+    }
+  };
+
+  /** Persiste el alcance con E48 despues de crear o editar (12.8.4). */
+  const guardarAlcance = async (usuarioId: number, alcance: ValoresAlcance) => {
+    await apiSolicitudes.guardarAlcance(usuarioId, {
+      municipios: alcance.municipiosTodos ? 'todos' : alcance.municipios,
+      componentes: alcance.componentesTodos ? 'todos' : alcance.componentes
+    });
   };
 
   const guardar = async (datos: {
@@ -115,6 +163,7 @@ export default function Usuarios() {
     regional_id: number | null;
     modo_password?: ModoPassword;
     password_manual?: string;
+    alcance?: ValoresAlcance;
   }) => {
     setGuardando(true);
     setErrorForm(null);
@@ -125,9 +174,15 @@ export default function Usuarios() {
           rol: datos.rol,
           regional_id: datos.regional_id
         });
+        if (datos.rol === 'ventanilla' && datos.alcance) {
+          await guardarAlcance(enEdicion.id, datos.alcance);
+        }
         setFormAbierto(false);
       } else {
         const respuesta = await api.crearUsuario(datos);
+        if (datos.rol === 'ventanilla' && datos.alcance) {
+          await guardarAlcance(respuesta.usuario.id, datos.alcance);
+        }
         setFormAbierto(false);
         setPasswordTemporal({
           valor: respuesta.password_temporal,
@@ -344,6 +399,9 @@ export default function Usuarios() {
         <FormUsuario
           usuario={enEdicion}
           regionales={regionales}
+          municipios={municipios}
+          componentes={componentes}
+          alcanceInicial={alcanceInicial}
           rolActor={perfil?.rol ?? 'editor_datos'}
           guardando={guardando}
           errorApi={errorForm}

@@ -5,6 +5,7 @@
 //   /depuracion*             -> editor_datos, admin
 //   /correcciones*           -> editor_datos, admin
 //   /dashboard               -> admin, auditor, editor_datos
+//   /solicitudes*            -> ventanilla, admin (build 6, en linea)
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import BarraEstado from './componentes/BarraEstado';
 import RutaProtegida from './componentes/RutaProtegida';
@@ -21,6 +22,9 @@ import DepuracionCatalogos from './pantallas/DepuracionCatalogos';
 import Correcciones from './pantallas/Correcciones';
 import Dashboard from './pantallas/Dashboard';
 import Usuarios from './pantallas/Usuarios';
+import Solicitudes from './pantallas/Solicitudes';
+import NuevaSolicitud from './pantallas/NuevaSolicitud';
+import DetalleSolicitud from './pantallas/DetalleSolicitud';
 import CambiarPassword from './pantallas/CambiarPassword';
 import SinPermiso from './pantallas/SinPermiso';
 
@@ -30,6 +34,8 @@ const DEPURACION = ['editor_datos', 'admin'];
 const GESTION = ['admin', 'auditor', 'editor_datos'];
 // Administracion de usuarios: admin y editor de datos (D15).
 const USUARIOS = ['admin', 'editor_datos'];
+// Modulo de ventanilla: rol nuevo `ventanilla` y admin (D34).
+const VENTANILLA = ['ventanilla', 'admin'];
 
 /** Layout comun: barra de estado siempre visible + contenido. */
 function Layout() {
@@ -156,6 +162,32 @@ export default function Rutas() {
           element={
             <RutaProtegida roles={USUARIOS}>
               <Usuarios />
+            </RutaProtegida>
+          }
+        />
+
+        {/* Modulo de ventanilla (build 6). Online-only: sin cola offline. */}
+        <Route
+          path="/solicitudes"
+          element={
+            <RutaProtegida roles={VENTANILLA}>
+              <Solicitudes />
+            </RutaProtegida>
+          }
+        />
+        <Route
+          path="/solicitudes/nueva"
+          element={
+            <RutaProtegida roles={VENTANILLA}>
+              <NuevaSolicitud />
+            </RutaProtegida>
+          }
+        />
+        <Route
+          path="/solicitudes/:id"
+          element={
+            <RutaProtegida roles={VENTANILLA}>
+              <DetalleSolicitud />
             </RutaProtegida>
           }
         />

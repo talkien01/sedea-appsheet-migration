@@ -1820,3 +1820,818 @@ Continúa la numeración de §7, §8.11, §9.9 y §10.11. Base: `API=http://loca
 240. `README.md` documenta, en la sección de administración de usuarios: (a) que en el **primer inicio de sesión obligatorio no se pide la contraseña actual** y por qué (el usuario ya se autenticó con ella); (b) que el **cambio voluntario sí la sigue pidiendo**; (c) que `admin`/`editor_datos` pueden elegir entre **"Generar automática"** y **"Escribir yo mismo"** al crear o resetear; (d) que en **ambos** modos el usuario queda obligado a cambiar la contraseña en su primer acceso; y (e) que la contraseña se sigue mostrando **una sola vez** y no se puede reconsultar.
 
 **Definición de "terminado" (build 5):** los **240** criterios pasan (211 acumulados de los builds 1–4, con las excepciones de §11.8 evaluadas según el comportamiento nuevo, + 29 de esta extensión).
+
+# 12. EXTENSIÓN — Módulo de captura de Solicitud de Apoyo en ventanilla (build 6)
+
+> **CONTINUACIÓN LITERAL DE `SPEC.md`.** Esta sección se **agrega al final** de `SPEC.md` (después de la línea "Definición de 'terminado' (build 5)"). **Nada de las secciones 1–11 se reescribe ni se renegocia**: todas sus reglas siguen vigentes palabra por palabra. Mismo monorepo, mismo `docker-compose.yml`, mismos 3 servicios (`db`, `backend`, `pwa`). **No se crea ningún servicio nuevo**, no se toca `pwa/nginx.conf.template` ni el mecanismo `BACKEND_HOST`/`BACKEND_PORT`, y **no se agrega ninguna dependencia npm nueva** (ver §12.12). Código comentado en español, UI en español.
+
+## 12.1 Objetivo de la extensión
+
+Agregar un **módulo de ventanilla/oficina** que permita a personal de las Direcciones Regionales y de SEDEA central **recibir y capturar en vivo una Solicitud de Apoyo nueva** (el alta de beneficiario que existía en AppSheet), replicando la estructura de los dos formularios oficiales en papel del programa, generando el **folio oficial** (`PEO-SJR-AME-0001-26`), calculando dinámicamente la **lista de documentos requeridos** según Componente / Tipo de persona / Proyecto / Concepto, y creando automáticamente los **beneficiarios de producción** que quedan disponibles para el flujo de captura de campo ya existente.
+
+Hasta el build 5 la única forma de dar de alta beneficiarios era la **importación masiva** de un padrón vía staging (§8). Este build agrega la vía **uno por uno, dirigida, en línea**.
+
+## 12.2 Decisiones de producto (ya acordadas con el usuario — implementar tal cual, no preguntar)
+
+- **D32. Pantalla de oficina, EN LÍNEA. No es offline-first.** Las pantallas de solicitudes son `online-only`, igual que `/depuracion` (§8.8) y `/dashboard` (§9.6): **no** usan Dexie/IndexedDB, **no** se registran en la cola de sync (`pwa/src/sync/*`), **no** se toca el service worker más allá del app-shell ya existente. Sin red muestran "Esta sección requiere conexión a internet." **Ni una línea de `pwa/src/sync/` ni de `pwa/src/db/indexeddb.ts` se modifica en este build.**
+- **D33. La solicitud entra DIRECTO a producción.** No pasa por `staging_beneficiarios` ni por aprobación humana. Es captura dirigida por personal capacitado, una a una. Esto **no** contradice §8.6 (el importador CLI sigue escribiendo únicamente en staging) ni D11 de §9.2 (sigue sin existir `POST /api/beneficiarios`: los beneficiarios de este build nacen **derivados** de una solicitud, nunca por alta manual suelta).
+- **D34. Rol nuevo `ventanilla`**, con acceso **exclusivo** al módulo de solicitudes. No ve `/depuracion`, `/correcciones`, `/usuarios`, `/dashboard`, `/auditoria`, `/beneficiarios`, `/sync` ni `/api/auditoria/*`. `admin` también usa el módulo, **sin restricción de alcance**.
+- **D35. Alcance granular por usuario `ventanilla`** mediante dos tablas de relación muchos-a-muchos: `usuario_municipios` y `usuario_componentes`. Un usuario puede tener **"todos"** (sin restricción, equivalente al valor `ADMIN` de las columnas `MUNICIPIOS`/`COMPONENTES` del Excel real de AppSheet) o una lista concreta (equivalente a `18 / 12 / 17 / 15`).
+- **D36. El alcance se aplica en el BACKEND, no solo en la UI.** Al crear una solicitud, el `municipio_id` de la Ubicación del apoyo (§12.6 sección 4.1) y el `componente_id` elegidos deben estar dentro del alcance del usuario autenticado. Si no, **403**. La UI además filtra los selects, pero eso es cosmético.
+- **D37. La columna `DICTAMINAR` del Excel real de usuarios NO se modela.** La etapa de dictamen / autorización / pago sigue **fuera de alcance** del sistema completo (decisión original del proyecto: este sistema es de captura + auditoría, no de gestión del flujo de aprobación). `solicitudes` no tiene estado de dictamen, ni flujo de aprobación, ni montos autorizados.
+- **D38. `solicitudes` es una tabla NUEVA.** Sus columnas **no** se fusionan dentro de `beneficiarios` (evita inflar la tabla que el capturista de campo descarga a IndexedDB con sexo, fecha de nacimiento, correo, actividad económica, montos y declaraciones). `beneficiarios` gana **una sola** columna nueva: `solicitud_id` (nullable, FK).
+- **D39. Un beneficiario por concepto solicitado.** Al guardar una solicitud, el backend crea **una fila en `beneficiarios` por cada fila de `solicitud_conceptos`** (mismo patrón multi-concepto ya usado en §8: multi-concepto = múltiples beneficiarios/capturas separadas, nunca una fila con dos apoyos).
+- **D40. La ubicación del apoyo (§12.6 sección 4.1) es la que alimenta `beneficiarios`**, NO el domicilio particular del solicitante (sección 2.2). Son dos domicilios distintos y **no se fusionan jamás**: el capturista de campo debe ir al predio del proyecto, no a la casa del solicitante.
+- **D41. El folio lo genera el backend.** El usuario **nunca** lo escribe. Es de solo lectura en la UI y se muestra al confirmar el guardado.
+- **D42. Sin geolocalización del navegador en esta pantalla.** Las coordenadas de la sección 4.1 son un **campo de texto libre** (lo que el productor declara en papel). La coordenada real y verificada del predio se captura después en campo con la app existente (§3.1). **No se llama a `navigator.geolocation` en ninguna pantalla de este build.**
+- **D43. Los adjuntos de documentos reutilizan la infraestructura de almacenamiento de fotos** (`backend/src/servicios/almacenamiento.ts`, driver `local`, `MEDIA_DIR`, servido por `GET /media/*` = E15). Solo cambian la subcarpeta y la tabla. **No se agrega ningún driver ni variable de entorno nueva.**
+- **D44. Sin edición ni borrado de solicitudes en este build.** Se crea y se consulta. No hay `PATCH /api/solicitudes/:id` ni `DELETE`. Lo único mutable después del alta es el checklist de documentos (marcar recibido / adjuntar archivo). Corregir datos del beneficiario derivado se sigue haciendo por §9.4 (`PATCH /api/beneficiarios/:id`, roles `editor_datos`/`admin`).
+
+## 12.3 Modelo de datos
+
+Todo **aditivo e idempotente** (la BD de producción ya tiene datos). Ninguna columna existente se elimina, renombra ni cambia de tipo — el criterio 112 de §9.9 y el 231 de §11.9 siguen pasando.
+
+> **Numeración de migraciones:** el criterio **231** de §11.9 afirma que **no existe** ningún archivo `db/migrations/011_*.sql`. Para no invalidarlo, este build usa **`012_`** y **`013_`**. El hueco en el 011 es intencional y se documenta con un comentario en `db/README.md`. **No se crea ningún archivo `011_*.sql`.**
+
+### 12.3.1 `db/migrations/012_ventanilla_catalogos.sql`
+
+```sql
+-- Rol nuevo 'ventanilla' (build 6). Se conservan los 4 roles anteriores.
+ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_rol_check;
+ALTER TABLE usuarios ADD CONSTRAINT usuarios_rol_check
+  CHECK (rol IN ('capturista','auditor','admin','editor_datos','ventanilla'));
+
+-- Siglas de 3 letras del municipio para el folio oficial (ej. AME = Amealco).
+-- Nullable a propósito: se llenan por catálogo/admin; hay fallback determinista (§12.5).
+ALTER TABLE municipios ADD COLUMN IF NOT EXISTS siglas_folio TEXT;
+
+-- Clave de 3 letras de la Regional para el folio oficial (SJR/CAD/JAL/QRO).
+ALTER TABLE direcciones_regionales ADD COLUMN IF NOT EXISTS clave_folio TEXT;
+```
+
+Más las 6 tablas de catálogo de este build:
+
+**`programas`**
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | BIGSERIAL PK | |
+| clave | TEXT UNIQUE NOT NULL | |
+| nombre | TEXT NOT NULL | |
+| activo | BOOLEAN NOT NULL DEFAULT TRUE | |
+
+**`subprogramas`**
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | BIGSERIAL PK | |
+| programa_id | BIGINT NOT NULL REFERENCES programas(id) | |
+| clave | TEXT NOT NULL | |
+| nombre | TEXT NOT NULL | |
+| activo | BOOLEAN NOT NULL DEFAULT TRUE | |
+| UNIQUE (programa_id, clave) | | |
+
+**`componentes`** — exactamente 3 filas (§12.4).
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | BIGSERIAL PK | |
+| clave | TEXT UNIQUE NOT NULL | `TR`, `CAA`, `DIN` |
+| nombre | TEXT NOT NULL | |
+| activo | BOOLEAN NOT NULL DEFAULT TRUE | |
+
+**`proyectos`**
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | BIGSERIAL PK | |
+| clave | TEXT UNIQUE NOT NULL | |
+| nombre | TEXT NOT NULL | |
+| prefijo_folio | TEXT NOT NULL | 2–5 letras mayúsculas, ej. `PEO` |
+| componente_id | BIGINT REFERENCES componentes(id) | **NULLABLE a propósito** (Assumption 45) |
+| activo | BOOLEAN NOT NULL DEFAULT TRUE | |
+
+**`ventanillas`** — las 5 ventanillas receptoras.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | BIGSERIAL PK | |
+| clave | TEXT UNIQUE NOT NULL | |
+| nombre | TEXT NOT NULL | |
+| regional_id | BIGINT NOT NULL REFERENCES direcciones_regionales(id) | Regional que hereda el beneficiario |
+| clave_folio | TEXT NOT NULL | segmento regional del folio |
+| es_central | BOOLEAN NOT NULL DEFAULT FALSE | TRUE solo para SEDEA |
+| activo | BOOLEAN NOT NULL DEFAULT TRUE | |
+
+**`documentos_requeridos`** — reglas de documentación (§12.7).
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | BIGSERIAL PK | |
+| requisito | TEXT NOT NULL | texto del documento |
+| componentes | TEXT[] | claves de `componentes`; `NULL`/`{}` = aplica a todos |
+| tipos_persona | TEXT[] | `fisica`/`moral`/`grupo`; `NULL`/`{}` = aplica a todos |
+| proyecto_id | BIGINT REFERENCES proyectos(id) | NULL = no depende de proyecto |
+| apoyo_id | BIGINT REFERENCES tipos_apoyo(id) | regla específica de un concepto exacto |
+| apoyo_etiquetas | TEXT[] | etiquetas crudas del Excel real cuando no hay `tipos_apoyo` exacto (ej. `{'PROYECTOS PECUARIOS'}`) |
+| apoyo_excluir_id | BIGINT REFERENCES tipos_apoyo(id) | excepción por concepto exacto |
+| apoyo_excluir_etiquetas | TEXT[] | excepciones por etiqueta (ej. `{'FERTILIZANTES','SEMILLA'}`) |
+| orden | INTEGER NOT NULL DEFAULT 0 | orden de presentación |
+| activo | BOOLEAN NOT NULL DEFAULT TRUE | |
+
+Índices: `idx_docsreq_activo (activo)`, GIN sobre `componentes` y `tipos_persona`.
+
+### 12.3.2 `db/migrations/013_solicitudes.sql`
+
+**`solicitudes`**
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | BIGSERIAL PK | |
+| folio | TEXT UNIQUE NOT NULL | generado por §12.5 |
+| recibida_en | TIMESTAMPTZ NOT NULL DEFAULT now() | fecha de recepción |
+| capturado_por | BIGINT NOT NULL REFERENCES usuarios(id) | |
+| programa_id | BIGINT NOT NULL REFERENCES programas(id) | |
+| subprograma_id | BIGINT REFERENCES subprogramas(id) | nullable |
+| componente_id | BIGINT NOT NULL REFERENCES componentes(id) | selección única |
+| proyecto_id | BIGINT NOT NULL REFERENCES proyectos(id) | aporta el prefijo del folio |
+| ventanilla_id | BIGINT NOT NULL REFERENCES ventanillas(id) | |
+| regional_id | BIGINT NOT NULL REFERENCES direcciones_regionales(id) | derivado de la ventanilla |
+| **— Sección 2.1 Datos personales —** | | |
+| tipo_persona | TEXT NOT NULL CHECK (tipo_persona IN ('fisica','moral','grupo')) | |
+| nombre_solicitante | TEXT NOT NULL | solicitante / representante de grupo / representante legal |
+| sexo | TEXT CHECK (sexo IN ('H','M')) | |
+| fecha_nacimiento | DATE | |
+| correo | TEXT | |
+| telefono | TEXT | 10 dígitos normalizados |
+| curp | TEXT | |
+| razon_social | TEXT | obligatoria si `tipo_persona` ∈ (`moral`,`grupo`) |
+| num_integrantes | INTEGER | obligatorio si `tipo_persona` ∈ (`moral`,`grupo`) |
+| **— Sección 2.2 Domicilio particular del solicitante —** | | |
+| dom_municipio_id | BIGINT REFERENCES municipios(id) | |
+| dom_localidad | TEXT | |
+| dom_delegacion | TEXT | |
+| dom_cp | TEXT | |
+| dom_tipo_asentamiento | TEXT CHECK (… IN ('colonia','fraccionamiento','ejido','pueblo','rancho')) | |
+| dom_asentamiento | TEXT | nombre del asentamiento |
+| dom_tipo_vialidad | TEXT CHECK (… IN ('avenida','boulevard','calzada','calle','privada','otra')) | |
+| dom_vialidad | TEXT | nombre de la vialidad y número |
+| **— Sección 3 Actividad económica —** | | |
+| act_agricola | BOOLEAN NOT NULL DEFAULT FALSE | |
+| agr_superficie_total_ha / agr_superficie_siembra_ha / agr_temporal_ha / agr_riego_ha | NUMERIC(12,3) | |
+| agr_cultivo_principal | TEXT | |
+| act_ganadera | BOOLEAN NOT NULL DEFAULT FALSE | |
+| gan_tipo_ganado | TEXT | |
+| gan_num_cabezas | INTEGER | cabezas o colmenas |
+| gan_superficie_agostadero_ha | NUMERIC(12,3) | |
+| gan_produccion | TEXT CHECK (… IN ('intensiva','traspatio','extensiva')) | |
+| act_acuicola | BOOLEAN NOT NULL DEFAULT FALSE | |
+| acu_especies | TEXT | |
+| act_pesca | BOOLEAN NOT NULL DEFAULT FALSE | |
+| pes_especies | TEXT | |
+| **— Sección 4 Datos del apoyo —** | | |
+| descripcion_proyecto | TEXT | texto largo |
+| ben_hombres_total / ben_hombres_discapacidad / ben_hombres_lengua_indigena | INTEGER NOT NULL DEFAULT 0 | |
+| ben_mujeres_total / ben_mujeres_discapacidad / ben_mujeres_lengua_indigena | INTEGER NOT NULL DEFAULT 0 | |
+| **— Sección 4.1 Ubicación del apoyo (alimenta `beneficiarios`) —** | | |
+| ubi_municipio_id | BIGINT NOT NULL REFERENCES municipios(id) | |
+| ubi_localidad | TEXT | |
+| ubi_ejido | TEXT | |
+| ubi_coordenadas | TEXT | **texto libre**, sin `navigator.geolocation` (D42) |
+| **— Sección 6 Declaraciones —** | | |
+| declaracion_aceptada | BOOLEAN NOT NULL | debe ser TRUE para guardar |
+| declaracion_version | TEXT NOT NULL DEFAULT 'v1-2026' | versión del texto legal aceptado |
+| observaciones | TEXT | |
+| origen | TEXT NOT NULL DEFAULT 'solicitud_ventanilla' | |
+| datos_extra | JSONB NOT NULL DEFAULT '{}' | |
+| creado_en / actualizado_en | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+
+Índices: `idx_sol_folio (folio)`, `idx_sol_regional (regional_id)`, `idx_sol_ubi_municipio (ubi_municipio_id)`, `idx_sol_componente (componente_id)`, `idx_sol_capturado_por (capturado_por)`, `idx_sol_recibida (recibida_en)`.
+
+**`solicitud_conceptos`** (mínimo 1 fila por solicitud, sin máximo)
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | BIGSERIAL PK | |
+| solicitud_id | BIGINT NOT NULL REFERENCES solicitudes(id) ON DELETE CASCADE | |
+| orden | INTEGER NOT NULL | 1..N, orden de captura |
+| tipo_apoyo_id | BIGINT NOT NULL REFERENCES tipos_apoyo(id) | catálogo existente (152 conceptos, §8.7) |
+| descripcion | TEXT | |
+| cantidad | NUMERIC(14,3) NOT NULL | |
+| unidad_medida | TEXT | |
+| monto_estatal | NUMERIC(14,2) NOT NULL DEFAULT 0 | apoyo estatal $ |
+| monto_productor | NUMERIC(14,2) NOT NULL DEFAULT 0 | aportación del productor $ |
+| monto_total | NUMERIC(14,2) NOT NULL DEFAULT 0 | inversión total $ (editable, §12.6) |
+| beneficiario_id | BIGINT REFERENCES beneficiarios(id) | el beneficiario creado por D39 |
+| creado_en | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+| UNIQUE (solicitud_id, orden) | | |
+
+**`solicitud_documentos`** (checklist materializado al crear la solicitud)
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | BIGSERIAL PK | |
+| solicitud_id | BIGINT NOT NULL REFERENCES solicitudes(id) ON DELETE CASCADE | |
+| documento_requerido_id | BIGINT REFERENCES documentos_requeridos(id) | NULL si fue agregado a mano |
+| requisito | TEXT NOT NULL | copia del texto al momento del alta (histórico inmutable) |
+| recibido | BOOLEAN NOT NULL DEFAULT FALSE | |
+| archivo_url | TEXT | `/media/solicitudes/YYYY/MM/<uuid>.<ext>` |
+| archivo_hash | TEXT | sha256 |
+| archivo_nombre | TEXT | nombre original recortado a 200 chars |
+| observaciones | TEXT | |
+| actualizado_por | BIGINT REFERENCES usuarios(id) | |
+| creado_en / actualizado_en | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+| UNIQUE (solicitud_id, requisito) | | evita duplicar el mismo requisito |
+
+**`solicitud_folios`** (contador atómico del consecutivo, §12.5)
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| prefijo | TEXT NOT NULL | prefijo del proyecto |
+| clave_regional | TEXT NOT NULL | |
+| siglas_municipio | TEXT NOT NULL | |
+| anio | SMALLINT NOT NULL | año a 2 dígitos |
+| consecutivo | INTEGER NOT NULL DEFAULT 0 | último usado |
+| PRIMARY KEY (prefijo, clave_regional, siglas_municipio, anio) | | |
+
+**`usuario_municipios`**
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| usuario_id | BIGINT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE | |
+| municipio_id | BIGINT NOT NULL REFERENCES municipios(id) | |
+| PRIMARY KEY (usuario_id, municipio_id) | | |
+
+**`usuario_componentes`**
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| usuario_id | BIGINT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE | |
+| componente_id | BIGINT NOT NULL REFERENCES componentes(id) | |
+| PRIMARY KEY (usuario_id, componente_id) | | |
+
+Semántica del alcance (D35): **cero filas = "todos"** (sin restricción). ≥1 fila = restringido a esa lista. Se documenta como Assumption 44.
+
+**Columna nueva en `beneficiarios`** (única alteración de una tabla existente en este build):
+
+```sql
+ALTER TABLE beneficiarios ADD COLUMN IF NOT EXISTS solicitud_id BIGINT REFERENCES solicitudes(id);
+CREATE INDEX IF NOT EXISTS idx_benef_solicitud ON beneficiarios (solicitud_id);
+```
+
+### 12.3.3 Valores nuevos de `auditoria_log.accion` (columna TEXT libre; el esquema no cambia)
+
+| `accion` | `entidad` | `entidad_id` | `detalle` (JSONB) |
+|---|---|---|---|
+| `solicitud_creada` | `solicitud` | id de la solicitud | `{folio, origen:"solicitud_ventanilla", componente:"TR", proyecto:"PEO", ventanilla:"VEN-SJR", tipo_persona, municipio_id, conceptos:N, beneficiarios_creados:[{id,folio}], documentos_requeridos:N}` |
+| `solicitud_documento_actualizado` | `solicitud_documento` | id de la fila | `{solicitud_id, requisito, recibido_anterior, recibido_nuevo}` |
+| `solicitud_documento_adjuntado` | `solicitud_documento` | id de la fila | `{solicitud_id, requisito, archivo_url, bytes, mimetype}` |
+| `alcance_usuario_actualizado` | `usuario` | id del usuario | `{municipios_anterior:[…], municipios_nuevo:[…], componentes_anterior:[…], componentes_nuevo:[…]}` |
+
+`detalle` **nunca** contiene CURP completa ni contraseñas (se registra `municipio_id`, no el domicilio).
+
+## 12.4 Semillas (`db/seeds/`)
+
+Idempotentes (`ON CONFLICT … DO UPDATE`), en archivos nuevos. No se modifica ningún seed anterior salvo `005_ventanilla_demo.sql`, que **agrega** usuarios demo sin tocar los existentes.
+
+`db/seeds/005_ventanilla_catalogos.sql`:
+
+- `programas`: **1 fila** — `PRG-2026` / "Apoyo al Campo Queretano 2026".
+- `subprogramas`: **1 fila** — `SUB-IP` / "Impulso a la Productividad", ligada a `PRG-2026`.
+- `componentes`: **exactamente 3 filas** —
+
+  | clave | nombre |
+  |---|---|
+  | `TR` | Tecnificación del Riego |
+  | `CAA` | Captación y Almacenamiento de Agua |
+  | `DIN` | Dinamismo Agroalimentario |
+
+- `proyectos`: **1 fila** — clave `PEO`, nombre "Proyectos Estratégicos para el Fortalecimiento Organizativo", `prefijo_folio='PEO'`, `componente_id = NULL` (Assumption 45).
+- `direcciones_regionales.clave_folio` se actualiza: `REG-01`→`CAD`, `REG-02`→`JAL`, `REG-03`→`QRO`, `REG-04`→`SJR`.
+- `ventanillas`: **exactamente 5 filas** —
+
+  | clave | nombre | regional | clave_folio | es_central |
+  |---|---|---|---|---|
+  | `VEN-QRO` | Regional Querétaro | REG-03 | `QRO` | false |
+  | `VEN-SJR` | Regional San Juan del Río | REG-04 | `SJR` | false |
+  | `VEN-CAD` | Regional Cadereyta | REG-01 | `CAD` | false |
+  | `VEN-JAL` | Regional Jalpan | REG-02 | `JAL` | false |
+  | `VEN-SED` | SEDEA (Central) | REG-03 | `SED` | **true** |
+
+- `municipios.siglas_folio`: se llena para los municipios demo con el **fallback determinista** de §12.5 (`UPDATE municipios SET siglas_folio = <fallback> WHERE siglas_folio IS NULL`), salvo `Amealco de Bonfil` que se siembra explícitamente como `AME` (es el caso del folio de ejemplo real).
+- `documentos_requeridos`: **exactamente 42 filas** — las 34 reglas reales de la hoja `DOCUMENTACIÓN` (§12.7.1) + las 8 reglas del anexo PEO (§12.7.2).
+
+`db/seeds/006_usuarios_ventanilla_demo.sql`:
+
+- `ventanilla1`: rol `ventanilla`, `regional_id = REG-04` (San Juan del Río), alcance **restringido**: 2 municipios de esa Regional en `usuario_municipios` y **1** componente (`TR`) en `usuario_componentes`. Contraseña desde `SEED_VENTANILLA_PASSWORD` con fallback a `SEED_ADMIN_PASSWORD`, `debe_cambiar_password = FALSE` (igual que el resto de usuarios demo, para que el Evaluator pueda entrar directo).
+- `ventanilla2`: rol `ventanilla`, `regional_id = NULL`, **sin filas** en `usuario_municipios` ni `usuario_componentes` ⇒ alcance **"todos"** (perfil SEDEA central).
+
+Variable nueva en `.env.example`: `SEED_VENTANILLA_PASSWORD=cambiame123`. **Es la única variable nueva del build** y tiene fallback, así que un `.env` viejo sigue arrancando.
+
+## 12.5 Algoritmo del folio (`backend/src/servicios/folios.ts`)
+
+Formato exacto, replicando el ejemplo real `PEO-SJR-AME-0001-26`:
+
+```
+{prefijo_proyecto}-{clave_regional}-{siglas_municipio}-{consecutivo 4 dígitos}-{año 2 dígitos}
+```
+
+1. **`prefijo_proyecto`** = `proyectos.prefijo_folio` del proyecto elegido (mayúsculas).
+2. **`clave_regional`** = `ventanillas.clave_folio` de la ventanilla receptora elegida (`SJR`/`CAD`/`JAL`/`QRO`/`SED`). Se toma de la ventanilla, no del municipio, porque el folio identifica **quién recibió** la solicitud.
+3. **`siglas_municipio`** = `municipios.siglas_folio` del municipio de la **Ubicación del apoyo** (§4.1). Si es `NULL` o vacío, **fallback determinista**: tomar `municipios.nombre`, normalizar Unicode NFD y quitar diacríticos, pasar a mayúsculas, eliminar todo carácter que no sea `A-Z`, y tomar los **primeros 3** caracteres; si quedan menos de 3, rellenar a la derecha con `X`. Ejemplos: `Amealco de Bonfil`→`AME`, `San Juan del Río`→`SAN`, `El Marqués`→`ELM`.
+4. **`año`** = últimos 2 dígitos del año de `recibida_en` en zona `America/Mexico_City`.
+5. **`consecutivo`** = 4 dígitos con ceros a la izquierda, **autoincremental por la combinación (prefijo, clave_regional, siglas_municipio, año)**, empezando en `0001`. Se obtiene **dentro de la misma transacción** del alta con una operación atómica:
+
+```sql
+INSERT INTO solicitud_folios (prefijo, clave_regional, siglas_municipio, anio, consecutivo)
+VALUES ($1,$2,$3,$4,1)
+ON CONFLICT (prefijo, clave_regional, siglas_municipio, anio)
+DO UPDATE SET consecutivo = solicitud_folios.consecutivo + 1
+RETURNING consecutivo;
+```
+
+6. Si al insertar en `solicitudes` el `folio` chocara con el índice único (caso patológico de datos migrados), el backend reintenta **hasta 3 veces** tomando el siguiente consecutivo; al 4º fallo responde **500** `folio_no_generado`. El consecutivo **nunca** se reutiliza aunque la transacción falle después (comportamiento aceptado y documentado, Assumption 47).
+7. El folio se calcula **siempre en el backend**; cualquier `folio` presente en el body se rechaza con **422** `campo_no_editable`.
+
+## 12.6 Contrato de endpoints
+
+Prefijo `/api/solicitudes` salvo el de alcance. Archivo `backend/src/rutas/solicitudes.ts` (+ `backend/src/rutas/alcance.ts` para E47/E48). Formato de error existente: `{"error":{"codigo":"…","mensaje":"…"}}`. Todos requieren `Authorization: Bearer <jwt>`; sin token → **401**.
+
+**Roles:** `ventanilla` y `admin` en E40–E46. `capturista`, `auditor` y `editor_datos` → **403** `rol_no_autorizado` ("Tu rol no puede capturar solicitudes de apoyo."). E47/E48 son **solo `admin`**.
+
+| # | Método | Ruta | Roles | Descripción |
+|---|---|---|---|---|
+| E40 | GET | `/api/solicitudes/catalogos` | `ventanilla`,`admin` | Catálogos + alcance del usuario autenticado |
+| E41 | POST | `/api/solicitudes/documentos-requeridos` | `ventanilla`,`admin` | Cálculo dinámico del checklist |
+| E42 | POST | `/api/solicitudes` | `ventanilla`,`admin` | Alta de solicitud (transaccional) |
+| E43 | GET | `/api/solicitudes` | `ventanilla`,`admin` | Listado paginado |
+| E44 | GET | `/api/solicitudes/:id` | `ventanilla`,`admin` | Detalle completo |
+| E45 | PATCH | `/api/solicitudes/:id/documentos/:docId` | `ventanilla`,`admin` | Marcar recibido / observaciones |
+| E46 | POST | `/api/solicitudes/:id/documentos/:docId/archivo` | `ventanilla`,`admin` | Subir adjunto (`multipart/form-data`) |
+| E47 | GET | `/api/usuarios/:id/alcance` | `admin` | Leer alcance |
+| E48 | PUT | `/api/usuarios/:id/alcance` | `admin` | Reemplazar alcance |
+
+### 12.6.1 E40 — `GET /api/solicitudes/catalogos`
+
+`200`:
+
+```json
+{
+  "programas": [{"id":1,"clave":"PRG-2026","nombre":"Apoyo al Campo Queretano 2026"}],
+  "subprogramas": [{"id":1,"programa_id":1,"clave":"SUB-IP","nombre":"Impulso a la Productividad"}],
+  "componentes": [{"id":1,"clave":"TR","nombre":"Tecnificación del Riego"}],
+  "proyectos": [{"id":1,"clave":"PEO","nombre":"…","prefijo_folio":"PEO","componente_id":null}],
+  "ventanillas": [{"id":2,"clave":"VEN-SJR","nombre":"Regional San Juan del Río","regional_id":4,"clave_folio":"SJR","es_central":false}],
+  "municipios": [{"id":7,"nombre":"Amealco de Bonfil","regional_id":3,"siglas_folio":"AME"}],
+  "tipos_apoyo": [{"id":12,"clave":"AP-012","nombre":"…","unidad_medida":"pieza"}],
+  "tipos_persona": [{"clave":"fisica","nombre":"Persona física"},{"clave":"moral","nombre":"Persona moral sin fines de lucro"},{"clave":"grupo","nombre":"Grupo de productores"}],
+  "alcance": {"municipios":"todos"|[7,8], "componentes":"todos"|[1], "ventanillas_permitidas":[2]}
+}
+```
+
+- **`componentes`, `municipios` y `ventanillas` vienen ya filtrados al alcance** del usuario `ventanilla`; para `admin` vienen completos y `alcance` es `{"municipios":"todos","componentes":"todos","ventanillas_permitidas":<todas>}`.
+- `ventanillas_permitidas` para un `ventanilla`: la ventanilla cuya `regional_id` coincide con la Regional del usuario, más `VEN-SED` **solo si** su alcance de municipios es "todos". Si el usuario no tiene `regional_id` y su alcance es "todos", se permiten las 5.
+- Solo filas con `activo = true`.
+
+### 12.6.2 E41 — `POST /api/solicitudes/documentos-requeridos`
+
+Body (Zod `.strict()`):
+
+```json
+{"componente_id": 1, "tipo_persona": "grupo", "proyecto_id": 1, "tipos_apoyo_ids": [12, 40]}
+```
+
+`componente_id` y `tipo_persona` **obligatorios**; `proyecto_id` y `tipos_apoyo_ids` opcionales (default `null` / `[]`).
+
+**Algoritmo de coincidencia** (determinista, `backend/src/servicios/documentos.ts`), evaluado sobre `documentos_requeridos` con `activo = true`:
+
+Una regla **aplica** si se cumplen las 4 condiciones:
+
+1. `componentes IS NULL OR componentes = '{}' OR <clave del componente> = ANY(componentes)`.
+2. `tipos_persona IS NULL OR tipos_persona = '{}' OR <tipo_persona> = ANY(tipos_persona)`.
+3. `proyecto_id IS NULL OR proyecto_id = <proyecto_id enviado>` (una regla ligada a proyecto **no** aplica si no se envió ese proyecto).
+4. **Regla de concepto**:
+   - Si `apoyo_id IS NULL AND (apoyo_etiquetas IS NULL OR = '{}')` ⇒ condición cumplida (regla general).
+   - Si no ⇒ se exige que **al menos uno** de los `tipos_apoyo_ids` enviados coincida: por `id = apoyo_id`, o porque el `nombre` normalizado del `tipo_apoyo` **contenga** alguna de las `apoyo_etiquetas` normalizadas.
+
+Y además **no se excluye**:
+
+5. Si `apoyo_excluir_id` o `apoyo_excluir_etiquetas` tienen valor y `tipos_apoyo_ids` no está vacío, la regla **se descarta** cuando **todos** los conceptos enviados coinciden con alguna exclusión. (Ej.: "Cotizaciones" no se pide si el único concepto es Fertilizantes; si hay un segundo concepto no excluido, la cotización **sí** se pide.)
+
+**Normalización** para comparar etiquetas y nombres: `trim`, mayúsculas, sin acentos (NFD + quitar diacríticos), espacios colapsados. Es la misma función ya usada por el importador (§8.5.1), reutilizada, no reescrita.
+
+`200`:
+
+```json
+{"documentos":[{"documento_requerido_id":32,"requisito":"Solicitud en original","origen":"regla"}],"total":9}
+```
+
+Ordenado por `orden`, luego `requisito` alfabético. Sin duplicados por texto de `requisito` (si dos reglas producen el mismo texto, se devuelve una sola entrada con el `documento_requerido_id` menor). `422` `payload_invalido` si falta `componente_id` o `tipo_persona`, o si `tipo_persona` no está en el enum. `422` `componente_invalido` si el componente no existe o está inactivo. **No** aplica restricción de alcance aquí (es solo consulta de catálogo).
+
+### 12.6.3 E42 — `POST /api/solicitudes`
+
+`Content-Type: application/json`. Body Zod `.strict()` en `packages/shared/src/solicitudes.ts`:
+
+```jsonc
+{
+  "programa_id": 1, "subprograma_id": 1, "componente_id": 1, "proyecto_id": 1, "ventanilla_id": 2,
+  "tipo_persona": "grupo",
+  "nombre_solicitante": "JUAN PEREZ LOPEZ",
+  "sexo": "H", "fecha_nacimiento": "1980-05-12",
+  "correo": "juan@example.com", "telefono": "4271234567", "curp": "PELJ800512HQTRPN04",
+  "razon_social": "Grupo El Progreso", "num_integrantes": 8,
+  "domicilio": {
+    "municipio_id": 7, "localidad": "San Miguel", "delegacion": "Centro", "cp": "76750",
+    "tipo_asentamiento": "ejido", "asentamiento": "El Progreso",
+    "tipo_vialidad": "calle", "vialidad": "Hidalgo 45"
+  },
+  "actividad": {
+    "agricola": true, "agr_superficie_total_ha": 12.5, "agr_superficie_siembra_ha": 10,
+    "agr_temporal_ha": 6, "agr_riego_ha": 4, "agr_cultivo_principal": "Maíz",
+    "ganadera": false, "acuicola": false, "pesca": false
+  },
+  "apoyo": {
+    "descripcion_proyecto": "Sistema de riego por goteo…",
+    "ben_hombres_total": 5, "ben_hombres_discapacidad": 0, "ben_hombres_lengua_indigena": 1,
+    "ben_mujeres_total": 3, "ben_mujeres_discapacidad": 1, "ben_mujeres_lengua_indigena": 0,
+    "ubicacion": {"municipio_id": 7, "localidad": "San Miguel", "ejido": "El Progreso",
+                  "coordenadas": "20.185, -100.145"}
+  },
+  "conceptos": [
+    {"tipo_apoyo_id": 12, "descripcion": "Cintilla de riego", "cantidad": 500,
+     "unidad_medida": "metro", "monto_estatal": 30000, "monto_productor": 10000, "monto_total": 40000}
+  ],
+  "documentos": [{"documento_requerido_id": 32, "requisito": "Solicitud en original", "recibido": true}],
+  "observaciones": "…",
+  "declaracion_aceptada": true
+}
+```
+
+**Validaciones (todas responden sin escribir nada, transacción abortada):**
+
+| Caso | HTTP | `codigo` | Mensaje |
+|---|---|---|---|
+| Claves fuera del esquema (`folio`, `id`, `regional_id`, `recibida_en`, `capturado_por`…) | 422 | `campo_no_editable` | "El campo folio no se captura: lo genera el sistema." |
+| Falta `nombre_solicitante` o queda vacío tras `trim` | 422 | `payload_invalido` | "Escribe el nombre del solicitante." |
+| `tipo_persona` fuera de `fisica\|moral\|grupo` | 422 | `payload_invalido` | "Datos inválidos." |
+| `tipo_persona` ∈ (`moral`,`grupo`) y falta `razon_social` o `num_integrantes` (<1) | 422 | `datos_persona_moral_requeridos` | "Para persona moral o grupo debes capturar la razón social y el número de integrantes." |
+| `conceptos` vacío o ausente | 422 | `conceptos_requeridos` | "Agrega al menos un concepto de apoyo." |
+| Algún concepto con `tipo_apoyo_id` inexistente/inactivo | 422 | `tipo_apoyo_invalido` | "El concepto de apoyo seleccionado no existe." |
+| Algún concepto con `cantidad <= 0`, o algún monto negativo | 422 | `montos_invalidos` | "Las cantidades y montos deben ser mayores o iguales a cero." |
+| `declaracion_aceptada` distinto de `true` | 422 | `declaracion_requerida` | "Debes aceptar las declaraciones del solicitante." |
+| `curp` presente y no cumple el patrón de 18 caracteres `[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d` | 422 | `curp_invalida` | "La CURP no tiene el formato correcto." |
+| `correo` presente y sin formato de correo | 422 | `correo_invalido` | "El correo electrónico no es válido." |
+| `telefono` presente y que tras normalizar (quitar espacios, `-`, `(`, `)`, `+52`) no queda en 10 dígitos | 422 | `telefono_invalido` | "El teléfono debe tener 10 dígitos." |
+| `ubicacion.municipio_id` inexistente/inactivo | 422 | `municipio_invalido` | "El municipio seleccionado no existe o está inactivo." |
+| `ventanilla_id` / `componente_id` / `proyecto_id` / `programa_id` inexistentes o inactivos | 422 | `catalogo_invalido` | "Uno de los catálogos seleccionados no existe o está inactivo." |
+| **Alcance**: `ubicacion.municipio_id` fuera de `usuario_municipios` (cuando hay restricción) | **403** | `municipio_fuera_de_alcance` | "No tienes asignado este municipio." |
+| **Alcance**: `componente_id` fuera de `usuario_componentes` (cuando hay restricción) | **403** | `componente_fuera_de_alcance` | "No tienes asignado este componente." |
+| **Alcance**: `ventanilla_id` fuera de `ventanillas_permitidas` (E40) | **403** | `ventanilla_fuera_de_alcance` | "No puedes registrar en esta ventanilla." |
+
+Reglas adicionales:
+
+- `admin` **nunca** recibe 403 por alcance (D34).
+- `monto_total` se **sugiere** en el cliente como `monto_estatal + monto_productor` pero se guarda **tal como lo envía el usuario** (D-formulario). Si `monto_total` no viene, el backend lo calcula como la suma. **No** se valida que la suma cuadre (Assumption 48).
+- Normalización previa a guardar: `trim` en todos los textos; `""` → `NULL`; `curp`, `nombre_solicitante` y `razon_social` en MAYÚSCULAS; `telefono` guardado con los 10 dígitos.
+- Los subcampos de una actividad **no marcada** se guardan como `NULL` (si `actividad.ganadera=false`, `gan_*` se ignoran aunque vengan en el body).
+- Si `documentos` no viene, el backend **calcula el checklist con el algoritmo de E41** y lo materializa con `recibido=false`. Si viene, se materializa lo enviado (permite que el capturista agregue una fila manual con `documento_requerido_id:null` y un `requisito` de texto libre ≤ 300 chars).
+
+**Efectos (una sola transacción):**
+
+1. Reserva del consecutivo y generación del `folio` (§12.5).
+2. `INSERT` en `solicitudes` (`capturado_por` = usuario del token, `regional_id` = `ventanillas.regional_id`, `recibida_en = now()`, `origen='solicitud_ventanilla'`).
+3. `INSERT` de N filas en `solicitud_conceptos` con `orden` 1..N en el orden del array.
+4. `INSERT` de M filas en `solicitud_documentos`.
+5. **Por cada concepto**, `INSERT` en `beneficiarios` (D39) con:
+   - `folio` = `<folio de la solicitud>` si hay **un solo** concepto; `<folio>-C1`, `<folio>-C2`, … si hay **más de uno**.
+   - `nombre_completo` = `razon_social` si `tipo_persona` ∈ (`moral`,`grupo`), si no `nombre_solicitante`.
+   - `curp` = `solicitudes.curp`; `telefono` = `solicitudes.telefono`.
+   - `regional_id` = de la **ventanilla**; `municipio_id`, `colonia` (= `ubi_localidad`), `localidad` (= `ubi_localidad`), `domicilio` (= `ubi_ejido`) desde la **Ubicación del apoyo** (D40). **Nunca** desde `domicilio.*`.
+   - `tipo_apoyo_id` = del concepto; `cantidad_asignada` = `cantidad` del concepto.
+   - `solicitud_id` = id de la solicitud; `origen_import_id = NULL`.
+   - `datos_extra` = `{"origen":"solicitud_ventanilla","solicitud_folio":"…","concepto_orden":N,"coordenadas_declaradas":"…"}`.
+   - Se guarda el `beneficiario_id` resultante en la fila de `solicitud_conceptos`.
+6. `INSERT` en `auditoria_log` con `accion='solicitud_creada'`.
+
+**Respuesta 201:**
+
+```json
+{
+  "ok": true,
+  "solicitud": {"id": 5, "folio": "PEO-SJR-AME-0001-26", "recibida_en": "2026-08-17T18:00:00.000Z",
+                "componente": "TR", "proyecto": "PEO", "ventanilla": "VEN-SJR", "regional_id": 4,
+                "tipo_persona": "grupo", "nombre_solicitante": "JUAN PEREZ LOPEZ"},
+  "conceptos": [{"id": 9, "orden": 1, "tipo_apoyo_id": 12, "beneficiario_id": 210}],
+  "beneficiarios_creados": [{"id": 210, "folio": "PEO-SJR-AME-0001-26"}],
+  "documentos": [{"id": 31, "requisito": "Solicitud en original", "recibido": true, "archivo_url": null}]
+}
+```
+
+### 12.6.4 E43 — `GET /api/solicitudes`
+
+Query: `q` (folio, nombre del solicitante o CURP), `componente_id`, `municipio_id`, `ventanilla_id`, `desde`, `hasta` (ISO, sobre `recibida_en`), `page` (1), `page_size` (≤200, default 50).
+
+`200 {data:[{id, folio, recibida_en, nombre_solicitante, tipo_persona, componente, proyecto, ventanilla, municipio, conceptos:N, monto_total, documentos_recibidos:"3/9"}], page, page_size, total, has_more}`.
+
+**Aislamiento:** un usuario `ventanilla` ve **solo** las solicitudes cuyo `ubi_municipio_id` esté en su alcance de municipios y cuyo `componente_id` esté en su alcance de componentes (si "todos", sin filtro). `admin` ve todas. El filtro se aplica **en SQL**, nunca en el cliente.
+
+### 12.6.5 E44 — `GET /api/solicitudes/:id`
+
+`200 {solicitud:{…todos los campos…}, conceptos:[…], documentos:[{id, requisito, recibido, archivo_url, archivo_nombre}], beneficiarios:[{id, folio, tipo_apoyo, municipio}]}`. `404` si no existe. **403** `fuera_de_alcance` si el usuario `ventanilla` no la tiene en su alcance.
+
+### 12.6.6 E45 — `PATCH /api/solicitudes/:id/documentos/:docId`
+
+Body `.strict()`: `{recibido?: boolean, observaciones?: string (≤300)}`. `200 {ok:true, documento:{…}}`. `404` si el documento no pertenece a esa solicitud. `422` `sin_cambios` si el body queda vacío. Registra `solicitud_documento_actualizado`. Aplica el mismo aislamiento de alcance.
+
+### 12.6.7 E46 — `POST /api/solicitudes/:id/documentos/:docId/archivo`
+
+`multipart/form-data` con un solo campo `archivo`. Reutiliza `@fastify/multipart` y `backend/src/servicios/almacenamiento.ts` (D43).
+
+- Tipos aceptados: `image/jpeg`, `image/png`, `image/webp`, `application/pdf`. Otro ⇒ **422** `tipo_archivo_no_permitido` ("Solo se aceptan imágenes JPG/PNG/WEBP o PDF.").
+- Tamaño máximo: `MAX_UPLOAD_MB` (variable existente). Excedido ⇒ **413** `archivo_muy_grande`.
+- Ruta: `/media/solicitudes/YYYY/MM/<uuid v4>.<ext>`; se guardan `archivo_url`, `archivo_hash` (sha256) y `archivo_nombre`. Subir de nuevo **reemplaza** la referencia (el archivo anterior no se borra del disco, se conserva por trazabilidad).
+- Al subir con éxito se pone `recibido = true` automáticamente.
+- `201 {ok:true, documento:{id, requisito, recibido:true, archivo_url, archivo_nombre}}`. Registra `solicitud_documento_adjuntado`.
+- La descarga se sirve por **E15** (`GET /media/*`, ya existente, con token). **No se crea ninguna ruta de estáticos nueva.**
+
+### 12.6.8 E47 / E48 — Alcance de usuarios (solo `admin`)
+
+- **E47 `GET /api/usuarios/:id/alcance`** → `200 {usuario_id, rol, municipios:"todos"|[{id,nombre}], componentes:"todos"|[{id,clave,nombre}]}`. `404` si el usuario no existe.
+- **E48 `PUT /api/usuarios/:id/alcance`** → body `.strict()` `{municipios: "todos" | number[], componentes: "todos" | number[]}`. Reemplaza por completo ambas listas (`DELETE` + `INSERT` en una transacción). `"todos"` ⇒ **cero filas** en la tabla correspondiente. `422` `payload_invalido` si un id no existe o está inactivo; `422` `rol_sin_alcance` si el usuario objetivo no es de rol `ventanilla` ("El alcance solo aplica a usuarios de ventanilla."). `200 {ok:true, municipios:…, componentes:…}`. Registra `alcance_usuario_actualizado`.
+- Estas rutas **no** relajan ninguna regla de §10.7: siguen sin existir `DELETE /api/usuarios/:id`, el login sigue siendo inmutable y `usuarios` no gana columnas.
+
+## 12.7 Semilla de `documentos_requeridos`
+
+Mapeo de claves usadas en el Excel real → catálogo de este build: **`SRT` (Sistemas de Riego Tecnificado) ⇒ componente `TR`**; `DIN` ⇒ `DIN`; `CAA` ⇒ `CAA`. Tipos de persona: `FISICA` ⇒ `fisica`, `MORAL` ⇒ `moral`, `GRUPO DE PRODUCTORES` ⇒ `grupo`.
+
+### 12.7.1 Las 34 reglas de la hoja `DOCUMENTACIÓN`
+
+| # | requisito | componentes | tipos_persona | apoyo_etiquetas | apoyo_excluir_etiquetas |
+|---|---|---|---|---|---|
+| 1 | Acreditar pertenencia a grupo de productores | `{DIN}` | `{grupo}` | `{TRACTORES,PESCA}` | — |
+| 2 | Acta constitutiva | `{DIN,TR}` | `{moral}` | — | — |
+| 3 | Acta que acredite al representante legal con facultades vigentes | `{DIN,TR}` | `{moral}` | — | — |
+| 4 | CURP | `{DIN,CAA,TR}` | `{fisica}` | — | — |
+| 5 | CURP del representante de grupo de productores | `{DIN,TR,CAA}` | `{grupo}` | — | — |
+| 6 | CURP del representante legal | `{DIN,TR}` | `{moral}` | — | — |
+| 7 | Comprobante de domicilio (vigencia no mayor a 3 meses) | `{DIN,CAA,TR}` | `{fisica}` | — | — |
+| 8 | Comprobante de domicilio de la persona moral y/o representante legal | `{DIN,TR}` | `{moral}` | — | — |
+| 9 | Comprobante de domicilio del representante de grupo de productores | `{DIN,TR,CAA}` | `{grupo}` | — | — |
+| 10 | Constancia de situación fiscal | `{DIN,CAA,TR}` | `{fisica}` | — | — |
+| 11 | Constancia de situación fiscal de la persona moral | `{DIN,TR}` | `{moral}` | — | — |
+| 12 | Constancia de situación fiscal del representante de grupo de productores | `{DIN,TR,CAA}` | `{grupo}` | — | — |
+| 13 | Constancia Unidad de Producción Pecuaria (UPP) | `{DIN}` | `{fisica,grupo,moral}` | `{PROYECTOS PECUARIOS}` | — |
+| 14 | Copia del título de concesión de derechos de agua vigente o resolución positiva | `{TR}` | `{fisica,grupo,moral}` | — | — |
+| 15 | Cotizaciones | `{DIN,TR,CAA}` | `{fisica,moral,grupo}` | — | `{FERTILIZANTES,MATERIAL VEGETATIVO,SEMILLA,PAQUETE TECNOLOGICO}` |
+| 16 | Croquis de localización del predio con referencias | `{DIN}` | `{fisica,moral,grupo}` | — | — |
+| 17 | Dictámenes zoosanitarios | `{DIN}` | `{fisica,grupo,moral}` | `{PROYECTOS PECUARIOS}` | — |
+| 18 | Documento que acredite la integración del grupo de productores, con representante designado | `{DIN,TR,CAA}` | `{grupo}` | — | — |
+| 19 | Evidencia fotográfica | `{DIN}` | `{fisica,grupo,moral}` | `{REHABILITACION DE INVERNADEROS}` | — |
+| 20 | Factura del insumo | `{DIN}` | `{fisica,grupo,moral}` | `{FERTILIZANTES,MATERIAL VEGETATIVO,SEMILLA,PAQUETE TECNOLOGICO}` | — |
+| 21 | Fotografías de la fuente de abastecimiento de agua / medidor volumétrico | `{TR}` | `{fisica,grupo,moral}` | — | — |
+| 22 | Identificación oficial vigente con fotografía | `{DIN,CAA,TR}` | `{fisica}` | — | — |
+| 23 | Identificación oficial vigente del representante del grupo de productores | `{DIN,TR,CAA}` | `{grupo}` | — | — |
+| 24 | Identificación oficial vigente del representante legal | `{DIN,TR}` | `{moral}` | — | — |
+| 25 | Instrumento público que acredite propiedad/usufructo/posesión del predio | `{DIN,CAA,TR}` | `{fisica,grupo}` | — | `{PESCA,APICULTURA}` |
+| 26 | Instrumento público que acredite propiedad/usufructo/posesión del predio (grupo) | `{DIN,TR,CAA}` | `{grupo}` | — | — |
+| 27 | Listado de integrantes del grupo de productores | `{CAA}` | `{grupo}` | — | — |
+| 28 | Permiso de pesca vigente | `{DIN}` | `{fisica,grupo,moral}` | `{PESCA}` | — |
+| 29 | Proyecto Ejecutivo | `{TR,CAA}` | `{fisica,grupo,moral}` | — | — |
+| 30 | Relación de beneficiarios directos de la persona moral, con documentos de cada uno | `{DIN,TR}` | `{moral}` | — | — |
+| 31 | Relación de beneficiarios directos del grupo de productores, con documentos de cada uno | `{DIN,TR,CAA}` | `{grupo}` | — | — |
+| 32 | Solicitud en original | `{DIN,CAA,TR}` | `{fisica}` | — | — |
+| 33 | Solicitud en original | `{DIN,TR}` | `{moral}` | — | — |
+| 34 | Solicitud en original | `{DIN,TR,CAA}` | `{grupo}` | — | — |
+
+> La fila 26 lleva el sufijo "(grupo)" **solo en el seed** para no chocar con la 25 en la deduplicación por texto; en la UI se muestra el texto completo tal cual queda en la columna `requisito`. Las filas 32–34 comparten texto a propósito: la deduplicación de E41 garantiza que el solicitante ve **una sola** "Solicitud en original".
+
+### 12.7.2 Las 8 reglas del anexo PEO (ligadas a `proyecto_id`)
+
+Todas con `proyecto_id = <id de PEO>`, `tipos_persona = {grupo}`, `componentes = NULL` (aplican con cualquier componente):
+
+1. Solicitud mediante escrito libre dirigida al Titular de la Secretaría
+2. Ficha técnica
+3. Acta de integración del grupo de productores
+4. Identificación oficial vigente con fotografía del representante
+5. CURP del representante
+6. Constancia de Situación Fiscal del representante
+7. Comprobante de domicilio del representante
+8. Relación de beneficiarios directos
+
+## 12.8 Pantallas nuevas en la PWA
+
+Rutas nuevas en `pwa/src/rutas.tsx`, envueltas en `<RutaProtegida roles={['ventanilla','admin']}>`. **Online-only** (D32). Estilos CSS plano, sin librerías nuevas.
+
+- Redirect por rol tras login: `ventanilla` → **`/solicitudes`**. Los demás roles no cambian (§8.8.4).
+- La barra de estado muestra el enlace `[data-testid="nav-solicitudes"]` ("Solicitudes") **solo** para `ventanilla` y `admin`.
+- Un usuario `ventanilla` que navegue a `/beneficiarios`, `/sync`, `/auditoria`, `/depuracion`, `/correcciones`, `/dashboard` o `/usuarios` ve "No tienes permiso para ver esta sección."
+
+### 12.8.1 `/solicitudes` — `Solicitudes.tsx`
+
+Encabezado "Solicitudes de apoyo" + botón `[data-testid="btn-nueva-solicitud"]` ("Nueva solicitud") → `/solicitudes/nueva`.
+Filtros: `input-busqueda` (folio/nombre/CURP), `select-componente`, `select-municipio`, `input-desde`, `input-hasta`.
+Tabla `[data-testid="tabla-solicitudes"]` con filas `[data-testid="fila-solicitud"]`: Folio, Fecha, Solicitante, Tipo de persona, Componente, Municipio, Conceptos, Documentos (`3/9`), acción "Ver". Vacío: "Sin resultados".
+
+### 12.8.2 `/solicitudes/nueva` — `NuevaSolicitud.tsx`
+
+Formulario **multi-sección** en una sola página con navegación por pasos (`[data-testid="paso-N"]`, N=1..6) y un resumen lateral. Todos los campos con `data-testid`. Guardado **solo** al final.
+
+**Paso 1 — Encabezado** (`seccion-encabezado`)
+`Folio`: campo de solo lectura con el texto "Se generará al guardar" (`[data-testid="folio-pendiente"]`), **sin input editable**. `select-programa`, `select-subprograma` (dependiente del programa), **`grupo-componente`** con 3 opciones de **selección única** (`radio-componente-TR|CAA|DIN`, presentadas como casillas igual que en el papel), `select-proyecto`, `select-ventanilla`. Los selects de componente, municipio y ventanilla se **pueblan desde E40** ya filtrados al alcance; si el alcance deja una sola opción, queda **preseleccionada**.
+
+**Paso 2 — Datos del solicitante** (`seccion-solicitante`)
+`select-tipo-persona` (Persona física / Persona moral sin fines de lucro / Grupo de productores). Al elegir `moral` o `grupo` aparecen `input-razon-social` e `input-num-integrantes` (**obligatorios**); con `fisica` **no se renderizan**. Campos: `input-nombre-solicitante` (etiqueta dinámica: "Nombre del solicitante" / "Nombre del representante legal" / "Nombre del representante del grupo"), `select-sexo`, `input-fecha-nacimiento`, `input-correo`, `input-telefono`, `input-curp`.
+Sub-bloque **2.2 Domicilio particular** (`seccion-domicilio`), con el aviso visible *"Domicilio del solicitante. La ubicación del predio se captura en la sección 4."*: `select-dom-municipio`, `input-dom-localidad`, `input-dom-delegacion`, `input-dom-cp`, `select-dom-tipo-asentamiento`, `input-dom-asentamiento`, `select-dom-tipo-vialidad`, `input-dom-vialidad`.
+
+**Paso 3 — Actividad económica** (`seccion-actividad`)
+4 checkboxes independientes: `chk-agricola`, `chk-ganadera`, `chk-acuicola`, `chk-pesca`. Los subcampos de cada una **solo se renderizan si su checkbox está marcado**:
+- Agrícola: `input-agr-superficie-total`, `input-agr-superficie-siembra`, `input-agr-temporal`, `input-agr-riego`, `input-agr-cultivo`.
+- Ganadera: `input-gan-tipo-ganado`, `input-gan-cabezas`, `input-gan-agostadero`, `select-gan-produccion` (Intensiva/Traspatio/Extensiva).
+- Acuícola: `input-acu-especies`. Pesca: `input-pes-especies`.
+
+**Paso 4 — Datos del apoyo** (`seccion-apoyo`)
+`textarea-descripcion-proyecto`; rejilla 2×3 de beneficiarios directos (`input-ben-h-total`, `input-ben-h-discapacidad`, `input-ben-h-indigena`, `input-ben-m-total`, `input-ben-m-discapacidad`, `input-ben-m-indigena`).
+Sub-bloque **4.1 Ubicación del apoyo** (`seccion-ubicacion`) con el aviso *"Ubicación del predio o proyecto. Es la dirección que visitará el capturista de campo."*: `select-ubi-municipio`, `input-ubi-localidad`, `input-ubi-ejido`, `input-ubi-coordenadas` (texto libre, placeholder `20.185, -100.145`). **Sin botón de "usar mi ubicación"** (D42).
+
+**Paso 5 — Conceptos de apoyo** (`seccion-conceptos`)
+Tabla repetible `[data-testid="tabla-conceptos"]` con filas `[data-testid="fila-concepto"]`; arranca con **1 fila**. `btn-agregar-concepto` agrega filas (sin límite); `btn-quitar-concepto` elimina, **deshabilitado cuando solo queda una fila**. Por fila: `select-concepto` (tipos_apoyo), `input-concepto-descripcion`, `input-concepto-cantidad`, `input-concepto-unidad` (se autocompleta con `tipos_apoyo.unidad_medida` y es editable), `input-concepto-estatal`, `input-concepto-productor`, `input-concepto-total` (**se autocalcula** como estatal+productor cada vez que cambia uno de los dos, pero el usuario puede sobrescribirlo; una vez editado a mano deja de autocalcularse en esa fila). Pie con `[data-testid="totales-conceptos"]` sumando las tres columnas de dinero. `textarea-observaciones` opcional.
+
+**Paso 6 — Documentos y declaraciones** (`seccion-documentos`)
+- `[data-testid="lista-documentos"]` con ítems `[data-testid="item-documento"]`, recalculada llamando a **E41** cada vez que cambian Componente, Tipo de persona, Proyecto o los conceptos seleccionados (con `debounce` de 300 ms). Cada ítem: texto del requisito + `chk-documento-recibido`. Contador `[data-testid="contador-documentos"]` "Recibidos: X de Y". Los adjuntos se suben **después de guardar**, desde el detalle (E46).
+- `[data-testid="texto-declaraciones"]` con los **7 incisos fijos** (§12.9), no editables.
+- `[data-testid="chk-declaracion"]` "Acepto las declaraciones anteriores" — **obligatorio**.
+- `[data-testid="btn-guardar-solicitud"]` **deshabilitado** mientras la declaración no esté aceptada o falte algún campo obligatorio. Al guardar con éxito: `[data-testid="modal-folio-generado"]` con `[data-testid="texto-folio"]` (el folio real), el listado de beneficiarios creados y el botón "Ver solicitud" → `/solicitudes/:id`.
+- Errores del backend se muestran en `[data-testid="error-solicitud"]` con el `mensaje` en español tal como llega.
+
+### 12.8.3 `/solicitudes/:id` — `DetalleSolicitud.tsx`
+
+Solo lectura de todas las secciones + `[data-testid="detalle-folio"]`, tabla de conceptos, tabla de beneficiarios creados (`[data-testid="tabla-beneficiarios-creados"]`) y checklist de documentos con, por ítem: `chk-documento-recibido` (llama a E45) y `input-archivo-documento` (`<input type="file">` que llama a E46) + enlace `[data-testid="enlace-archivo"]` cuando ya hay adjunto. Sin botones de editar ni borrar la solicitud (D44).
+
+### 12.8.4 `/usuarios` — bloque de alcance (delta sobre §10.8 y §11.6)
+
+En el formulario de usuario, al elegir rol **"Ventanilla"** aparece `[data-testid="bloque-alcance"]` con `[data-testid="chk-municipios-todos"]` + lista de casillas `chk-municipio-<id>`, y `[data-testid="chk-componentes-todos"]` + `chk-componente-<clave>`. Marcar "Todos" deshabilita y limpia la lista correspondiente. Se persiste con **E48** después de crear/guardar el usuario. Para cualquier otro rol el bloque **no se renderiza**. Nada más de §10/§11 cambia.
+
+## 12.9 Texto fijo de las declaraciones (`packages/shared/src/declaraciones.ts`, versión `v1-2026`)
+
+> **Declaro bajo protesta de decir verdad que:**
+> **a)** No realizo actividades ilícitas ni relacionadas con recursos de procedencia ilícita.
+> **b)** No tengo procesos, adeudos ni asuntos pendientes de resolver con la Secretaría de Desarrollo Agropecuario.
+> **c)** Aplicaré los apoyos que en su caso me sean otorgados única y exclusivamente para los fines autorizados.
+> **d)** Los datos e información que asiento en esta solicitud y los documentos que la acompañan son verídicos.
+> **e)** Me comprometo a ejecutar las inversiones y acciones del proyecto en los términos y plazos autorizados.
+> **f)** Proporcionaré la información y facilitaré el acceso al predio que se me requiera para efectos de supervisión, seguimiento y auditoría.
+> **g)** Entiendo que la presentación de esta solicitud **no implica la autorización del apoyo ni compromiso de pago alguno** por parte de la Secretaría.
+
+Se renderiza tal cual, íntegro, en el paso 6 y se reproduce en el detalle de la solicitud. La constante `DECLARACIONES_VERSION = 'v1-2026'` se guarda en `solicitudes.declaracion_version`.
+
+## 12.10 Estructura de archivos nuevos (delta build 6)
+
+```
+db/migrations/012_ventanilla_catalogos.sql
+db/migrations/013_solicitudes.sql
+db/seeds/005_ventanilla_catalogos.sql          # programas, subprogramas, componentes, proyectos, ventanillas, 42 reglas
+db/seeds/006_usuarios_ventanilla_demo.sql      # ventanilla1 (restringido), ventanilla2 (todos)
+packages/shared/src/solicitudes.ts             # tipos + Zod compartidos
+packages/shared/src/declaraciones.ts           # texto legal fijo + versión
+backend/src/rutas/solicitudes.ts
+backend/src/rutas/alcance.ts
+backend/src/db/queries/solicitudes.ts
+backend/src/servicios/folios.ts                # generación atómica del folio
+backend/src/servicios/documentos.ts            # cálculo de documentos requeridos
+backend/src/servicios/alcance.ts               # lectura y verificación del alcance del usuario
+pwa/src/pantallas/Solicitudes.tsx
+pwa/src/pantallas/NuevaSolicitud.tsx
+pwa/src/pantallas/DetalleSolicitud.tsx
+pwa/src/componentes/SeccionSolicitante.tsx
+pwa/src/componentes/SeccionActividad.tsx
+pwa/src/componentes/TablaConceptos.tsx
+pwa/src/componentes/ChecklistDocumentos.tsx
+pwa/src/componentes/BloqueAlcance.tsx
+pwa/src/api/solicitudes.ts
+```
+
+**Modificados:** `pwa/src/rutas.tsx`, `pwa/src/componentes/BarraEstado.tsx` (enlace nuevo), `pwa/src/componentes/FormUsuario.tsx` (bloque de alcance), `pwa/src/pantallas/Usuarios.tsx`, `backend/src/server.ts` (registro de rutas), `backend/src/servicios/almacenamiento.ts` (subcarpeta `solicitudes/`, sin cambiar el driver), `.env.example`, `db/README.md`, `README.md`.
+
+**No se modifica:** `pwa/src/db/indexeddb.ts`, `pwa/src/sync/*`, `pwa/nginx.conf.template`, `docker-compose.yml`, `scripts/importar.ts`, ninguna ruta de `/api/staging/*`, `/api/auditoria/*`, `/api/capturas`.
+
+## 12.11 Assumptions de la extensión (continúa la numeración de §10.10)
+
+44. **Alcance vacío = acceso total.** Cero filas en `usuario_municipios`/`usuario_componentes` significa "todos" (equivalente al valor `ADMIN` del Excel de AppSheet). Se eligió así para que los usuarios existentes de la BD de producción no queden bloqueados por la migración.
+45. **La jerarquía Programa→Subprograma→Componente→Modalidad→Proyecto no está 100% clara** en los documentos disponibles. Se modela **plana y flexible**: `proyectos.componente_id` es **nullable**, `solicitudes.subprograma_id` es nullable, y todos los catálogos son editables por SQL/seed. No se fuerza ninguna relación que los documentos no confirmen. La entidad "Modalidad" **no se modela** en este build (no aparece en los formularios transcritos).
+46. **`municipios.siglas_folio` es nullable** porque el catálogo oficial de siglas no está disponible; hay fallback determinista (§12.5) para que el sistema nunca falle al generar un folio, y la columna se puede llenar después sin migración.
+47. **El consecutivo del folio no se reutiliza** si la transacción falla tras reservarlo. Es el comportamiento estándar de un contador y evita bloqueos entre ventanillas concurrentes; puede dejar huecos en la numeración.
+48. **`monto_total` no se valida contra la suma** de estatal + productor: el papel permite que la inversión total incluya aportaciones de terceros. El cliente la **sugiere**, el usuario manda.
+49. **La ventanilla SEDEA (central) hereda `regional_id` = Querétaro (REG-03)** para los beneficiarios creados, porque `beneficiarios.regional_id` es `NOT NULL`. Su segmento de folio es `SED`, distinguible de `QRO`.
+50. **No se valida que el municipio de la ubicación pertenezca a la Regional de la ventanilla**: en la práctica SEDEA central y las regionales reciben solicitudes de municipios vecinos. Se registra tal cual lo que declara el papel.
+51. **Las etiquetas de apoyo del Excel** (`PROYECTOS PECUARIOS`, `TRACTORES`, `PESCA`, …) son **categorías**, no conceptos exactos del catálogo de 152 filas; por eso se guardan como `apoyo_etiquetas TEXT[]` y se comparan por contención normalizada, además de admitir `apoyo_id` exacto cuando exista.
+52. **La solicitud no se puede editar** después de guardarse (D44): en ventanilla el papel firmado es la fuente de verdad; si un dato del beneficiario derivado está mal, se corrige por §9.4 dejando traza.
+53. **El checklist se materializa al crear** (copia del texto en `solicitud_documentos.requisito`), de modo que cambiar las reglas después **no altera** las solicitudes ya recibidas.
+54. **Un usuario `ventanilla` con `regional_id` asignado y alcance de municipios "todos"** puede además usar la ventanilla `VEN-SED`; es el perfil de personal central que también atiende una regional.
+
+## 12.12 Dependencias
+
+**Ninguna dependencia npm nueva.** Se reutilizan `@fastify/multipart` (adjuntos), `zod`, `pg` y, en la PWA, React + react-router-dom ya presentes. No se agrega gestor de formularios ni librería de tablas.
+
+---
+
+## 12.13 Rubric extendido (criterios 241–306)
+
+Continúa la numeración de §7, §8.11, §9.9, §10.11 y §11.9. Base: `API=http://localhost:3000`, `APP=http://localhost:8080`. Tokens: `T_ADMIN`, `T_CAP` (capturista1), `T_AUD` (auditor1), `T_EDIT` (editor1), **`T_VEN1`** (`ventanilla1`, alcance restringido), **`T_VEN2`** (`ventanilla2`, alcance "todos").
+
+### Base de datos y migraciones (241–250)
+
+241. Existen `db/migrations/012_*.sql` y `db/migrations/013_*.sql`, y **no** existe ningún `db/migrations/011_*.sql` (el criterio 231 sigue pasando).
+242. `information_schema.tables` contiene: `programas`, `subprogramas`, `componentes`, `proyectos`, `ventanillas`, `documentos_requeridos`, `solicitudes`, `solicitud_conceptos`, `solicitud_documentos`, `solicitud_folios`, `usuario_municipios`, `usuario_componentes` (12 tablas nuevas).
+243. `pg_get_constraintdef` de `usuarios_rol_check` contiene `ventanilla` y sigue conteniendo `capturista`, `auditor`, `admin` y `editor_datos`; `INSERT INTO usuarios (…) VALUES (…,'ventanilla',…)` no viola el CHECK.
+244. `information_schema.columns` muestra `municipios.siglas_folio` (`text`, nullable), `direcciones_regionales.clave_folio` (`text`, nullable) y `beneficiarios.solicitud_id` (`bigint`, nullable); `beneficiarios` conserva **todas** las columnas de §4.6 y §9 (ninguna eliminada ni renombrada).
+245. `solicitudes` contiene todas estas columnas: `folio`, `tipo_persona`, `razon_social`, `num_integrantes`, `dom_municipio_id`, `dom_tipo_asentamiento`, `dom_tipo_vialidad`, `act_agricola`, `act_ganadera`, `act_acuicola`, `act_pesca`, `gan_produccion`, `ben_hombres_total`, `ben_mujeres_total`, `ubi_municipio_id`, `ubi_coordenadas`, `declaracion_aceptada`, `declaracion_version`, `origen`.
+246. El CHECK de `solicitudes.tipo_persona` acepta exactamente `fisica,moral,grupo`; el de `solicitudes.gan_produccion` acepta `intensiva,traspatio,extensiva`; `solicitudes.folio` tiene índice **UNIQUE**.
+247. `solicitud_conceptos` tiene FK a `solicitudes` con `ON DELETE CASCADE`, columna `beneficiario_id` referenciando `beneficiarios(id)`, y restricción `UNIQUE (solicitud_id, orden)`.
+248. `solicitud_folios` tiene PRIMARY KEY compuesta `(prefijo, clave_regional, siglas_municipio, anio)`; `usuario_municipios` y `usuario_componentes` tienen PK compuesta de sus dos columnas.
+249. `SELECT count(*) FROM componentes` devuelve exactamente **3** y `SELECT clave FROM componentes ORDER BY clave` devuelve `CAA, DIN, TR`; `SELECT count(*) FROM ventanillas` devuelve exactamente **5** y existe exactamente una con `es_central = true`.
+250. `SELECT count(*) FROM documentos_requeridos WHERE activo` devuelve **42**; `SELECT count(*) FROM programas` y `FROM subprogramas` devuelven **1** cada uno; `SELECT prefijo_folio FROM proyectos WHERE clave='PEO'` devuelve `PEO` y su `componente_id` es **NULL**.
+
+### Catálogos y semillas (251–254)
+
+251. `SELECT clave_folio FROM direcciones_regionales ORDER BY clave` devuelve exactamente `CAD, JAL, QRO, SJR` para `REG-01..REG-04`.
+252. `SELECT count(*) FROM municipios WHERE siglas_folio IS NULL OR length(siglas_folio) <> 3` devuelve **0** tras el seed, y el municipio cuyo nombre empieza con `Amealco` tiene `siglas_folio = 'AME'`.
+253. `POST $API/api/auth/login` con `ventanilla1` y con `ventanilla2` devuelve **200** con `token` y `usuario.rol === "ventanilla"`; en BD `ventanilla1` tiene ≥1 fila en `usuario_municipios` y exactamente 1 en `usuario_componentes`, y `ventanilla2` tiene **0** filas en ambas.
+254. Los usuarios demo previos (`admin`, `capturista1`, `auditor1`, `editor1`) siguen existiendo y pudiendo iniciar sesión con **200** (ninguna semilla anterior se rompió).
+
+### API — RBAC del módulo (255–260)
+
+255. `GET $API/api/solicitudes/catalogos` **sin** header `Authorization` devuelve **401**.
+256. `GET $API/api/solicitudes/catalogos` con `T_CAP`, con `T_AUD` y con `T_EDIT` devuelve **403** con `error.codigo === "rol_no_autorizado"` en los tres casos.
+257. `GET $API/api/solicitudes/catalogos` con `T_VEN1` devuelve **200** con las claves `programas, subprogramas, componentes, proyectos, ventanillas, municipios, tipos_apoyo, tipos_persona, alcance`; `alcance.componentes` es un array de longitud **1** y `alcance.municipios` es un array (no `"todos"`).
+258. `GET $API/api/solicitudes/catalogos` con `T_VEN2` devuelve **200** con `alcance.municipios === "todos"` y `alcance.componentes === "todos"`, y su array `componentes` tiene **3** elementos.
+259. Con `T_VEN1`, el array `componentes` de E40 tiene **1** elemento (`TR`) y `municipios` contiene **solo** los municipios asignados en `usuario_municipios`.
+260. Con `T_VEN1`, `GET $API/api/auditoria/capturas`, `GET /api/staging/beneficiarios`, `GET /api/usuarios` y `GET /api/dashboard/*` (o su ruta equivalente de §9.5) devuelven **403** o **401**; ninguno devuelve 200.
+
+### API — creación de solicitud y folio (261–272)
+
+261. `POST $API/api/solicitudes` con `T_VEN2` y un payload válido de **1 concepto** (componente `TR`, proyecto `PEO`, ventanilla `VEN-SJR`, municipio de ubicación `Amealco`, `tipo_persona:"fisica"`, `declaracion_aceptada:true`) devuelve **201** con `ok:true` y `solicitud.folio` que **coincide exactamente** con la expresión regular `^PEO-SJR-AME-0001-\d{2}$`.
+262. Un segundo `POST /api/solicitudes` idéntico devuelve **201** con folio terminado en `-0002-` + los 2 dígitos del año (el consecutivo avanza), y `SELECT consecutivo FROM solicitud_folios WHERE prefijo='PEO' AND clave_regional='SJR' AND siglas_municipio='AME'` devuelve **2**.
+263. Un `POST /api/solicitudes` con la ventanilla `VEN-CAD` (o con otro municipio) devuelve un folio cuyo consecutivo vuelve a ser `0001` (el contador es por combinación proyecto+regional+municipio+año).
+264. `POST /api/solicitudes` con la clave `"folio":"MANUAL-1"` dentro del body devuelve **422** con `error.codigo === "campo_no_editable"` y `SELECT count(*) FROM solicitudes` no aumenta; lo mismo con `"regional_id"` o `"capturado_por"` en el body.
+265. `POST /api/solicitudes` con `declaracion_aceptada:false` devuelve **422** `declaracion_requerida`; con `conceptos: []` devuelve **422** `conceptos_requeridos`; con `tipo_persona:"grupo"` y sin `razon_social` devuelve **422** `datos_persona_moral_requeridos`. En los tres casos `SELECT count(*) FROM solicitudes` no aumenta.
+266. `POST /api/solicitudes` con `curp:"XXX"` devuelve **422** `curp_invalida`; con `correo:"no-es-correo"` devuelve **422** `correo_invalido`; con `telefono:"123"` devuelve **422** `telefono_invalido`; con un concepto de `cantidad: 0` devuelve **422** `montos_invalidos`.
+267. Tras un alta exitosa de **1 concepto**, `SELECT count(*) FROM beneficiarios WHERE solicitud_id = <id>` devuelve **1**, y ese beneficiario tiene `folio` **igual** al folio de la solicitud, `tipo_apoyo_id` igual al del concepto y `regional_id` igual al `regional_id` de la ventanilla elegida.
+268. `POST /api/solicitudes` con **3 conceptos distintos** devuelve **201** con `beneficiarios_creados` de longitud **3**, y en BD sus folios son `<folio>-C1`, `<folio>-C2`, `<folio>-C3` con `tipo_apoyo_id` distintos entre sí; `SELECT count(*) FROM solicitud_conceptos WHERE solicitud_id=<id>` devuelve **3** y las 3 filas tienen `beneficiario_id` no nulo.
+269. Los beneficiarios creados toman **la ubicación del apoyo**, no el domicilio del solicitante: enviando `domicilio.municipio_id = A` y `apoyo.ubicacion.municipio_id = B` (distintos), `SELECT municipio_id FROM beneficiarios WHERE solicitud_id=<id>` devuelve **B** en todas las filas.
+270. Ninguna solicitud pasa por staging: tras las altas anteriores, `SELECT count(*) FROM staging_beneficiarios` **no** aumentó, y `SELECT origen FROM solicitudes WHERE id=<id>` devuelve `solicitud_ventanilla`.
+271. `GET $API/api/auditoria/log` con `T_ADMIN` contiene ≥1 entrada con `accion === "solicitud_creada"`, `entidad === "solicitud"` y `detalle.origen === "solicitud_ventanilla"`, con `detalle.folio` igual al folio devuelto y `detalle.beneficiarios_creados` no vacío.
+272. `PATCH $API/api/solicitudes/<id>` y `DELETE $API/api/solicitudes/<id>` con `T_ADMIN` devuelven **404** o **405** (no existe edición ni borrado de solicitudes), y `SELECT count(*) FROM solicitudes` no disminuye.
+
+### API — alcance aplicado en backend (273–279)
+
+273. `POST $API/api/solicitudes` con `T_VEN1` usando un `apoyo.ubicacion.municipio_id` **no asignado** a `ventanilla1` devuelve **403** con `error.codigo === "municipio_fuera_de_alcance"` y no crea ninguna fila.
+274. `POST /api/solicitudes` con `T_VEN1` usando un `componente_id` distinto del único asignado devuelve **403** `componente_fuera_de_alcance` y no crea ninguna fila.
+275. `POST /api/solicitudes` con `T_VEN1` usando un municipio y un componente **sí** asignados devuelve **201** (el alcance no bloquea lo permitido).
+276. `POST /api/solicitudes` con `T_ADMIN` usando **cualquier** municipio y componente devuelve **201** (el admin no tiene restricción de alcance).
+277. `GET $API/api/solicitudes` con `T_VEN1` devuelve **200** y **ninguna** de las filas tiene un `componente` distinto del asignado ni un municipio fuera de su alcance, mientras que la misma consulta con `T_ADMIN` devuelve un `total` **estrictamente mayor**.
+278. `GET $API/api/solicitudes/<id de una solicitud fuera del alcance de ventanilla1>` con `T_VEN1` devuelve **403** `fuera_de_alcance`, y con `T_ADMIN` devuelve **200**.
+279. `GET $API/api/usuarios/<id de ventanilla1>/alcance` con `T_ADMIN` devuelve **200** con `municipios` y `componentes` como arrays; `PUT` del mismo recurso con `{"municipios":"todos","componentes":"todos"}` devuelve **200** y deja `SELECT count(*) FROM usuario_municipios WHERE usuario_id=<id>` en **0**; el mismo `PUT` con `T_VEN1` o `T_EDIT` devuelve **403**, y sobre un usuario de rol `capturista` devuelve **422** `rol_sin_alcance`.
+
+### API — documentos requeridos (280–287)
+
+280. `POST $API/api/solicitudes/documentos-requeridos` con `T_VEN2` y `{"componente_id":<TR>,"tipo_persona":"fisica"}` devuelve **200** con `documentos` no vacío, e incluye los requisitos `CURP`, `Identificación oficial vigente con fotografía`, `Constancia de situación fiscal`, `Proyecto Ejecutivo` y `Solicitud en original`.
+281. Con `{"componente_id":<TR>,"tipo_persona":"fisica"}` el resultado **no** incluye ningún requisito exclusivo de moral o grupo (no aparece `Acta constitutiva`, ni `CURP del representante legal`, ni `Listado de integrantes del grupo de productores`).
+282. Con `{"componente_id":<DIN>,"tipo_persona":"moral"}` el resultado **sí** incluye `Acta constitutiva`, `CURP del representante legal` y `Relación de beneficiarios directos de la persona moral, con documentos de cada uno`, y **no** incluye `CURP` a secas (regla 4, exclusiva de persona física).
+283. Con `{"componente_id":<CAA>,"tipo_persona":"grupo"}` el resultado incluye `Listado de integrantes del grupo de productores`; con `{"componente_id":<DIN>,"tipo_persona":"grupo"}` **no** lo incluye (esa regla es solo de CAA).
+284. La deduplicación funciona: en cualquier respuesta de E41, el número de elementos con `requisito === "Solicitud en original"` es exactamente **1**, y no hay dos elementos con el mismo texto de `requisito`.
+285. Regla de exclusión: con `{"componente_id":<DIN>,"tipo_persona":"fisica","tipos_apoyo_ids":[<id de un tipo_apoyo cuyo nombre contiene FERTILIZANTE>]}` el resultado **no** incluye `Cotizaciones` pero **sí** incluye `Factura del insumo`; al agregar un segundo `tipo_apoyo_id` **no** excluido, `Cotizaciones` vuelve a aparecer.
+286. Regla ligada a proyecto: con `{"componente_id":<DIN>,"tipo_persona":"grupo","proyecto_id":<PEO>}` el resultado incluye `Ficha técnica` y `Solicitud mediante escrito libre dirigida al Titular de la Secretaría`; **sin** `proyecto_id` esos dos requisitos **no** aparecen.
+287. `POST /api/solicitudes/documentos-requeridos` sin `componente_id` o con `tipo_persona:"otro"` devuelve **422** `payload_invalido`; con `componente_id` inexistente devuelve **422** `componente_invalido`; sin token devuelve **401**.
+
+### API — checklist, adjuntos y detalle (288–293)
+
+288. Tras crear una solicitud **sin** enviar `documentos`, `SELECT count(*) FROM solicitud_documentos WHERE solicitud_id=<id>` es **igual** al `total` que devuelve E41 con ese mismo componente/tipo de persona/proyecto/conceptos, y todas las filas tienen `recibido = false`.
+289. `GET $API/api/solicitudes/<id>` con `T_VEN2` devuelve **200** con las claves `solicitud`, `conceptos`, `documentos` y `beneficiarios`, y `solicitud.folio` coincide con el devuelto al crear.
+290. `PATCH $API/api/solicitudes/<id>/documentos/<docId>` con `{"recibido":true}` devuelve **200** y en BD `recibido = true`; con body `{}` devuelve **422** `sin_cambios`; con un `docId` de otra solicitud devuelve **404**.
+291. `POST $API/api/solicitudes/<id>/documentos/<docId>/archivo` con un JPG pequeño (`multipart/form-data`, campo `archivo`) devuelve **201** con `documento.archivo_url` que empieza con `/media/solicitudes/`; en BD `archivo_hash` no es nulo y `recibido` quedó en **true**.
+292. `GET $API<archivo_url>` con el token del usuario devuelve **200** con `content-type` de imagen; el mismo archivo subido con `content-type: text/plain` devuelve **422** `tipo_archivo_no_permitido` y no cambia `archivo_url` en BD.
+293. `GET $API/api/auditoria/log` con `T_ADMIN` contiene ≥1 entrada `solicitud_documento_adjuntado` y ≥1 entrada `solicitud_documento_actualizado`, y ≥1 entrada `alcance_usuario_actualizado`.
+
+### Integración con el flujo existente (294–296)
+
+294. Los beneficiarios creados por solicitud son visibles para el capturista de esa Regional: `GET $API/api/beneficiarios` con un token de capturista de la Regional de la ventanilla usada devuelve **200** e incluye un elemento con el `folio` del beneficiario creado.
+295. `POST $API/api/capturas` (E7) sobre uno de esos beneficiarios, con el token de ese capturista, devuelve **201** — el flujo de captura de campo funciona sin cambios sobre un beneficiario nacido en ventanilla.
+296. Regresión: `GET /api/health`, `POST /api/auth/login` (admin), `GET /api/catalogos`, `GET /api/staging/resumen` (con `T_EDIT`), `GET /api/auditoria/capturas` (con `T_AUD`) y `PATCH /api/beneficiarios/:id` (con `T_EDIT`) siguen respondiendo exactamente como en los builds 1–5 (200 en todos los casos válidos).
+
+### PWA — pantalla de ventanilla (297–304)
+
+297. Playwright: iniciar sesión con `ventanilla2` redirige a `/solicitudes`, se ve `[data-testid="nav-solicitudes"]` y `[data-testid="tabla-solicitudes"]`; con `capturista1`, `auditor1` y `editor1` el conteo de `[data-testid="nav-solicitudes"]` es **0** y navegar a `/solicitudes` muestra "No tienes permiso para ver esta sección."
+298. Playwright con `ventanilla2`: pulsar `[data-testid="btn-nueva-solicitud"]` abre `/solicitudes/nueva`, se ven los 6 pasos (`paso-1`…`paso-6`), existe `[data-testid="folio-pendiente"]` y **no** existe ningún input editable de folio (0 elementos `input[name="folio"]`).
+299. Playwright: en el paso 2, con `select-tipo-persona = "fisica"` el conteo de `[data-testid="input-razon-social"]` es **0**; al cambiar a "Grupo de productores" aparecen `input-razon-social` e `input-num-integrantes`; la etiqueta de `input-nombre-solicitante` cambia a la del representante del grupo.
+300. Playwright: en el paso 3, con `chk-ganadera` sin marcar el conteo de `[data-testid="select-gan-produccion"]` es **0**; al marcarlo aparecen `input-gan-tipo-ganado`, `input-gan-cabezas`, `input-gan-agostadero` y `select-gan-produccion`; lo mismo para agrícola, acuícola y pesca con sus subcampos.
+301. Playwright: en el paso 5 hay **1** `[data-testid="fila-concepto"]` inicial y `btn-quitar-concepto` está deshabilitado; pulsar `btn-agregar-concepto` deja **2** filas y habilita el de quitar; escribir 30000 en `input-concepto-estatal` y 10000 en `input-concepto-productor` deja `input-concepto-total` en **40000** sin intervención del usuario.
+302. Playwright: en el paso 6, cambiar `select-tipo-persona` de "fisica" a "Grupo de productores" cambia el número de `[data-testid="item-documento"]` (la lista se recalcula contra E41) y `[data-testid="contador-documentos"]` refleja "Recibidos: 0 de N"; el `[data-testid="texto-declaraciones"]` contiene los 7 incisos (texto que incluye "no implica la autorización del apoyo").
+303. Playwright: con la declaración **sin** marcar, `[data-testid="btn-guardar-solicitud"]` está deshabilitado; al marcar `[data-testid="chk-declaracion"]` y con el formulario completo, guardar muestra `[data-testid="modal-folio-generado"]` con `[data-testid="texto-folio"]` que cumple `^[A-Z]{2,5}-[A-Z]{3}-[A-Z]{3}-\d{4}-\d{2}$`, y "Ver solicitud" lleva a `/solicitudes/:id` donde `[data-testid="detalle-folio"]` muestra ese mismo folio.
+304. Playwright: en `/solicitudes/:id` existe `[data-testid="tabla-beneficiarios-creados"]` con al menos una fila, la lista de documentos permite marcar `chk-documento-recibido` (persiste tras recargar) y subir un archivo por `input-archivo-documento` deja visible `[data-testid="enlace-archivo"]`; no existe ningún botón de "Editar solicitud" ni "Eliminar solicitud".
+
+### Sin regresiones offline y documentación (305–306)
+
+305. `grep -r` en `pwa/src/pantallas/Solicitudes.tsx`, `NuevaSolicitud.tsx`, `DetalleSolicitud.tsx` y `pwa/src/api/solicitudes.ts` **no** encuentra `navigator.geolocation`, `dexie`, `indexeddb` ni `cola_sync` (mayúsculas/minúsculas indiferentes); `git diff` no muestra cambios en `pwa/src/db/indexeddb.ts`, `pwa/src/sync/*` ni `pwa/nginx.conf.template`; el flujo offline del capturista (criterios 41–50 de §7) sigue pasando.
+306. `README.md` documenta el módulo de ventanilla: (a) qué es el rol `ventanilla` y a qué accede y a qué no; (b) cómo se asigna el **alcance** por municipios y componentes y que **vacío = todos**; (c) el **esquema del folio** con su ejemplo `PEO-SJR-AME-0001-26` y el fallback de `siglas_folio`; (d) que la solicitud **entra directo a producción sin pasar por staging** y crea **un beneficiario por concepto**; (e) que el **domicilio del solicitante y la ubicación del apoyo son distintos** y que el beneficiario hereda la ubicación del apoyo; y (f) que la solicitud **no se edita** después de guardada y las correcciones van por `/correcciones`.
+
+**Definición de "terminado" (build 6):** los **306** criterios pasan (240 acumulados de los builds 1–5, con las excepciones ya declaradas en §11.8, + **66** de esta extensión).

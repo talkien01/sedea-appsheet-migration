@@ -179,9 +179,12 @@ export default function Usuarios() {
         }
         setFormAbierto(false);
       } else {
-        const respuesta = await api.crearUsuario(datos);
-        if (datos.rol === 'ventanilla' && datos.alcance) {
-          await guardarAlcance(respuesta.usuario.id, datos.alcance);
+        // El alcance no es una clave del alta (E35 es `.strict()`): se envia
+        // aparte con E48 en cuanto existe el id del usuario.
+        const { alcance, ...datosAlta } = datos;
+        const respuesta = await api.crearUsuario(datosAlta);
+        if (datos.rol === 'ventanilla' && alcance) {
+          await guardarAlcance(respuesta.usuario.id, alcance);
         }
         setFormAbierto(false);
         setPasswordTemporal({

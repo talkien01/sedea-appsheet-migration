@@ -13,3 +13,6 @@ desktop.ini
 # Archivos fuente reales del padron - contienen PII (CURP, RFC, telefono, CLABE). NUNCA commitear.
 *.xlsx
 *.xls
+
+# Documentos de referencia (formularios oficiales, escaneos) - no son parte del codigo versionable.
+CamScanner*.pdf

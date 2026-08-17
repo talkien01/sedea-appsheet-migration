@@ -8,14 +8,15 @@ import type { Rol } from './dto.js';
 /** Roles que pueden administrar cuentas (D15). */
 export const ROLES_ADMIN_USUARIOS = ['admin', 'editor_datos'] as const;
 
-/** Los 4 roles del sistema, en el orden en que se muestran en los select. */
-export const ROLES_USUARIO = ['capturista', 'auditor', 'editor_datos', 'admin'] as const;
+/** Los 5 roles del sistema, en el orden en que se muestran en los select. */
+export const ROLES_USUARIO = ['capturista', 'auditor', 'editor_datos', 'ventanilla', 'admin'] as const;
 
 /** Etiquetas en espanol de cada rol (UI y bitacora legible). */
 export const ETIQUETAS_ROL: Record<string, string> = {
   capturista: 'Capturista',
   auditor: 'Auditor',
   editor_datos: 'Editor de datos',
+  ventanilla: 'Ventanilla',
   admin: 'Administrador'
 };
 
@@ -119,7 +120,7 @@ const campoNombre = z
   .transform((v) => v.trim())
   .refine((v) => v.length >= 3 && v.length <= 120, 'El nombre completo debe tener entre 3 y 120 caracteres.');
 
-const campoRol = z.enum(['capturista', 'auditor', 'admin', 'editor_datos']);
+const campoRol = z.enum(['capturista', 'auditor', 'admin', 'editor_datos', 'ventanilla']);
 
 const campoRegional = z
   .union([z.number().int().positive(), z.null()])

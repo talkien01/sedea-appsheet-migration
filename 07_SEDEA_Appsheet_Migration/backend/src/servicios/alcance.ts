@@ -1,0 +1,140 @@
+// Alcance granular del usuario de ventanilla (D35/D36).
+//
+// Semantica (Assumption 44): CERO filas en usuario_municipios /
+// usuario_componentes significa "todos" (sin restriccion). Una o mas filas
+// restringen al usuario a esa lista exacta.
+//
+// El alcance se aplica SIEMPRE en el backend: la UI filtra los selects, pero
+// eso es cosmetico y no se considera control de acceso.
+import type { PoolClient } from 'pg';
+import type { PerfilUsuario } from '@sedea/shared';
+import { consultar } from '../db/pool.js';
+import { ErrorApi } from '../plugins/errores.js';
+
+export interface AlcanceResuelto {
+  municipios: 'todos' | number[];
+  componentes: 'todos' | number[];
+}
+
+/** Error 403 con el codigo del contrato de 12.6.3. */
+export function error403Alcance(codigo: string, mensaje: string): ErrorApi {
+  return new ErrorApi(403, codigo, mensaje);
+}
+
+/**
+ * Lee el alcance de un usuario. El `admin` nunca tiene restriccion (D34), asi
+ * que ni siquiera se consultan sus tablas de alcance.
+ */
+export async function leerAlcance(usuario: PerfilUsuario): Promise<AlcanceResuelto> {
+  if (usuario.rol === 'admin') {
+    return { municipios: 'todos', componentes: 'todos' };
+  }
+  return leerAlcancePorId(usuario.id);
+}
+
+/** Lee el alcance crudo de un usuario cualquiera (lo usa tambien E47). */
+export async function leerAlcancePorId(usuarioId: number): Promise<AlcanceResuelto> {
+  const municipios = await consultar<{ municipio_id: string }>(
+    'SELECT municipio_id FROM usuario_municipios WHERE usuario_id = $1 ORDER BY municipio_id',
+    [usuarioId]
+  );
+  const componentes = await consultar<{ componente_id: string }>(
+    'SELECT componente_id FROM usuario_componentes WHERE usuario_id = $1 ORDER BY componente_id',
+    [usuarioId]
+  );
+  return {
+    municipios: municipios.length === 0 ? 'todos' : municipios.map((f) => Number(f.municipio_id)),
+    componentes:
+      componentes.length === 0 ? 'todos' : componentes.map((f) => Number(f.componente_id))
+  };
+}
+
+/** true si el id esta dentro del alcance (o si el alcance es "todos"). */
+export function dentroDeAlcance(alcance: 'todos' | number[], id: number): boolean {
+  return alcance === 'todos' || alcance.includes(id);
+}
+
+/**
+ * Ventanillas que puede usar el usuario (12.6.1):
+ *  - admin: todas.
+ *  - ventanilla con Regional: la de su Regional, mas la central (VEN-SED) solo
+ *    si su alcance de municipios es "todos" (Assumption 54).
+ *  - ventanilla sin Regional y alcance "todos": las 5.
+ */
+export function ventanillasPermitidas(
+  usuario: PerfilUsuario,
+  alcance: AlcanceResuelto,
+  ventanillas: { id: number; regional_id: number; es_central: boolean }[]
+): number[] {
+  if (usuario.rol === 'admin') return ventanillas.map((v) => v.id);
+
+  const sinRestriccionMunicipios = alcance.municipios === 'todos';
+
+  if (usuario.regional_id === null || usuario.regional_id === undefined) {
+    return sinRestriccionMunicipios ? ventanillas.map((v) => v.id) : [];
+  }
+
+  return ventanillas
+    .filter(
+      (v) =>
+        v.regional_id === usuario.regional_id ||
+        (v.es_central && sinRestriccionMunicipios)
+    )
+    .map((v) => v.id);
+}
+
+/**
+ * Fragmento SQL de aislamiento para las consultas de solicitudes (E43/E44).
+ * Devuelve la condicion y los parametros a concatenar; para "todos" devuelve
+ * una condicion siempre verdadera.
+ */
+export function condicionAlcanceSql(
+  alcance: AlcanceResuelto,
+  indiceInicial: number
+): { sql: string; valores: unknown[] } {
+  const partes: string[] = [];
+  const valores: unknown[] = [];
+  let indice = indiceInicial;
+
+  if (alcance.municipios !== 'todos') {
+    // Un alcance vacio de verdad (lista sin ids) no deja ver nada.
+    partes.push(`s.ubi_municipio_id = ANY($${indice}::bigint[])`);
+    valores.push(alcance.municipios);
+    indice++;
+  }
+  if (alcance.componentes !== 'todos') {
+    partes.push(`s.componente_id = ANY($${indice}::bigint[])`);
+    valores.push(alcance.componentes);
+    indice++;
+  }
+
+  return { sql: partes.length === 0 ? 'TRUE' : partes.join(' AND '), valores };
+}
+
+/** Reemplaza por completo el alcance de un usuario (E48). */
+export async function reemplazarAlcance(
+  cliente: PoolClient,
+  usuarioId: number,
+  municipios: 'todos' | number[],
+  componentes: 'todos' | number[]
+): Promise<void> {
+  await cliente.query('DELETE FROM usuario_municipios WHERE usuario_id = $1', [usuarioId]);
+  await cliente.query('DELETE FROM usuario_componentes WHERE usuario_id = $1', [usuarioId]);
+
+  if (municipios !== 'todos' && municipios.length > 0) {
+    await cliente.query(
+      `INSERT INTO usuario_municipios (usuario_id, municipio_id)
+       SELECT $1, m FROM unnest($2::bigint[]) AS m
+       ON CONFLICT DO NOTHING`,
+      [usuarioId, municipios]
+    );
+  }
+  if (componentes !== 'todos' && componentes.length > 0) {
+    await cliente.query(
+      `INSERT INTO usuario_componentes (usuario_id, componente_id)
+       SELECT $1, c FROM unnest($2::bigint[]) AS c
+       ON CONFLICT DO NOTHING`,
+      [usuarioId, componentes]
+    );
+  }
+}

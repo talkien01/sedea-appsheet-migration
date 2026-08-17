@@ -23,6 +23,9 @@ import rutasCorrecciones from './rutas/correcciones.js';
 import rutasEstadisticas from './rutas/estadisticas.js';
 import rutasUsuarios from './rutas/usuarios.js';
 import rutasMiCuenta from './rutas/miCuenta.js';
+// Build 6: modulo de captura de Solicitud de Apoyo en ventanilla.
+import rutasSolicitudes from './rutas/solicitudes.js';
+import rutasAlcance from './rutas/alcance.js';
 
 async function construirApp() {
   const app = Fastify({
@@ -96,6 +99,9 @@ async function construirApp() {
   // Build 4: administracion de usuarios y cambio de la propia contrasena.
   await app.register(rutasUsuarios);
   await app.register(rutasMiCuenta);
+  // Build 6: ventanilla (E40-E46) y alcance de usuarios (E47/E48).
+  await app.register(rutasSolicitudes);
+  await app.register(rutasAlcance);
 
   return app;
 }

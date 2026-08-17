@@ -1,0 +1,350 @@
+// Contrato compartido del modulo de Solicitud de Apoyo en ventanilla (build 6).
+// Backend y PWA validan exactamente lo mismo con estos esquemas Zod.
+//
+// Todos los objetos son `.strict()`: cualquier clave fuera del esquema (folio,
+// id, regional_id, recibida_en, capturado_por...) falla la validacion y la ruta
+// la traduce al codigo `campo_no_editable`. El folio SIEMPRE lo genera el
+// backend (D41).
+import { z } from 'zod';
+
+/** Los 3 tipos de persona del formulario oficial. */
+export const TIPOS_PERSONA = ['fisica', 'moral', 'grupo'] as const;
+export type TipoPersona = (typeof TIPOS_PERSONA)[number];
+
+export const ETIQUETAS_TIPO_PERSONA: Record<TipoPersona, string> = {
+  fisica: 'Persona física',
+  moral: 'Persona moral sin fines de lucro',
+  grupo: 'Grupo de productores'
+};
+
+/** Etiqueta del campo "nombre" segun el tipo de persona (12.8.2, paso 2). */
+export const ETIQUETAS_NOMBRE_SOLICITANTE: Record<TipoPersona, string> = {
+  fisica: 'Nombre del solicitante',
+  moral: 'Nombre del representante legal',
+  grupo: 'Nombre del representante del grupo'
+};
+
+export const TIPOS_ASENTAMIENTO = [
+  'colonia',
+  'fraccionamiento',
+  'ejido',
+  'pueblo',
+  'rancho'
+] as const;
+
+export const TIPOS_VIALIDAD = [
+  'avenida',
+  'boulevard',
+  'calzada',
+  'calle',
+  'privada',
+  'otra'
+] as const;
+
+export const TIPOS_PRODUCCION_GANADERA = ['intensiva', 'traspatio', 'extensiva'] as const;
+
+/** Roles con acceso al modulo de ventanilla (D34). */
+export const ROLES_VENTANILLA = ['ventanilla', 'admin'] as const;
+
+/** Patron oficial de la CURP: 18 caracteres. */
+export const PATRON_CURP = /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/;
+
+/** Patron minimo de correo electronico. */
+export const PATRON_CORREO = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/** Longitud maxima del texto de un requisito agregado a mano. */
+export const MAX_REQUISITO = 300;
+
+// ---------------------------------------------------------------------------
+// Normalizacion (misma que usa el importador, 8.5.1)
+// ---------------------------------------------------------------------------
+
+/** Normaliza un texto: sin acentos, mayusculas, espacios colapsados. */
+export function normalizarEtiqueta(texto: unknown): string {
+  return String(texto ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+}
+
+/**
+ * Siglas de 3 letras de un municipio cuando `siglas_folio` esta vacio (12.5):
+ * sin acentos, mayusculas, solo A-Z, primeros 3 caracteres, relleno con X.
+ */
+export function siglasDesdeNombre(nombre: string): string {
+  const limpio = normalizarEtiqueta(nombre).replace(/[^A-Z]/g, '');
+  return limpio.slice(0, 3).padEnd(3, 'X');
+}
+
+// ---------------------------------------------------------------------------
+// Esquemas Zod del alta (E42)
+// ---------------------------------------------------------------------------
+
+const texto = (max: number) => z.string().max(max).nullable().optional();
+const entero = z.number().int().nullable().optional();
+const decimal = z.number().nullable().optional();
+const idOpcional = z.number().int().positive().nullable().optional();
+
+export const esquemaDomicilioSolicitud = z
+  .object({
+    municipio_id: idOpcional,
+    localidad: texto(200),
+    delegacion: texto(200),
+    cp: texto(10),
+    tipo_asentamiento: z.enum(TIPOS_ASENTAMIENTO).nullable().optional(),
+    asentamiento: texto(200),
+    tipo_vialidad: z.enum(TIPOS_VIALIDAD).nullable().optional(),
+    vialidad: texto(200)
+  })
+  .strict();
+
+export const esquemaActividadSolicitud = z
+  .object({
+    agricola: z.boolean().optional().default(false),
+    agr_superficie_total_ha: decimal,
+    agr_superficie_siembra_ha: decimal,
+    agr_temporal_ha: decimal,
+    agr_riego_ha: decimal,
+    agr_cultivo_principal: texto(200),
+
+    ganadera: z.boolean().optional().default(false),
+    gan_tipo_ganado: texto(200),
+    gan_num_cabezas: entero,
+    gan_superficie_agostadero_ha: decimal,
+    gan_produccion: z.enum(TIPOS_PRODUCCION_GANADERA).nullable().optional(),
+
+    acuicola: z.boolean().optional().default(false),
+    acu_especies: texto(300),
+
+    pesca: z.boolean().optional().default(false),
+    pes_especies: texto(300)
+  })
+  .strict();
+
+export const esquemaUbicacionApoyo = z
+  .object({
+    municipio_id: z.number().int().positive(),
+    localidad: texto(200),
+    ejido: texto(200),
+    // Texto libre a proposito (D42): sin navigator.geolocation.
+    coordenadas: texto(120)
+  })
+  .strict();
+
+export const esquemaApoyoSolicitud = z
+  .object({
+    descripcion_proyecto: texto(4000),
+    ben_hombres_total: z.number().int().min(0).optional().default(0),
+    ben_hombres_discapacidad: z.number().int().min(0).optional().default(0),
+    ben_hombres_lengua_indigena: z.number().int().min(0).optional().default(0),
+    ben_mujeres_total: z.number().int().min(0).optional().default(0),
+    ben_mujeres_discapacidad: z.number().int().min(0).optional().default(0),
+    ben_mujeres_lengua_indigena: z.number().int().min(0).optional().default(0),
+    ubicacion: esquemaUbicacionApoyo
+  })
+  .strict();
+
+export const esquemaConceptoSolicitud = z
+  .object({
+    tipo_apoyo_id: z.number().int().positive(),
+    descripcion: texto(500),
+    cantidad: z.number(),
+    unidad_medida: texto(60),
+    monto_estatal: z.number().optional().default(0),
+    monto_productor: z.number().optional().default(0),
+    // Editable: el papel permite aportaciones de terceros (Assumption 48).
+    monto_total: z.number().nullable().optional()
+  })
+  .strict();
+
+export const esquemaDocumentoSolicitud = z
+  .object({
+    documento_requerido_id: z.number().int().positive().nullable().optional(),
+    requisito: z.string().min(1).max(MAX_REQUISITO),
+    recibido: z.boolean().optional().default(false),
+    observaciones: texto(MAX_REQUISITO)
+  })
+  .strict();
+
+export const esquemaCrearSolicitud = z
+  .object({
+    programa_id: z.number().int().positive(),
+    subprograma_id: idOpcional,
+    componente_id: z.number().int().positive(),
+    proyecto_id: z.number().int().positive(),
+    ventanilla_id: z.number().int().positive(),
+
+    tipo_persona: z.enum(TIPOS_PERSONA),
+    nombre_solicitante: z.string(),
+    sexo: z.enum(['H', 'M']).nullable().optional(),
+    fecha_nacimiento: texto(10),
+    correo: texto(200),
+    telefono: texto(40),
+    curp: texto(30),
+    razon_social: texto(300),
+    num_integrantes: entero,
+
+    domicilio: esquemaDomicilioSolicitud.optional(),
+    actividad: esquemaActividadSolicitud.optional(),
+    apoyo: esquemaApoyoSolicitud,
+    conceptos: z.array(esquemaConceptoSolicitud),
+    documentos: z.array(esquemaDocumentoSolicitud).optional(),
+
+    observaciones: texto(4000),
+    declaracion_aceptada: z.boolean()
+  })
+  .strict();
+
+export type EntradaCrearSolicitud = z.infer<typeof esquemaCrearSolicitud>;
+
+/** Cuerpo de E41: calculo dinamico del checklist de documentos. */
+export const esquemaDocumentosRequeridos = z
+  .object({
+    componente_id: z.number().int().positive(),
+    tipo_persona: z.enum(TIPOS_PERSONA),
+    proyecto_id: z.number().int().positive().nullable().optional(),
+    tipos_apoyo_ids: z.array(z.number().int().positive()).optional().default([])
+  })
+  .strict();
+
+/** Cuerpo de E45: actualizacion de una fila del checklist. */
+export const esquemaActualizarDocumento = z
+  .object({
+    recibido: z.boolean().optional(),
+    observaciones: z.string().max(MAX_REQUISITO).nullable().optional()
+  })
+  .strict();
+
+/** Cuerpo de E48: reemplazo completo del alcance de un usuario de ventanilla. */
+export const esquemaAlcanceUsuario = z
+  .object({
+    municipios: z.union([z.literal('todos'), z.array(z.number().int().positive())]),
+    componentes: z.union([z.literal('todos'), z.array(z.number().int().positive())])
+  })
+  .strict();
+
+// ---------------------------------------------------------------------------
+// Tipos de respuesta
+// ---------------------------------------------------------------------------
+
+export interface OpcionCatalogoVentanilla {
+  id: number;
+  clave: string;
+  nombre: string;
+}
+
+export interface ProyectoVentanilla extends OpcionCatalogoVentanilla {
+  prefijo_folio: string;
+  componente_id: number | null;
+}
+
+export interface VentanillaOpcion extends OpcionCatalogoVentanilla {
+  regional_id: number;
+  clave_folio: string;
+  es_central: boolean;
+}
+
+export interface MunicipioVentanilla {
+  id: number;
+  nombre: string;
+  regional_id: number;
+  siglas_folio: string | null;
+}
+
+export interface AlcanceUsuario {
+  municipios: 'todos' | number[];
+  componentes: 'todos' | number[];
+  ventanillas_permitidas: number[];
+}
+
+export interface CatalogosVentanilla {
+  programas: OpcionCatalogoVentanilla[];
+  subprogramas: (OpcionCatalogoVentanilla & { programa_id: number })[];
+  componentes: OpcionCatalogoVentanilla[];
+  proyectos: ProyectoVentanilla[];
+  ventanillas: VentanillaOpcion[];
+  municipios: MunicipioVentanilla[];
+  tipos_apoyo: { id: number; clave: string; nombre: string; unidad_medida: string | null }[];
+  tipos_persona: { clave: TipoPersona; nombre: string }[];
+  alcance: AlcanceUsuario;
+}
+
+export interface DocumentoRequeridoCalculado {
+  documento_requerido_id: number | null;
+  requisito: string;
+  origen: 'regla' | 'manual';
+}
+
+export interface FilaSolicitud {
+  id: number;
+  folio: string;
+  recibida_en: string;
+  nombre_solicitante: string;
+  tipo_persona: TipoPersona;
+  componente: string;
+  proyecto: string;
+  ventanilla: string;
+  municipio: string | null;
+  conceptos: number;
+  monto_total: number;
+  documentos_recibidos: string;
+}
+
+export interface PaginaSolicitudes {
+  data: FilaSolicitud[];
+  page: number;
+  page_size: number;
+  total: number;
+  has_more: boolean;
+}
+
+export interface DocumentoSolicitud {
+  id: number;
+  documento_requerido_id: number | null;
+  requisito: string;
+  recibido: boolean;
+  archivo_url: string | null;
+  archivo_nombre: string | null;
+  observaciones: string | null;
+}
+
+export interface ConceptoSolicitud {
+  id: number;
+  orden: number;
+  tipo_apoyo_id: number;
+  tipo_apoyo: string | null;
+  descripcion: string | null;
+  cantidad: number;
+  unidad_medida: string | null;
+  monto_estatal: number;
+  monto_productor: number;
+  monto_total: number;
+  beneficiario_id: number | null;
+}
+
+export interface DetalleSolicitudApi {
+  solicitud: Record<string, unknown>;
+  conceptos: ConceptoSolicitud[];
+  documentos: DocumentoSolicitud[];
+  beneficiarios: { id: number; folio: string; tipo_apoyo: string | null; municipio: string | null }[];
+}
+
+export interface RespuestaAltaSolicitud {
+  ok: true;
+  solicitud: {
+    id: number;
+    folio: string;
+    recibida_en: string;
+    componente: string;
+    proyecto: string;
+    ventanilla: string;
+    regional_id: number;
+    tipo_persona: TipoPersona;
+    nombre_solicitante: string;
+  };
+  conceptos: { id: number; orden: number; tipo_apoyo_id: number; beneficiario_id: number }[];
+  beneficiarios_creados: { id: number; folio: string }[];
+  documentos: DocumentoSolicitud[];
+}

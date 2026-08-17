@@ -4,3 +4,6 @@ export * from './schemas.js';
 export * from './staging.js';
 export * from './correcciones.js';
 export * from './usuarios.js';
+// Build 6: modulo de Solicitud de Apoyo en ventanilla.
+export * from './solicitudes.js';
+export * from './declaraciones.js';

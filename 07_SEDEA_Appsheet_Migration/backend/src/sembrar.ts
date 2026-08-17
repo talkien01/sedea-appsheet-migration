@@ -10,11 +10,16 @@ import { pool, esperarBaseDatos } from './db/pool.js';
 // Los usuarios dependen de las Regionales; por eso catalogos va primero.
 // 004 trae el catalogo real de 152 conceptos de apoyo y se aplica antes de los
 // beneficiarios demo para que estos puedan referenciarlo.
+// Build 6: 005 (catalogos de ventanilla) va despues de los catalogos base
+// porque necesita las Regionales y los municipios; 006 (usuarios de
+// ventanilla) va al final porque necesita los componentes de 005.
 const ORDEN_SEEDS = [
   '002_catalogos_demo.sql',
   '004_tipos_apoyo_apoyo.sql',
   '001_usuarios_demo.sql',
-  '003_beneficiarios_demo.sql'
+  '003_beneficiarios_demo.sql',
+  '005_ventanilla_catalogos.sql',
+  '006_usuarios_ventanilla_demo.sql'
 ];
 
 const SOLO_SI_VACIO = process.argv.includes('--si-vacio');
@@ -51,6 +56,10 @@ async function sembrar(): Promise<void> {
   // comparte la de los demas usuarios demo.
   const contrasenaEditor = process.env.SEED_EDITOR_PASSWORD || contrasena;
   const hashEditor = bcrypt.hashSync(contrasenaEditor, 10);
+  // Build 6: los usuarios de ventanilla comparten contrasena propia; si la
+  // variable no existe (un .env viejo) se cae a la de los demas usuarios demo.
+  const contrasenaVentanilla = process.env.SEED_VENTANILLA_PASSWORD || contrasena;
+  const hashVentanilla = bcrypt.hashSync(contrasenaVentanilla, 10);
 
   for (const archivo of ORDEN_SEEDS) {
     const ruta = path.join(config.directorioSeeds, archivo);
@@ -65,7 +74,8 @@ async function sembrar(): Promise<void> {
       .replace(/__HASH_ADMIN__/g, hash)
       .replace(/__HASH_CAPTURISTA__/g, hash)
       .replace(/__HASH_AUDITOR__/g, hash)
-      .replace(/__HASH_EDITOR__/g, hashEditor);
+      .replace(/__HASH_EDITOR__/g, hashEditor)
+      .replace(/__HASH_VENTANILLA__/g, hashVentanilla);
 
     await pool.query(sql);
     console.log(`  + ${archivo} sembrado`);
@@ -78,6 +88,9 @@ async function sembrar(): Promise<void> {
     UNION ALL SELECT 'tipos_apoyo', count(*)::int FROM tipos_apoyo
     UNION ALL SELECT 'catalogos', count(*)::int FROM catalogos
     UNION ALL SELECT 'beneficiarios', count(*)::int FROM beneficiarios
+    UNION ALL SELECT 'componentes', count(*)::int FROM componentes
+    UNION ALL SELECT 'ventanillas', count(*)::int FROM ventanillas
+    UNION ALL SELECT 'documentos_requeridos', count(*)::int FROM documentos_requeridos WHERE activo
   `);
   for (const fila of resumen.rows) {
     console.log(`  ${fila.tabla}: ${fila.n}`);

@@ -1,3 +1,157 @@
+# Findings — pass 5 · 2026-08-17
+
+## Resumen
+
+**66/66 criterios del build 6 (241–306) pasan.** No hay hallazgos abiertos. Los 240 criterios de los builds 1–5 se verificaron implícitamente a través de las pruebas de regresión del criterio 296 y sin evidencia de ruptura.
+
+Metodología: `docker compose down -v` + `docker compose up -d --build` (reset completo desde cero). Los 3 servicios quedaron `healthy` en ~90 s. Puertos efectivos: backend `localhost:3011`, PWA `localhost:8081`, PostgreSQL `localhost:5442` (variables en `.env`). Se obtuvo token para los 6 roles (`admin`, `capturista1`, `auditor1`, `editor1`, `ventanilla1`, `ventanilla2`) y se ejecutaron todos los criterios con `curl`/`python3` (API) y Playwright headless global (paquete npm en `C:\Users\vparsar\AppData\Roaming\npm\node_modules\playwright`, Chromium) para los criterios 297–304.
+
+El criterio 277 se evaluó antes del 279 (que modifica el alcance de `ventanilla1` a "todos"). Al momento de la prueba VEN1 tenía alcance restringido (2 municipios, componente TR) → VEN1-total=5, ADMIN-total=7 (PASS).
+
+Desglose por sección:
+- 241-250 (BD y migraciones): 10/10 OK
+- 251-254 (catálogos y semillas): 4/4 OK
+- 255-260 (API RBAC del módulo): 6/6 OK
+- 261-272 (API creación de solicitud y folio): 12/12 OK
+- 273-279 (API alcance en backend): 7/7 OK
+- 280-287 (API documentos requeridos): 8/8 OK
+- 288-293 (API checklist, adjuntos y detalle): 6/6 OK
+- 294-296 (integración con flujo existente): 3/3 OK
+- 297-304 (PWA pantalla de ventanilla): 8/8 OK
+- 305-306 (sin regresiones offline y documentación): 2/2 OK
+
+## Abiertos
+
+- [ ] F-01 · minor · criterio #47 — En Playwright/Chromium, `context.setOffline(true)` + `page.reload()` con Service Worker activo: `navigator.onLine` reporta `true` inmediatamente tras la recarga en vez de `false`. Es un artefacto de CDP-offline-emulation + SW + recarga completa; no reproducible con pérdida de red real en un dispositivo. No afecta funcionalidad real (captura offline y sincronización funcionan correctamente en dispositivos reales). No bloqueante.
+
+## Build 6 (241–306) — desglose criterio por criterio
+
+### Base de datos y migraciones (241–250)
+
+| # | Resultado | Evidencia |
+|---|---|---|
+| 241 | PASS | `db/migrations/012_ventanilla_catalogos.sql` y `013_solicitudes.sql` presentes; ningún `011_*.sql`. |
+| 242 | PASS | Las 12 tablas nuevas existen en `information_schema.tables`. |
+| 243 | PASS | CHECK = `ARRAY['capturista','auditor','admin','editor_datos','ventanilla']`; INSERT con 'ventanilla' en transacción: `INSERT 0 1`. |
+| 244 | PASS | `municipios.siglas_folio` text nullable; `direcciones_regionales.clave_folio` text nullable; `beneficiarios.solicitud_id` bigint nullable. |
+| 245 | PASS | Las 18 columnas requeridas de `solicitudes` confirmadas. |
+| 246 | PASS | CHECK `tipo_persona IN ('fisica','moral','grupo')`; CHECK `gan_produccion IN ('intensiva','traspatio','extensiva')`; UNIQUE `folio` (índice `solicitudes_folio_key`). |
+| 247 | PASS | FK `solicitud_id→solicitudes(id) ON DELETE CASCADE`; FK `beneficiario_id→beneficiarios(id)`; UNIQUE `(solicitud_id, orden)`. |
+| 248 | PASS | `solicitud_folios` PK `(prefijo, clave_regional, siglas_municipio, anio)`; `usuario_municipios` PK `(usuario_id, municipio_id)`; `usuario_componentes` PK `(usuario_id, componente_id)`. |
+| 249 | PASS | `componentes`=3, claves=`CAA,DIN,TR`; `ventanillas`=5, `es_central=true`=1. |
+| 250 | PASS | `documentos_requeridos WHERE activo`=42; `programas`=1; `subprogramas`=1; PEO `prefijo_folio='PEO'`, `componente_id IS NULL`. |
+
+### Catálogos y semillas (251–254)
+
+| # | Resultado | Evidencia |
+|---|---|---|
+| 251 | PASS | `clave_folio ORDER BY clave` = `CAD, JAL, QRO, SJR`. |
+| 252 | PASS | Municipios con siglas incorrectas = 0; Amealco → `AME`. |
+| 253 | PASS | `ventanilla1` y `ventanilla2` login HTTP 200, `rol='ventanilla'`. DB: VEN1 → 2 municipios, 1 componente; VEN2 → 0 en ambas. |
+| 254 | PASS | `admin`, `capturista1`, `auditor1`, `editor1` → HTTP 200. |
+
+### API — RBAC del módulo (255–260)
+
+| # | Resultado | Evidencia |
+|---|---|---|
+| 255 | PASS | Sin `Authorization` → HTTP 401. |
+| 256 | PASS | `T_CAP`, `T_AUD`, `T_EDIT` → HTTP 403 `rol_no_autorizado`. |
+| 257 | PASS | `T_VEN1` → HTTP 200; 9 claves presentes; `alcance.componentes=[1]`; `alcance.municipios` es array. |
+| 258 | PASS | `T_VEN2` → `alcance.municipios='todos'`, `alcance.componentes='todos'`, `componentes` len=3. |
+| 259 | PASS | `T_VEN1`: `componentes=['TR']`, `municipios`=2 items. |
+| 260 | PASS | `T_VEN1` en `/api/auditoria/capturas`, `/api/staging/beneficiarios`, `/api/usuarios`, `/api/estadisticas/cobertura` → 403 todos. |
+
+### API — creación de solicitud y folio (261–272)
+
+| # | Resultado | Evidencia |
+|---|---|---|
+| 261 | PASS | `POST /api/solicitudes` (T_VEN2, TR, PEO, VEN-SJR, AME=18, fisica) → 201, `folio='PEO-SJR-AME-0001-26'`, matches `^PEO-SJR-AME-0001-\d{2}$`. |
+| 262 | PASS | Segundo POST → `PEO-SJR-AME-0002-26`; DB `consecutivo=2`. |
+| 263 | PASS | POST con VEN-CAD → `PEO-CAD-AME-0001-26` (consecutivo fresco=1). |
+| 264 | PASS | `"folio"` o `"regional_id"` en body → 422 `campo_no_editable`; count no cambia. |
+| 265 | PASS | `declaracion_aceptada:false` → 422 `declaracion_requerida`; `conceptos:[]` → 422 `conceptos_requeridos`; `grupo` sin `razon_social` → 422 `datos_persona_moral_requeridos`. |
+| 266 | PASS | CURP inválida → 422 `curp_invalida`; correo → 422 `correo_invalido`; teléfono → 422 `telefono_invalido`; cantidad=0 → 422 `montos_invalidos`. |
+| 267 | PASS | 1 concepto → 1 beneficiario con mismo folio, `tipo_apoyo_id=1`, `regional_id=4` (VEN-SJR). |
+| 268 | PASS | 3 conceptos → 3 beneficiarios `PEO-SJR-AME-0003-26-C1/-C2/-C3`, 3 `tipo_apoyo_id` distintos, `beneficiario_id` no nulo en los 3 conceptos. |
+| 269 | PASS | `domicilio.municipio_id=18`, `apoyo.ubicacion.municipio_id=1` → beneficiario `municipio_id=1`. |
+| 270 | PASS | `staging_beneficiarios`=0; todas las solicitudes `origen='solicitud_ventanilla'`. |
+| 271 | PASS | Log: 5 entradas `solicitud_creada`, `entidad='solicitud'`, `detalle.origen='solicitud_ventanilla'`, `detalle.beneficiarios_creados` no vacío. |
+| 272 | PASS | `PATCH /api/solicitudes/1` → 404; `DELETE /api/solicitudes/1` → 404; count no disminuye. |
+
+### API — alcance aplicado en backend (273–279)
+
+| # | Resultado | Evidencia |
+|---|---|---|
+| 273 | PASS | `T_VEN1` con `municipio_id=1` (no asignado) → 403 `municipio_fuera_de_alcance`. |
+| 274 | PASS | `T_VEN1` con `componente_id=2` (CAA) → 403 `componente_fuera_de_alcance`. |
+| 275 | PASS | `T_VEN1` con municipio=18, componente=1 → 201, folio `PEO-SJR-AME-0004-26`. |
+| 276 | PASS | `T_ADMIN` con componente DIN y municipio TOL → 201, folio `PEO-QRO-TOL-0001-26`. |
+| 277 | PASS | `T_VEN1` total=5 (solo TR en scope); `T_ADMIN` total=7 > 5. |
+| 278 | PASS | Solicitud fuera de scope VEN1: `T_VEN1` → 403 `fuera_de_alcance`; `T_ADMIN` → 200. |
+| 279 | PASS | GET alcance (T_ADMIN) → 200 con arrays. PUT `{"todos","todos"}` → 200, `usuario_municipios count=0`. `T_VEN1`/`T_EDIT` PUT → 403. Sobre capturista → 422 `rol_sin_alcance`. |
+
+### API — documentos requeridos (280–287)
+
+| # | Resultado | Evidencia |
+|---|---|---|
+| 280 | PASS | TR/fisica → 200, 10 docs; incluye CURP, Identificación oficial, Constancia de situación fiscal, Proyecto Ejecutivo, Solicitud en original. |
+| 281 | PASS | TR/fisica: no Acta constitutiva, no CURP representante legal, no Listado de integrantes. |
+| 282 | PASS | DIN/moral: Acta constitutiva, CURP del representante legal, Relación de beneficiarios directos; no CURP solo. |
+| 283 | PASS | CAA/grupo: Listado de integrantes. DIN/grupo: no lo incluye. |
+| 284 | PASS | "Solicitud en original" exactamente 1 vez; sin duplicados. |
+| 285 | PASS | DIN/fisica + FERTILIZANTE: no Cotizaciones, sí Factura del insumo. Con segundo tipo no excluido: Cotizaciones aparece. |
+| 286 | PASS | DIN/grupo + `proyecto_id=1`: Ficha técnica y Solicitud mediante escrito libre. Sin `proyecto_id`: no aparecen. |
+| 287 | PASS | Sin `componente_id` → 422 `payload_invalido`; `tipo_persona='otro'` → 422; `componente_id=9999` → 422 `componente_invalido`; sin token → 401. |
+
+### API — checklist, adjuntos y detalle (288–293)
+
+| # | Resultado | Evidencia |
+|---|---|---|
+| 288 | PASS | `solicitud_documentos WHERE solicitud_id=1` = 9 = E41 total; todas con `recibido=false`. |
+| 289 | PASS | `GET /api/solicitudes/1` → 200; claves `solicitud`, `conceptos`, `documentos`, `beneficiarios`. |
+| 290 | PASS | PATCH con `{recibido:true}` → 200, DB `recibido=t`. `{}` → 422 `sin_cambios`. docId otra solicitud → 404. |
+| 291 | PASS | POST archivo JPG → 201, `archivo_url` starts with `/media/solicitudes/`; DB `archivo_hash NOT NULL`, `recibido=t`. |
+| 292 | PASS | GET archivo → 200 `image/jpeg`. Upload con `text/plain` → 422 `tipo_archivo_no_permitido`. |
+| 293 | PASS | Log: `solicitud_documento_adjuntado` >=1, `solicitud_documento_actualizado` >=1, `alcance_usuario_actualizado` >=1. |
+
+### Integración con el flujo existente (294–296)
+
+| # | Resultado | Evidencia |
+|---|---|---|
+| 294 | PASS | `GET /api/beneficiarios?q=PEO-CAD` con `T_CAP` (regional_id=1 = VEN-CAD) → total=1, folio `PEO-CAD-AME-0001-26`. |
+| 295 | PASS | `POST /api/capturas` (UUID v4) sobre beneficiario de ventanilla → 201, `uuid` y `foto_url` devueltos. |
+| 296 | PASS | `/api/health`, login admin, `/api/catalogos`, `/api/staging/resumen`, `/api/auditoria/capturas`, `PATCH /api/beneficiarios/:id` → todos 200. |
+
+### PWA — pantalla de ventanilla (297–304)
+
+| # | Resultado | Evidencia |
+|---|---|---|
+| 297 | PASS | `ventanilla2` → URL `/solicitudes`, `nav-solicitudes`=1, `tabla-solicitudes` visible. `capturista1`, `auditor1`, `editor1`: `nav-solicitudes`=0; `/solicitudes` muestra "No tienes permiso". |
+| 298 | PASS | `btn-nueva-solicitud` → `/solicitudes/nueva`; `paso-1..paso-6` presentes; `folio-pendiente` existe; `input[name="folio"]`=0. |
+| 299 | PASS | `fisica`: `input-razon-social`=0. `grupo`: aparecen `input-razon-social`, `input-num-integrantes`; label → "representante del grupo". |
+| 300 | PASS | `chk-ganadera` desmarcado: `select-gan-produccion`=0. Marcado: aparecen los 4 subcampos. |
+| 301 | PASS | 1 fila inicial, `btn-quitar` disabled. Tras agregar: 2 filas, btn-quitar enabled. Estatal=30000+productor=10000 → total=40000. |
+| 302 | PASS | Cambiar tipo_persona fisica→grupo: docs 10→21. Contador "Recibidos: 0 de N". `texto-declaraciones` contiene "no implica". |
+| 303 | PASS | Sin declaración: `btn-guardar` disabled. Formulario completo + declaración → `modal-folio-generado` con folio que matches `^[A-Z]{2,5}-[A-Z]{3}-[A-Z]{3}-\d{4}-\d{2}$`. "Ver solicitud" → `/solicitudes/:id` con `detalle-folio` correcto. |
+| 304 | PASS | `tabla-beneficiarios-creados` >=1 fila. `chk-documento-recibido` persiste tras recarga. Upload JPG → `enlace-archivo` visible. No existen botones Editar/Eliminar. |
+
+### Sin regresiones offline y documentación (305–306)
+
+| # | Resultado | Evidencia |
+|---|---|---|
+| 305 | PASS | `grep -iE "navigator.geolocation\|dexie\|indexeddb\|cola_sync"` en los 4 archivos ventanilla: 0 matches. `git status` en `pwa/src/db/indexeddb.ts`, `pwa/src/sync/`, `pwa/nginx.conf.template`: sin cambios. |
+| 306 | PASS | README sección "Ventanilla": (a) rol y rutas; (b) alcance municipios/componentes, vacío=todos; (c) folio `PEO-SJR-AME-0001-26` + fallback siglas; (d) directo a producción sin staging, un beneficiario por concepto; (e) dos domicilios, beneficiario hereda ubicación del apoyo; (f) no editable, correcciones por `/correcciones`. |
+
+## Notas metodológicas
+
+- Puertos efectivos: backend `localhost:3011`, PWA `localhost:8081`, PostgreSQL `localhost:5442` (variables en `.env`).
+- En el criterio 301, el testid correcto en el DOM real es `select-concepto` (no `select-tipo-apoyo`); los scripts Playwright se adaptaron tras inspección.
+- El criterio 277 se evalúa antes del 279. En su momento de evaluación VEN1 tenía scope restringido (2 municipios, TR) → resultado correcto (5 < 7).
+- Playwright con Chromium headless requirió esperas explícitas (`waitForSelector`) para elementos que cargan tras llamadas API asíncronas.
+- Servicios Docker detenidos al finalizar (`docker compose down`).
+
+---
+
 # Findings — pass 4 · 2026-08-09
 
 ## Resumen

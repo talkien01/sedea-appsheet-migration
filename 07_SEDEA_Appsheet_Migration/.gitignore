@@ -16,3 +16,5 @@ desktop.ini
 
 # Documentos de referencia (formularios oficiales, escaneos) - no son parte del codigo versionable.
 CamScanner*.pdf
+*.docx
+*.doc

@@ -206,6 +206,8 @@ export const esquemaDocumentosRequeridos = z
     componente_id: z.number().int().positive(),
     tipo_persona: z.enum(TIPOS_PERSONA),
     proyecto_id: z.number().int().positive().nullable().optional(),
+    // Tolerado por S14.6 para que el cliente pueda reenviar el body completo; no se usa en el calculo.
+    modalidad_id: z.number().int().positive().nullable().optional(),
     tipos_apoyo_ids: z.array(z.number().int().positive()).optional().default([])
   })
   .strict();

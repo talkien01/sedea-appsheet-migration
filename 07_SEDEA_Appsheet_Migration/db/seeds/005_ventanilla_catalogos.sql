@@ -16,24 +16,36 @@ SELECT p.id, 'SUB-IP', 'Impulso a la Productividad'
 ON CONFLICT (programa_id, clave) DO UPDATE SET nombre = EXCLUDED.nombre, activo = TRUE;
 
 -- ---------------------------------------------------------------------------
--- Los 3 componentes del programa.
+-- Los 4 componentes del programa (Build 8 agrega PET).
 -- ---------------------------------------------------------------------------
 INSERT INTO componentes (clave, nombre) VALUES
   ('TR',  'Tecnificación del Riego'),
   ('CAA', 'Captación y Almacenamiento de Agua'),
-  ('DIN', 'Dinamismo Agroalimentario')
+  ('DIN', 'Dinamismo Agroalimentario'),
+  ('PET', 'Proyectos Estratégicos Territoriales')
 ON CONFLICT (clave) DO UPDATE SET nombre = EXCLUDED.nombre, activo = TRUE;
 
 -- ---------------------------------------------------------------------------
--- Proyecto PEO. componente_id se deja en NULL a proposito (Assumption 45):
--- el anexo aplica con cualquier componente.
+-- Modalidades (Build 8): nivel intermedio entre Componente y Proyecto.
 -- ---------------------------------------------------------------------------
-INSERT INTO proyectos (clave, nombre, prefijo_folio, componente_id) VALUES
-  ('PEO', 'Proyectos Estratégicos para el Fortalecimiento Organizativo', 'PEO', NULL)
+INSERT INTO modalidades (clave, nombre, componente_id)
+SELECT 'MOD-PEPFO', 'Proyectos Estratégicos Productivos y para el Fortalecimiento Organizativo', c.id
+  FROM componentes c WHERE c.clave = 'PET'
+ON CONFLICT (clave) DO UPDATE SET nombre = EXCLUDED.nombre, componente_id = EXCLUDED.componente_id, activo = TRUE;
+
+-- ---------------------------------------------------------------------------
+-- Proyecto PEO. Build 8: se liga a componente PET y modalidad MOD-PEPFO.
+-- ---------------------------------------------------------------------------
+INSERT INTO proyectos (clave, nombre, prefijo_folio, componente_id, modalidad_id)
+SELECT 'PEO', 'Proyectos Estratégicos para el Fortalecimiento Organizativo', 'PEO', c.id, m.id
+  FROM componentes c
+  JOIN modalidades m ON m.clave = 'MOD-PEPFO'
+ WHERE c.clave = 'PET'
 ON CONFLICT (clave) DO UPDATE SET
   nombre        = EXCLUDED.nombre,
   prefijo_folio = EXCLUDED.prefijo_folio,
-  componente_id = NULL,
+  componente_id = EXCLUDED.componente_id,
+  modalidad_id  = EXCLUDED.modalidad_id,
   activo        = TRUE;
 
 -- ---------------------------------------------------------------------------

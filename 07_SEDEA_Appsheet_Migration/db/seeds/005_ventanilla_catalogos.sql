@@ -143,14 +143,19 @@ INSERT INTO tmp_reglas_documentos VALUES
   -- 35..42: anexo PEO. componentes NULL = aplican con cualquier componente.
   ('Solicitud mediante escrito libre dirigida al Titular de la Secretaría', NULL, ARRAY['grupo'], TRUE, NULL, NULL, 35),
   ('Ficha técnica', NULL, ARRAY['grupo'], TRUE, NULL, NULL, 36),
-  ('Acta de integración del grupo de productores', NULL, ARRAY['grupo'], TRUE, NULL, NULL, 37),
-  ('Identificación oficial vigente con fotografía del representante', NULL, ARRAY['grupo'], TRUE, NULL, NULL, 38),
-  ('CURP del representante', NULL, ARRAY['grupo'], TRUE, NULL, NULL, 39),
-  ('Constancia de Situación Fiscal del representante', NULL, ARRAY['grupo'], TRUE, NULL, NULL, 40),
-  ('Comprobante de domicilio del representante', NULL, ARRAY['grupo'], TRUE, NULL, NULL, 41),
-  ('Relación de beneficiarios directos', NULL, ARRAY['grupo'], TRUE, NULL, NULL, 42);
+  -- Texto verbatim del PDF (D48-bis): el anexo PEO sale del mismo documento
+  -- que las reglas del concepto Casas Ejidales, asi que comparten redaccion y
+  -- la deduplicacion por requisito de E41 colapsa cada par en un solo item.
+  ('Acta integración del grupo de productores', NULL, ARRAY['grupo'], TRUE, NULL, NULL, 37),
+  ('Identificación oficial vigente con fotografía (INE o pasaporte) del representante del grupo de productores', NULL, ARRAY['grupo'], TRUE, NULL, NULL, 38),
+  ('CURP del representante del grupo de productores', NULL, ARRAY['grupo'], TRUE, NULL, NULL, 39),
+  ('Constancia de Situación Fiscal del representante del grupo de productores', NULL, ARRAY['grupo'], TRUE, NULL, NULL, 40),
+  ('Comprobante de domicilio del representante de grupo de productores', NULL, ARRAY['grupo'], TRUE, NULL, NULL, 41),
+  ('Relación de beneficiarios directos del grupo de productores', NULL, ARRAY['grupo'], TRUE, NULL, NULL, 42);
 
 -- Actualiza las reglas que ya existian (mismo texto, tipo de persona y proyecto).
+-- Solo reglas generales o de proyecto: las especificas de un concepto de apoyo
+-- (apoyo_id IS NOT NULL) las gestiona su propia migracion, no este seed.
 UPDATE documentos_requeridos d
    SET componentes             = t.componentes,
        apoyo_etiquetas         = t.apoyo_etiquetas,
@@ -159,7 +164,8 @@ UPDATE documentos_requeridos d
        activo                  = TRUE
   FROM tmp_reglas_documentos t
   LEFT JOIN proyectos p ON p.clave = 'PEO'
- WHERE d.requisito = t.requisito
+ WHERE d.apoyo_id IS NULL
+   AND d.requisito = t.requisito
    AND d.tipos_persona IS NOT DISTINCT FROM t.tipos_persona
    AND d.proyecto_id IS NOT DISTINCT FROM (CASE WHEN t.es_peo THEN p.id ELSE NULL END);
 
@@ -173,20 +179,21 @@ SELECT t.requisito, t.componentes, t.tipos_persona,
   LEFT JOIN proyectos p ON p.clave = 'PEO'
  WHERE NOT EXISTS (
    SELECT 1 FROM documentos_requeridos d
-    WHERE d.requisito = t.requisito
+    WHERE d.apoyo_id IS NULL
+      AND d.requisito = t.requisito
       AND d.tipos_persona IS NOT DISTINCT FROM t.tipos_persona
       AND d.proyecto_id IS NOT DISTINCT FROM (CASE WHEN t.es_peo THEN p.id ELSE NULL END)
  );
 
 -- Cualquier regla sobrante de una carga previa se desactiva (nunca se borra:
 -- puede estar referenciada por solicitudes ya recibidas).
--- IMPORTANTE: solo se tocan filas sin proyecto_id (docs genericos y PEO).
--- Los docs de proyectos especificos (CEJ y futuros) nunca son tocados aqui;
--- cada migracion de proyecto es responsable de gestionar sus propios docs.
+-- IMPORTANTE: las reglas especificas de un concepto de apoyo (apoyo_id IS NOT
+-- NULL, p. ej. las 8 de Casas Ejidales) nunca se tocan aqui; cada migracion de
+-- concepto es responsable de gestionar sus propias reglas.
 UPDATE documentos_requeridos d
    SET activo = FALSE
  WHERE d.activo
-   AND d.proyecto_id IS NULL   -- solo docs genericos; los de proyecto especifico no se tocan
+   AND d.apoyo_id IS NULL   -- las reglas de concepto no las administra este seed
    AND NOT EXISTS (
    SELECT 1
      FROM tmp_reglas_documentos t
@@ -197,3 +204,32 @@ UPDATE documentos_requeridos d
  );
 
 DROP TABLE tmp_reglas_documentos;
+
+-- ---------------------------------------------------------------------------
+-- Reglas del concepto de apoyo "Casas Ejidales" (migracion 014).
+-- En una instalacion limpia las migraciones corren ANTES que los seeds, asi
+-- que cuando se aplica la migracion 014 el proyecto PEO todavia no existe y su
+-- INSERT no encuentra a que ligar las reglas. Aqui, ya con PEO sembrado, se
+-- garantizan las mismas 8 filas con la misma logica idempotente
+-- (WHERE NOT EXISTS sobre (requisito, apoyo_id)). Sobre una BD que ya aplico
+-- la migracion 014 este bloque no inserta nada.
+-- ---------------------------------------------------------------------------
+INSERT INTO documentos_requeridos (requisito, componentes, tipos_persona, proyecto_id, apoyo_id, orden, activo)
+SELECT docs.req, NULL, ARRAY['grupo'], proy.id, ap.id, docs.ord, TRUE
+FROM (VALUES
+  ('Solicitud mediante escrito libre dirigida al Titular de la Secretaría', 1),
+  ('Ficha técnica', 2),
+  ('Acta integración del grupo de productores', 3),
+  ('Identificación oficial vigente con fotografía (INE o pasaporte) del representante del grupo de productores', 4),
+  ('CURP del representante del grupo de productores', 5),
+  ('Constancia de Situación Fiscal del representante del grupo de productores', 6),
+  ('Comprobante de domicilio del representante de grupo de productores', 7),
+  ('Relación de beneficiarios directos del grupo de productores', 8)
+) AS docs(req, ord)
+CROSS JOIN (SELECT id FROM proyectos   WHERE clave = 'PEO')            AS proy
+CROSS JOIN (SELECT id FROM tipos_apoyo WHERE clave = 'CASAS-EJIDALES') AS ap
+WHERE NOT EXISTS (
+  SELECT 1 FROM documentos_requeridos d
+   WHERE d.requisito = docs.req
+     AND d.apoyo_id = ap.id
+);

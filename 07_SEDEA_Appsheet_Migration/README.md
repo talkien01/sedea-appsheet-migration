@@ -382,40 +382,52 @@ documentos. Si un dato del beneficiario derivado está mal, se corrige por
 
 ---
 
-## Casas Ejidales (proyecto CEJ)
+## Casas Ejidales (concepto de apoyo del proyecto PEO)
 
 ### Qué es
 
-**Casas Ejidales** es un **proyecto nuevo** (`CEJ`) dentro del programa ya
-existente:
+**Casas Ejidales** es un **concepto de apoyo**: una fila del catálogo
+`tipos_apoyo` con clave `CASAS-EJIDALES`. **No es un proyecto ni un programa.**
+Se solicita **dentro del proyecto PEO ya existente**, en la jerarquía que ya
+estaba sembrada:
 
 | Nivel | Valor |
 |---|---|
 | Programa | Apoyo al Campo Queretano 2026 |
 | Subprograma | Impulso a la Productividad |
-| Componente | _Sin restricción_ (campo `componente_id IS NULL`) |
-| Proyecto | Casas Ejidales — clave `CEJ` |
+| Componente | _Sin restricción_ |
+| Proyecto | **PEO** — Proyectos Estratégicos para el Fortalecimiento Organizativo |
+| Concepto de apoyo | Casas Ejidales — clave `CASAS-EJIDALES` |
 
-No se creó ningún programa, subprograma ni componente nuevo: Casas Ejidales
-se integra en la jerarquía existente igual que el proyecto PEO.
+No se creó ningún programa, subprograma, componente ni proyecto nuevo, ni
+ninguna tabla o columna: los 8 documentos requeridos se ligan al concepto por
+la columna `apoyo_id` de `documentos_requeridos`, que ya existía.
 
-### Estructura del folio CEJ
+> **Nota de corrección.** La primera versión del Build 7 modeló Casas Ejidales
+> **mal**, como un proyecto nuevo con prefijo de folio propio. Los documentos
+> oficiales son en realidad del proyecto PEO (folio real
+> `PEO-SJR-AME-0001-26`). El error se corrigió **antes de desplegar a
+> producción**, sobre la misma migración `014`, sin migración de reversión.
+
+### Folio: el normal de PEO
+
+Las solicitudes con este concepto se folian **igual que cualquier otra
+solicitud de PEO** y comparten su mismo contador:
 
 ```
-CEJ-{clave_regional}-{siglas_municipio}-{consecutivo 4 dígitos}-{año 2 dígitos}
+PEO-{clave_regional}-{siglas_municipio}-{consecutivo 4 dígitos}-{año 2 dígitos}
 ```
 
-Ejemplo: `CEJ-SJR-AME-0001-26`
+Ejemplo: `PEO-SJR-AME-0001-26`
 
-El contador de folios CEJ es **independiente** del de PEO: cada combinación
-`(prefijo='CEJ', regional, municipio, año)` tiene su propio consecutivo.
-El fallback de siglas del municipio aplica igual que para PEO (primeras 3
-letras del nombre normalizado).
+**No existe ningún prefijo de folio propio para Casas Ejidales**: un concepto
+de apoyo no interviene en la generación del folio.
 
 ### Documentos requeridos (grupos de productores)
 
-Los 8 documentos aplican cuando `tipo_persona='grupo'`. Para `fisica` o
-`moral` el algoritmo E41 los omite automáticamente.
+Los 8 documentos aplican cuando el capturista selecciona el concepto
+**Casas Ejidales** con el proyecto **PEO** y `tipo_persona='grupo'`. Para
+`fisica` o `moral` el algoritmo E41 los omite automáticamente.
 
 1. Solicitud mediante escrito libre dirigida al Titular de la Secretaría
 2. Ficha técnica
@@ -429,7 +441,8 @@ Los 8 documentos aplican cuando `tipo_persona='grupo'`. Para `fisica` o
 ### Aplicar la migración 014 sobre una BD de Build 6 sin downtime
 
 Si la instalación ya está en producción con Build 6, aplica la migración
-aditiva (100 % idempotente, no toca ninguna fila existente):
+aditiva (idempotente: da de alta el concepto y sus 8 reglas, y alinea el texto
+de las 8 reglas del anexo PEO; no crea tablas, columnas ni catálogos):
 
 ```bash
 docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
@@ -439,6 +452,15 @@ docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
 También puedes hacer un `docker compose up --build` normal: el runner de
 migraciones aplica automáticamente las que aún no se hayan ejecutado. El
 servicio no necesita bajarse para aplicarla.
+
+Re-ejecutar después el seed de catálogos es seguro: las reglas ligadas a un
+concepto de apoyo (`apoyo_id IS NOT NULL`) quedan fuera de su alcance y siguen
+activas.
+
+```bash
+docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  < db/seeds/005_ventanilla_catalogos.sql
+```
 
 ### Mejoras de UX incluidas en Build 7
 

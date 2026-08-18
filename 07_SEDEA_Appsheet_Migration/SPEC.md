@@ -2640,16 +2640,19 @@ Continúa la numeración de §7, §8.11, §9.9, §10.11 y §11.9. Base: `API=htt
 
 > **CONTINUACIÓN LITERAL DE `SPEC.md`.** Esta sección se **agrega al final** de `SPEC.md` (después de la línea "Definición de 'terminado' (build 6)"). **Nada de las secciones 1–12 se reescribe ni se renegocia**: todas sus reglas siguen vigentes palabra por palabra. Mismo monorepo, mismo `docker-compose.yml`, mismos 3 servicios (`db`, `backend`, `pwa`). **No se agrega ninguna dependencia npm nueva** (§12.12 sigue vigente). Código comentado en español, UI en español.
 
+> **CORRECCIÓN DE UN ERROR DE DISEÑO DE BUILD 7 (detectado por el usuario).** La primera redacción de esta sección modeló "Casas Ejidales" como un **proyecto nuevo** con clave `CEJ` y prefijo de folio propio (`CEJ-{regional}-{municipio}-{consecutivo}-{año}`). **Eso era incorrecto.** Al revisar de nuevo los documentos oficiales (`CamScanner 17-08-2026 10.27.pdf` y `CamScanner 17-08-2026 10.28.pdf` — los mismos ya transcritos en §12), el usuario confirmó que esos documentos son del **proyecto PEO ya existente** (mismo folio de ejemplo real `PEO-SJR-AME-0001-26` de §12.5). "Casas Ejidales" **no es un proyecto**: es un **concepto de apoyo** (una fila de `tipos_apoyo`) dentro de PEO, cuya urgencia operativa es poder capturar expedientes de sus beneficiarios en ventanilla. Esta sección 13 queda **corregida en su lugar**: no existe ni existirá el proyecto `CEJ`, ni el prefijo de folio `CEJ`. El Build 7 **no se había desplegado a producción**, así que la corrección se aplica sobre el mismo código y la misma migración `014`, sin migración de reversión. Las cuatro mejoras de UX del Build 7 (visor inline, banner post-guardado, drag & drop, carátula imprimible) **no están afectadas por este error** y quedan exactamente igual.
+
 ## 13.1 Objetivo de la extensión
 
-Dos tipos de entregable en un solo build: (a) dar de alta el **proyecto Casas Ejidales** (`CEJ`) con sus 8 documentos requeridos en la BD y en el módulo de ventanilla existente, sin crear ningún programa, subprograma ni componente nuevo; y (b) cuatro **mejoras de UX** en las pantallas de ventanilla — visor inline de PDF en el detalle de documentos, redirección automática post-guardado con banner de confirmación, zona de drag & drop en el checklist de documentos, y carátula imprimible del expediente — todas sin dependencias npm nuevas ni cambios de esquema.
+Dos tipos de entregable en un solo build: (a) dar de alta **"Casas Ejidales" como concepto de apoyo del proyecto PEO** (una fila nueva en `tipos_apoyo`) y ligar sus **8 documentos requeridos** a ese concepto mediante el mecanismo `apoyo_id` que **ya existe** en `documentos_requeridos` desde §12.3.1, sin crear ningún programa, subprograma, componente ni proyecto nuevo y sin ninguna columna ni tabla nueva; y (b) cuatro **mejoras de UX** en las pantallas de ventanilla — visor inline de PDF en el detalle de documentos, redirección automática post-guardado con banner de confirmación, zona de drag & drop en el checklist de documentos, y carátula imprimible del expediente — todas sin dependencias npm nuevas ni cambios de esquema.
 
 ## 13.2 Decisiones de producto (implementar tal cual, no preguntar)
 
-- **D45. Casas Ejidales es un PROYECTO nuevo, no un programa nuevo.** Se modela como una fila en `proyectos` (clave `CEJ`, nombre "Casas Ejidales", `prefijo_folio='CEJ'`, `componente_id=NULL`, igual que PEO). La jerarquía Programa → Subprograma sigue siendo la misma existente: "Apoyo al Campo Queretano 2026" → "Impulso a la Productividad". **No se crea ningún registro en `programas`, `subprogramas` ni `componentes`.**
-- **D46. Los 8 documentos requeridos de Casas Ejidales son propios del proyecto CEJ.** Se insertan como 8 filas nuevas en `documentos_requeridos` con `proyecto_id = <id de CEJ>`, `tipos_persona = '{grupo}'`, `componentes = NULL` (aplican con cualquier componente). El texto de cada documento se toma literalmente del PDF `CamScanner 17-08-2026 10.27.pdf`. No se reutilizan las 8 filas del anexo PEO (§12.7.2): son entidades separadas con su propio `proyecto_id`.
-- **D47. El folio CEJ sigue el mismo esquema.** `CEJ-{clave_regional}-{siglas_municipio}-{consecutivo 4 dígitos}-{año 2 dígitos}`. El generador de folios ya lo soporta: solo necesita la nueva fila en `proyectos` con `prefijo_folio='CEJ'`.
-- **D48. No se restringe `tipo_persona` en el backend para CEJ.** La documentación del PDF lista requisitos solo para "Grupos de productores", pero la validación a nivel API no cambia (E42 sigue aceptando `fisica`, `moral`, `grupo` con cualquier proyecto). El algoritmo de E41 devolverá solo los 8 documentos CEJ cuando `tipo_persona='grupo'`; para otros tipos el checklist vendrá de las reglas generales (§12.7.1) sin los CEJ-específicos.
+- **D45. Casas Ejidales es un CONCEPTO DE APOYO (`tipos_apoyo`), no un proyecto ni un programa.** Se modela como **una fila nueva en `tipos_apoyo`**: `clave = 'CASAS-EJIDALES'`, `nombre = 'Casas Ejidales'`, `categoria = 'infraestructura'`, `unidad_medida = 'obra'`, `activo = TRUE`. **No se crea ningún registro en `programas`, `subprogramas`, `componentes` ni `proyectos`.** La jerarquía sigue siendo la ya sembrada en §12.4: programa "Apoyo al Campo Queretano 2026" → subprograma "Impulso a la Productividad" → proyecto **PEO** ("Proyectos Estratégicos para el Fortalecimiento Organizativo"). Los expedientes de casas ejidales son **solicitudes del proyecto PEO** que llevan este concepto en su sección 5 (Conceptos de apoyo solicitados).
+- **D46. Los 8 documentos requeridos se ligan al concepto vía `apoyo_id`, con `proyecto_id` = PEO.** Se insertan como 8 filas nuevas en `documentos_requeridos` con `apoyo_id = <id del tipo_apoyo 'CASAS-EJIDALES'>`, `proyecto_id = <id del proyecto PEO ya sembrado en §12.4>`, `tipos_persona = '{grupo}'`, `componentes = NULL` (aplican con cualquier componente). **No se crea ninguna columna ni tabla nueva**: `apoyo_id` ya existe desde §12.3.1 y el algoritmo de E41 (§12.6.2, condición 4) ya sabe evaluarlo. El texto de cada documento se toma literalmente del PDF `CamScanner 17-08-2026 10.27.pdf` (los 8 textos de §13.3 son correctos y no cambian).
+- **D47. El folio NO cambia: las solicitudes de Casas Ejidales usan el folio normal de PEO.** `PEO-{clave_regional}-{siglas_municipio}-{consecutivo 4 dígitos}-{año 2 dígitos}`, exactamente el algoritmo de §12.5, con el mismo contador `solicitud_folios` de PEO. **No existe el prefijo `CEJ` en ninguna parte del sistema** (ni en `proyectos.prefijo_folio`, ni en `solicitud_folios`, ni en el código). Un concepto de apoyo no interviene en el folio.
+- **D48. No se restringe `tipo_persona` en el backend.** La documentación del PDF lista los requisitos solo para "Grupos de productores", pero la validación a nivel API no cambia (E42 sigue aceptando `fisica`, `moral`, `grupo`). El algoritmo de E41 hace efectiva la restricción de forma natural: las 8 reglas tienen `tipos_persona = '{grupo}'`, así que solo aparecen en el checklist cuando el tipo de persona es "Grupo de productores" **y** el concepto "Casas Ejidales" está seleccionado **y** el proyecto elegido es PEO.
+- **D48-bis. Alineación de texto con las 8 reglas del anexo PEO (§12.7.2).** Las 8 reglas del anexo PEO sembradas en Build 6 provienen **del mismo PDF** y su texto quedó abreviado (p. ej. "CURP del representante"). Como ahora conviven con las 8 reglas del concepto (texto verbatim), la migración 014 **actualiza el `requisito` de esas 8 filas del anexo PEO al texto verbatim** para que la deduplicación por texto de E41 (§12.6.2) colapse cada par en un solo ítem y el capturista **nunca** vea el mismo documento dos veces con dos redacciones. Es un `UPDATE` acotado (`apoyo_id IS NULL AND proyecto_id = PEO` y coincidencia exacta del texto viejo), idempotente, que no cambia el número de filas ni ninguna regla de §12.7.1. El seed `005_ventanilla_catalogos.sql` se actualiza con esos mismos textos para que re-ejecutarlo no revierta el cambio (sigue sembrando **exactamente 42 filas**).
 - **D49. Visor inline: tipo de archivo determinado por extensión del `archivo_nombre`.** La tabla `solicitud_documentos` no guarda `content-type`, pero sí `archivo_nombre`. Si termina en `.pdf` → `<iframe>`; si termina en `.jpg`, `.jpeg`, `.png` o `.webp` → `<img>`. Si la extensión es desconocida o nula, se muestra solo el `<a>` enlace sin viewer inline. El enlace `<a data-testid="enlace-archivo">` se mantiene en todos los casos como descarga de respaldo.
 - **D50. Redirección post-guardado: timer cancelable.** El contador de 4 s inicia al montar el modal `modal-folio-generado`. Si el usuario pulsa "Ver solicitud" antes de los 4 s, la navegación es inmediata y el timer se cancela (`clearTimeout`). La URL destino incluye `?nuevo=1`. En `DetalleSolicitud.tsx`, `useSearchParams` detecta el param, muestra el banner, y reemplaza la URL con `navigate(location.pathname, {replace:true})` para que al recargar o al volver con "atrás" no aparezca de nuevo.
 - **D51. Drag & drop: solo el primer archivo de la lista.** Si el usuario suelta varios archivos, se procesa `event.dataTransfer.files[0]` y se ignoran los demás. Sin validación de MIME en cliente antes de enviar (la validación ya existe en E46). La zona usa los eventos `dragover`, `dragleave`, `drop` del DOM nativo; sin librería.
@@ -2657,19 +2660,46 @@ Dos tipos de entregable en un solo build: (a) dar de alta el **proyecto Casas Ej
 
 ## 13.3 Modelo de datos — `db/migrations/014_casas_ejidales.sql`
 
-Esta migración es **100 % aditiva e idempotente**. No toca ninguna tabla, columna ni índice existente. El script `db/migrar.ts` ya existente la ejecuta sin modificación.
+Esta migración es **aditiva e idempotente**. No crea tablas, columnas ni índices; no toca ningún catálogo estructural (`programas`, `subprogramas`, `componentes`, `proyectos`, `ventanillas`). El único `UPDATE` sobre filas existentes es la alineación de texto de D48-bis, acotada a las 8 reglas del anexo PEO. El script `db/migrar.ts` ya existente la ejecuta sin modificación.
 
 ```sql
--- Proyecto nuevo: Casas Ejidales (CEJ)
-INSERT INTO proyectos (clave, nombre, prefijo_folio, componente_id, activo)
-VALUES ('CEJ', 'Casas Ejidales', 'CEJ', NULL, TRUE)
-ON CONFLICT (clave) DO NOTHING;
+-- 1) Concepto de apoyo nuevo: Casas Ejidales (NO es un proyecto; es una fila de tipos_apoyo).
+INSERT INTO tipos_apoyo (clave, nombre, categoria, unidad_medida, activo)
+VALUES ('CASAS-EJIDALES', 'Casas Ejidales', 'infraestructura', 'obra', TRUE)
+ON CONFLICT (clave) DO UPDATE
+  SET nombre = EXCLUDED.nombre,
+      categoria = EXCLUDED.categoria,
+      unidad_medida = EXCLUDED.unidad_medida,
+      activo = TRUE;
 
--- 8 documentos requeridos para Casas Ejidales (solo grupos de productores).
--- componentes = NULL => aplica con cualquier componente.
--- Para idempotencia se usa WHERE NOT EXISTS verificando (requisito, proyecto_id).
-INSERT INTO documentos_requeridos (requisito, componentes, tipos_persona, proyecto_id, orden, activo)
-SELECT req, NULL, '{grupo}', proy.id, ord, TRUE
+-- 2) Alineación de texto (D48-bis): las 8 reglas del anexo PEO (§12.7.2) salen del mismo PDF;
+--    se llevan al texto verbatim para que la deduplicación de E41 colapse los pares.
+UPDATE documentos_requeridos dr
+SET requisito = v.nuevo
+FROM (VALUES
+  ('Acta de integración del grupo de productores',
+   'Acta integración del grupo de productores'),
+  ('Identificación oficial vigente con fotografía del representante',
+   'Identificación oficial vigente con fotografía (INE o pasaporte) del representante del grupo de productores'),
+  ('CURP del representante',
+   'CURP del representante del grupo de productores'),
+  ('Constancia de Situación Fiscal del representante',
+   'Constancia de Situación Fiscal del representante del grupo de productores'),
+  ('Comprobante de domicilio del representante',
+   'Comprobante de domicilio del representante de grupo de productores'),
+  ('Relación de beneficiarios directos',
+   'Relación de beneficiarios directos del grupo de productores')
+) AS v(viejo, nuevo)
+WHERE dr.requisito = v.viejo
+  AND dr.apoyo_id IS NULL
+  AND dr.proyecto_id = (SELECT id FROM proyectos WHERE clave = 'PEO');
+
+-- 3) 8 documentos requeridos del concepto Casas Ejidales.
+--    apoyo_id = concepto 'CASAS-EJIDALES'; proyecto_id = proyecto PEO ya existente.
+--    componentes = NULL => aplica con cualquier componente. tipos_persona = '{grupo}'.
+--    Idempotencia por WHERE NOT EXISTS sobre (requisito, apoyo_id).
+INSERT INTO documentos_requeridos (requisito, componentes, tipos_persona, proyecto_id, apoyo_id, orden, activo)
+SELECT docs.req, NULL, '{grupo}', proy.id, ap.id, docs.ord, TRUE
 FROM (VALUES
   ('Solicitud mediante escrito libre dirigida al Titular de la Secretaría', 1),
   ('Ficha técnica', 2),
@@ -2680,19 +2710,31 @@ FROM (VALUES
   ('Comprobante de domicilio del representante de grupo de productores', 7),
   ('Relación de beneficiarios directos del grupo de productores', 8)
 ) AS docs(req, ord)
-CROSS JOIN (SELECT id FROM proyectos WHERE clave = 'CEJ') AS proy
+CROSS JOIN (SELECT id FROM proyectos   WHERE clave = 'PEO')            AS proy
+CROSS JOIN (SELECT id FROM tipos_apoyo WHERE clave = 'CASAS-EJIDALES') AS ap
 WHERE NOT EXISTS (
   SELECT 1 FROM documentos_requeridos dr
   WHERE dr.requisito = docs.req
-    AND dr.proyecto_id = proy.id
+    AND dr.apoyo_id = ap.id
 );
 ```
 
-> **Nota de implementación:** si el Generator prefiere añadir un índice único parcial `CREATE UNIQUE INDEX IF NOT EXISTS idx_docsreq_req_proyecto ON documentos_requeridos (requisito, proyecto_id) WHERE proyecto_id IS NOT NULL;` como parte de la misma migración, puede hacerlo y sustituir el `WHERE NOT EXISTS` por `ON CONFLICT (requisito, proyecto_id) WHERE proyecto_id IS NOT NULL DO NOTHING`. Cualquiera de las dos estrategias es válida; lo que no se permite es que la migración ejecutada dos veces duplique filas.
+> **Nota de implementación:** si el Generator prefiere un índice único parcial `CREATE UNIQUE INDEX IF NOT EXISTS idx_docsreq_req_apoyo ON documentos_requeridos (requisito, apoyo_id) WHERE apoyo_id IS NOT NULL;` como parte de la misma migración y sustituir el `WHERE NOT EXISTS` por `ON CONFLICT … DO NOTHING`, puede hacerlo. Cualquiera de las dos estrategias es válida; lo que no se permite es que la migración ejecutada dos veces duplique filas ni que cree el proyecto `CEJ`.
+
+**Prohibiciones explícitas de esta migración (consecuencia de la corrección):** no debe contener la cadena `CEJ` en ninguna forma; no debe insertar en `proyectos`; no debe insertar en `solicitud_folios`; no debe crear ningún prefijo de folio nuevo.
+
+### 13.3.1 Ajuste al seed `db/seeds/005_ventanilla_catalogos.sql`
+
+Dos cambios mínimos (es el único seed existente que se toca):
+
+1. **Textos verbatim del anexo PEO (D48-bis):** las 8 reglas de §12.7.2 se siembran ya con el texto verbatim (los mismos 8 textos del bloque 3 de la migración 014), de modo que re-ejecutar el seed no revierta el `UPDATE`. **Sigue sembrando exactamente 42 filas** (34 de §12.7.1 + 8 del anexo PEO) y ninguna otra regla cambia.
+2. **El seed no desactiva reglas específicas de concepto (fix ya aplicado en Build 7, se conserva con el nuevo criterio):** la cláusula del seed que desactiva reglas que no forman parte de su lista (`UPDATE documentos_requeridos SET activo = FALSE WHERE …`) debe **excluir** toda fila con `apoyo_id IS NOT NULL`. Así, re-ejecutar el seed 005 después de la migración 014 deja las 8 reglas de Casas Ejidales con `activo = TRUE`. (En la versión anterior de esta sección la exclusión se expresaba por `proyecto_id` del proyecto CEJ; ahora la regla específica se identifica por `apoyo_id`.)
 
 **Fallback de `siglas_folio`:** la migración 014 no toca `municipios.siglas_folio`; el seed 005 ya las llenó en Build 6 (criterio 252). Si hay municipios nuevos sin siglas, el fallback determinista de §12.5 los cubre.
 
 ## 13.4 Pantallas afectadas (delta sobre §12.8)
+
+**Casas Ejidales no requiere ningún cambio de PWA ni de backend.** El concepto aparece automáticamente en `select-concepto` (paso 5 de `NuevaSolicitud.tsx`) porque E40 ya devuelve todos los `tipos_apoyo` activos, y el checklist del paso 6 ya recalcula E41 cada vez que cambian Componente, Tipo de persona, Proyecto **o los conceptos seleccionados** (§12.8.2), enviando `tipos_apoyo_ids`. Al elegir "Casas Ejidales" con proyecto PEO y tipo de persona "Grupo de productores", los 8 documentos entran solos en `lista-documentos`, además de las reglas generales que apliquen por componente y tipo de persona (§12.7.1). Los cambios de esta subsección son **solo** las mejoras de UX.
 
 ### 13.4.1 `pwa/src/pantallas/DetalleSolicitud.tsx`
 
@@ -2712,12 +2754,13 @@ Cuatro cambios independientes en el mismo archivo, sin romper ningún `data-test
 
 ## 13.5 Assumptions nuevas (continúa la numeración de §12.11)
 
-55. **El PDF CamScanner 17-08-2026 10.27.pdf muestra cabeceras de PEO**, no de un programa independiente "Casas Ejidales". El usuario indicó que ese PDF corresponde a los requisitos de Casas Ejidales. Se resuelve modelando "Casas Ejidales" como un PROYECTO nuevo (`CEJ`) dentro del programa y subprograma ya existentes, con los 8 documentos listados en el PDF tomados verbatim. No se crea programa, subprograma ni componente nuevo.
-56. **Prefijo de folio `CEJ`** (3 letras, "Casas EJidales"). Consistente con PEO (3 letras). Alternativas descartadas: `CE` (2 letras, rompe la consistencia visual), `CASEJ` (5 letras, más largo sin necesidad).
-57. **El backend no restringe `tipo_persona` para el proyecto CEJ.** La restricción "solo grupos de productores" es documental. El algoritmo E41 la hace efectiva naturalmente: los 8 documentos CEJ tienen `tipos_persona='{grupo}'` y no aparecen en el checklist de `fisica`/`moral`. Forzar la restricción en E42 requeriría columna nueva y agrega complejidad sin beneficio real.
+55. **Los PDFs `CamScanner 17-08-2026 10.27.pdf` y `10.28.pdf` son del proyecto PEO** (llevan sus cabeceras y el folio de ejemplo `PEO-SJR-AME-0001-26`, el mismo transcrito en §12). La primera lectura del Build 7 asumió que describían un programa/proyecto independiente "Casas Ejidales"; el usuario revisó los documentos y confirmó que **no**: Casas Ejidales es un **concepto de apoyo** que se solicita dentro de PEO. Se resuelve dando de alta el concepto en `tipos_apoyo` y ligando los 8 documentos por `apoyo_id`. **No se crea programa, subprograma, componente ni proyecto.**
+56. **Clave y atributos del concepto nuevo.** El PDF no da clave de catálogo. Se decide `clave = 'CASAS-EJIDALES'` (legible y estable; no se usa la serie `AP-###` porque esa serie está reservada a los 152 conceptos extraídos de la hoja `APOYO`, §8.7, y renumerarla rompería el seed 004), `categoria = 'infraestructura'` (una casa ejidal es obra civil) y `unidad_medida = 'obra'`. Ambos campos son libres en el esquema (§4.4) y editables después desde catálogos.
+57. **No existe el prefijo de folio `CEJ`.** Las solicitudes de Casas Ejidales se folian como cualquier otra solicitud de PEO (`PEO-…`, §12.5) y comparten el mismo contador en `solicitud_folios`. El concepto de apoyo no participa en el folio. Cualquier aparición de `CEJ` en código, migraciones, seeds o README es un defecto de la primera redacción de Build 7 y debe eliminarse.
+57-bis. **Coexistencia con el anexo PEO.** Las 8 reglas del anexo PEO (§12.7.2) siguen aplicando a **toda** solicitud PEO de tipo grupo, con o sin el concepto Casas Ejidales; las 8 reglas nuevas aplican **además** cuando el concepto está seleccionado. Como ambos juegos salen del mismo PDF, se alinean sus textos (D48-bis) y la deduplicación por `requisito` de E41 hace que el capturista vea **8 ítems, no 16**. Se prefirió alinear textos a borrar el anexo PEO: borrarlo dejaría sin documentación a las solicitudes PEO de grupo que no sean de casas ejidales.
 58. **El visor inline determina el tipo de archivo por extensión de `archivo_nombre`** (ya almacenado en `solicitud_documentos`). Si la extensión es nula o desconocida, solo se muestra el `<a>`. No se añade columna `content_type` (evita migración extra).
 59. **La URL con `?nuevo=1` produce el banner una sola vez.** `DetalleSolicitud.tsx` llama a `navigate(location.pathname, {replace:true})` en el primer render con el param presente, eliminándolo del historial. Recargar la página, botón "atrás" o enlace directo sin el param no muestran el banner.
-60. **Idempotencia de la migración 014 con `WHERE NOT EXISTS`.** Si en el futuro el Generator prefiere un índice único parcial sobre `(requisito, proyecto_id)`, puede añadirlo en la misma migración 014 sin romper nada: ese índice no existía antes, es aditivo.
+60. **Idempotencia de la migración 014 con `WHERE NOT EXISTS`.** Si en el futuro el Generator prefiere un índice único parcial sobre `(requisito, apoyo_id)`, puede añadirlo en la misma migración 014 sin romper nada: ese índice no existía antes, es aditivo.
 
 ## 13.6 Dependencias y archivos
 
@@ -2732,12 +2775,13 @@ db/migrations/014_casas_ejidales.sql
 **Archivos modificados:**
 
 ```
-pwa/src/pantallas/DetalleSolicitud.tsx   (visor inline, banner, drag & drop, carátula)
-pwa/src/pantallas/NuevaSolicitud.tsx     (timer de redirección en modal)
-README.md                                (documentar proyecto CEJ y mejoras de UX)
+db/seeds/005_ventanilla_catalogos.sql     (textos verbatim del anexo PEO + no desactivar reglas con apoyo_id)
+pwa/src/pantallas/DetalleSolicitud.tsx    (visor inline, banner, drag & drop, carátula)
+pwa/src/pantallas/NuevaSolicitud.tsx      (timer de redirección en modal)
+README.md                                 (documentar el concepto Casas Ejidales y las mejoras de UX)
 ```
 
-**No se modifica:** ningún archivo de backend, ningún seed existente, `docker-compose.yml`, `packages/shared/src/*`, `pwa/src/sync/*`, `pwa/src/db/indexeddb.ts`, ni ninguna ruta API.
+**No se modifica:** ningún archivo de backend, ningún otro seed, `docker-compose.yml`, `packages/shared/src/*`, `pwa/src/sync/*`, `pwa/src/db/indexeddb.ts`, ni ninguna ruta API. **No se crea** ninguna tabla ni columna.
 
 ---
 
@@ -2747,26 +2791,26 @@ Continúa la numeración de §7, §8.11, §9.9, §10.11, §11.9 y §12.13. Base:
 
 ### Base de datos — migración 014 (307–312)
 
-La migración 014 es pura inserción; no altera columnas, tablas ni índices existentes. Los criterios de BD de §12.13 (241–250) deben seguir pasando íntegramente.
+La migración 014 no crea tablas, columnas ni índices, ni catálogos estructurales. Los criterios de BD de §12.13 (241–250) deben seguir pasando íntegramente.
 
 307. Existe `db/migrations/014_casas_ejidales.sql` y sigue **sin existir** `db/migrations/011_*.sql` (criterio 231 intacto); ejecutar el script `db/migrar.ts` sobre una BD de Build 6 ya poblada sale con código 0 y sin error.
-308. `SELECT clave, prefijo_folio, componente_id FROM proyectos WHERE clave = 'CEJ'` devuelve exactamente **1 fila** con `prefijo_folio = 'CEJ'` y `componente_id IS NULL`; `SELECT count(*) FROM proyectos` devuelve ≥ **2**.
-309. `SELECT count(*) FROM documentos_requeridos WHERE activo = TRUE AND proyecto_id = (SELECT id FROM proyectos WHERE clave = 'CEJ')` devuelve exactamente **8**.
-310. Las 8 filas CEJ tienen `tipos_persona` igual a `{grupo}` (o `'{grupo}'` en notación de array de PostgreSQL) y `componentes IS NULL`; sus textos de `requisito` incluyen exactamente: `Solicitud mediante escrito libre dirigida al Titular de la Secretaría`, `Ficha técnica`, `Acta integración del grupo de productores`, `Identificación oficial vigente con fotografía (INE o pasaporte) del representante del grupo de productores`, `CURP del representante del grupo de productores`, `Constancia de Situación Fiscal del representante del grupo de productores`, `Comprobante de domicilio del representante de grupo de productores` y `Relación de beneficiarios directos del grupo de productores`.
-311. La migración 014 es **idempotente**: ejecutarla una segunda vez no produce error y `SELECT count(*) FROM proyectos WHERE clave = 'CEJ'` sigue siendo **1** y `SELECT count(*) FROM documentos_requeridos WHERE proyecto_id = (SELECT id FROM proyectos WHERE clave='CEJ')` sigue siendo **8**.
-312. La migración 014 no altera catálogos existentes: `SELECT count(*) FROM componentes` devuelve **3** (sin cambio), `SELECT count(*) FROM ventanillas` devuelve **5** (sin cambio), `SELECT count(*) FROM programas` devuelve **1** (sin cambio), `SELECT count(*) FROM subprogramas` devuelve **1** (sin cambio).
+308. `SELECT clave, nombre, categoria, activo FROM tipos_apoyo WHERE clave = 'CASAS-EJIDALES'` devuelve exactamente **1 fila** con `nombre = 'Casas Ejidales'` y `activo = TRUE`; y `SELECT count(*) FROM tipos_apoyo WHERE clave LIKE 'AP-%'` sigue devolviendo **152** (criterio 66 intacto).
+309. **No existe el proyecto ni el prefijo `CEJ`:** `SELECT count(*) FROM proyectos` devuelve **1** (solo `PEO`); `SELECT count(*) FROM proyectos WHERE clave = 'CEJ' OR prefijo_folio = 'CEJ'` devuelve **0**; `SELECT count(*) FROM solicitud_folios WHERE prefijo <> 'PEO'` devuelve **0**; `SELECT count(*) FROM solicitudes WHERE folio LIKE 'CEJ-%'` devuelve **0**; y `grep -rn "CEJ" backend/src db/migrations db/seeds pwa/src` **no** encuentra ninguna coincidencia.
+310. `SELECT count(*) FROM documentos_requeridos WHERE activo = TRUE AND apoyo_id = (SELECT id FROM tipos_apoyo WHERE clave = 'CASAS-EJIDALES')` devuelve exactamente **8**, y **todas** esas 8 filas tienen `proyecto_id = (SELECT id FROM proyectos WHERE clave = 'PEO')`, `tipos_persona = '{grupo}'` y `componentes IS NULL`.
+311. Los `requisito` de esas 8 filas son exactamente: `Solicitud mediante escrito libre dirigida al Titular de la Secretaría`, `Ficha técnica`, `Acta integración del grupo de productores`, `Identificación oficial vigente con fotografía (INE o pasaporte) del representante del grupo de productores`, `CURP del representante del grupo de productores`, `Constancia de Situación Fiscal del representante del grupo de productores`, `Comprobante de domicilio del representante de grupo de productores`, `Relación de beneficiarios directos del grupo de productores`. Además (D48-bis) `SELECT count(DISTINCT requisito) FROM documentos_requeridos WHERE activo AND proyecto_id = (SELECT id FROM proyectos WHERE clave='PEO')` devuelve **8** aunque `SELECT count(*)` sobre el mismo filtro devuelve **16** (las 8 del anexo PEO alineadas al mismo texto + las 8 del concepto).
+312. **Idempotencia y no-regresión de catálogos:** ejecutar la migración 014 una segunda vez y después re-ejecutar `db/seeds/005_ventanilla_catalogos.sql` no produce error, y tras ambas: `SELECT count(*) FROM documentos_requeridos WHERE activo AND apoyo_id = (SELECT id FROM tipos_apoyo WHERE clave='CASAS-EJIDALES')` sigue siendo **8** (el seed 005 no las desactiva), `SELECT count(*) FROM tipos_apoyo WHERE clave='CASAS-EJIDALES'` sigue siendo **1**, `SELECT count(*) FROM componentes` devuelve **3**, `ventanillas` **5**, `programas` **1**, `subprogramas` **1** y `proyectos` **1** (ningún catálogo estructural cambió).
 
 ### API — Casas Ejidales en el módulo de ventanilla (313–319)
 
-El proyecto CEJ se integra de forma transparente en los endpoints existentes (E40, E41, E42). No hay endpoints nuevos, ni cambios de RBAC ni de esquema de validación en el backend.
+El concepto se integra de forma transparente en los endpoints existentes (E40, E41, E42). No hay endpoints nuevos, ni cambios de RBAC, ni de esquema de validación, ni de código de backend.
 
-313. `GET $API/api/solicitudes/catalogos` con `T_VEN2` devuelve en `proyectos` un array con ≥ **2** elementos; uno de ellos tiene `clave:'CEJ'` y `prefijo_folio:'CEJ'`.
-314. `POST $API/api/solicitudes/documentos-requeridos` con `T_VEN2` y `{"componente_id":<id de cualquier componente válido>,"tipo_persona":"grupo","proyecto_id":<id de CEJ>}` devuelve **200** con `documentos` que incluye `Ficha técnica` y `Relación de beneficiarios directos del grupo de productores`; el mismo cuerpo **sin** `proyecto_id` **no** incluye esos dos requisitos (son exclusivos del proyecto CEJ).
-315. `POST $API/api/solicitudes` con `T_VEN2` y payload válido (`tipo_persona:'grupo'`, `proyecto_id:<id CEJ>`, 1 concepto, `declaracion_aceptada:true`, municipio y componente dentro del alcance de `ventanilla2`) devuelve **201** con `solicitud.folio` que cumple `^CEJ-[A-Z]{3}-[A-Z]{3}-0001-\d{2}$` y `SELECT origen FROM solicitudes WHERE id=<id>` devuelve `solicitud_ventanilla`.
-316. El contador de folios CEJ es **independiente** del de PEO: tras el criterio 315, `SELECT consecutivo FROM solicitud_folios WHERE prefijo='CEJ'` devuelve **1** y `SELECT consecutivo FROM solicitud_folios WHERE prefijo='PEO'` tiene el mismo valor que antes del criterio 315 (no aumentó).
-317. `POST $API/api/solicitudes` con proyecto `CEJ` y `tipo_persona:'fisica'` devuelve **201** (no hay restricción de tipo de persona a nivel API); la lista de documentos calculada por E41 para ese alta **no** incluye los 8 documentos CEJ (que tienen `tipos_persona='{grupo}'`).
-318. Tras el criterio 315, `SELECT beneficiario_id FROM solicitud_conceptos WHERE solicitud_id=<id CEJ>` devuelve un valor no nulo, y `SELECT folio FROM beneficiarios WHERE id=<beneficiario_id>` devuelve el folio con prefijo `CEJ`.
-319. Regresión: `POST $API/api/solicitudes` con proyecto `PEO` sigue devolviendo folio con prefijo `PEO`; el criterio 286 sigue pasando (E41 con `proyecto_id=<PEO>` devuelve `Ficha técnica`); el criterio 261 sigue pasando con PEO.
+313. `GET $API/api/solicitudes/catalogos` con `T_VEN2` devuelve **200** y en `tipos_apoyo` existe un elemento con `clave:'CASAS-EJIDALES'` y `nombre:'Casas Ejidales'`; en `proyectos` hay exactamente **1** elemento, con `clave:'PEO'` y `prefijo_folio:'PEO'`, y **ninguno** con clave o prefijo `CEJ`.
+314. `POST $API/api/solicitudes/documentos-requeridos` con `T_VEN2` y `{"componente_id":<id de TR>,"tipo_persona":"grupo","proyecto_id":<id de PEO>,"tipos_apoyo_ids":[<id de CASAS-EJIDALES>]}` devuelve **200** y `documentos` incluye los **8** textos exactos del criterio 311.
+315. En la respuesta del criterio 314 **no hay duplicados**: el número de valores distintos de `requisito` es igual a la longitud del array `documentos` y a `total`; en particular `Ficha técnica` aparece **una sola vez** (la deduplicación colapsa el par anexo PEO / concepto).
+316. `POST $API/api/solicitudes/documentos-requeridos` con `T_VEN2` y `{"componente_id":<id de TR>,"tipo_persona":"fisica","proyecto_id":<id de PEO>,"tipos_apoyo_ids":[<id de CASAS-EJIDALES>]}` devuelve **200** y **no** incluye `Ficha técnica` ni `Relación de beneficiarios directos del grupo de productores` (las 8 reglas son `{grupo}`); y el mismo cuerpo con `tipo_persona:"grupo"` pero **sin** `proyecto_id` tampoco los incluye (siguen ligadas a PEO).
+317. `POST $API/api/solicitudes` con `T_VEN2` y payload válido (`tipo_persona:'grupo'`, `proyecto_id:<id de PEO>`, 1 concepto con `tipo_apoyo_id` = id de `CASAS-EJIDALES`, `declaracion_aceptada:true`, municipio, componente y ventanilla dentro del alcance de `ventanilla2`) devuelve **201** con `solicitud.folio` que cumple `^PEO-[A-Z]{3}-[A-Z]{3}-\d{4}-\d{2}$` y **no** empieza con `CEJ`; `SELECT origen FROM solicitudes WHERE id=<id>` devuelve `solicitud_ventanilla`.
+318. Tras el criterio 317: el consecutivo de `solicitud_folios` para `(prefijo='PEO', clave_regional, siglas_municipio, anio)` de esa solicitud aumentó exactamente en **1** respecto al valor previo al alta, `SELECT count(*) FROM solicitud_folios WHERE prefijo <> 'PEO'` sigue siendo **0**, y `SELECT count(*) FROM solicitud_conceptos WHERE solicitud_id=<id> AND tipo_apoyo_id=(SELECT id FROM tipos_apoyo WHERE clave='CASAS-EJIDALES')` devuelve **1** con `beneficiario_id` no nulo, cuyo `beneficiarios.folio` empieza con `PEO`.
+319. Regresión de §12.13: el criterio 286 sigue pasando (E41 con `{"componente_id":<DIN>,"tipo_persona":"grupo","proyecto_id":<PEO>}` incluye `Ficha técnica` y `Solicitud mediante escrito libre dirigida al Titular de la Secretaría`, y sin `proyecto_id` no los incluye) y los criterios 261, 282 y 285 siguen pasando sin cambios.
 
 ### PWA — visor inline de PDF en DetalleSolicitud (320–323)
 
@@ -2812,7 +2856,7 @@ La carátula vive en el mismo `DetalleSolicitud.tsx`, visible solo en `@media pr
 
 340. Los criterios 291, 292 y 304 siguen pasando: subir un archivo JPG por `input-archivo-documento` devuelve **201**, `GET` del `archivo_url` con token devuelve **200** con `content-type` de imagen, en el detalle se puede marcar `chk-documento-recibido` y subir archivos sin error (ninguna regresión introducida por los cambios de drag & drop ni por el visor inline).
 341. El criterio 296 (regresión general: `GET /api/health`, login, catálogos, staging, auditoría y correcciones) sigue pasando sin cambios.
-342. `SELECT count(*) FROM documentos_requeridos WHERE activo` devuelve **50** tras aplicar la migración 014 (42 de Build 6 + 8 de CEJ); `SELECT count(*) FROM proyectos` devuelve ≥ **2**; y `SELECT count(*) FROM documentos_requeridos WHERE activo AND proyecto_id IS NULL` devuelve el mismo valor que en Build 6 para las reglas generales (ninguna fila existente fue modificada ni eliminada).
-343. `README.md` documenta el proyecto Casas Ejidales: (a) que es un **proyecto nuevo** (`CEJ`) bajo el programa "Apoyo al Campo Queretano 2026" y subprograma "Impulso a la Productividad", sin componente asignado; (b) el prefijo de folio `CEJ` y su estructura `CEJ-{regional}-{municipio}-{consecutivo}-{año}`; (c) que los 8 documentos requeridos aplican a **grupos de productores** (listados explícitamente); (d) cómo aplicar la migración 014 sobre una BD de Build 6 existente sin downtime; y (e) que las mejoras de UX (visor PDF, banner post-guardado, drag & drop, carátula imprimible) no requieren variable de entorno nueva ni migración adicional.
+342. `SELECT count(*) FROM documentos_requeridos WHERE activo` devuelve **50** (42 de Build 6 + 8 del concepto Casas Ejidales); `SELECT count(*) FROM documentos_requeridos WHERE activo AND proyecto_id IS NULL AND apoyo_id IS NULL` devuelve **34** (las reglas generales de §12.7.1, intactas en número); `SELECT count(*) FROM proyectos` devuelve **1**; y `SELECT count(*) FROM tipos_apoyo WHERE activo` devuelve **153** (152 de la hoja `APOYO` + Casas Ejidales).
+343. `README.md` documenta Casas Ejidales **como concepto de apoyo, no como proyecto**: (a) que es una fila de `tipos_apoyo` (`CASAS-EJIDALES`) solicitada dentro del proyecto **PEO** ya existente, bajo el programa "Apoyo al Campo Queretano 2026" y el subprograma "Impulso a la Productividad"; (b) que el folio de esas solicitudes es el normal de PEO (`PEO-{regional}-{municipio}-{consecutivo}-{año}`) y que **no existe** ningún prefijo `CEJ` — incluyendo una nota de que la primera versión de Build 7 lo modeló mal como proyecto y que se corrigió antes de desplegar; (c) los 8 documentos requeridos listados explícitamente, que aplican a **grupos de productores** cuando se selecciona el concepto; (d) cómo aplicar la migración 014 y re-ejecutar el seed 005 sobre una BD de Build 6 existente sin downtime; y (e) que las mejoras de UX (visor PDF, banner post-guardado, drag & drop, carátula imprimible) no requieren variable de entorno nueva ni migración adicional. El README **no** contiene la cadena `CEJ`.
 
 **Definición de terminado (build 7):** los **343** criterios pasan (306 acumulados de los builds 1–6 + **37** de esta extensión).

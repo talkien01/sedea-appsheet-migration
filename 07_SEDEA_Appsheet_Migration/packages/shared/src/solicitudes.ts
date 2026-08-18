@@ -235,9 +235,14 @@ export interface OpcionCatalogoVentanilla {
   nombre: string;
 }
 
+export interface ModalidadVentanilla extends OpcionCatalogoVentanilla {
+  componente_id: number;
+}
+
 export interface ProyectoVentanilla extends OpcionCatalogoVentanilla {
   prefijo_folio: string;
   componente_id: number | null;
+  modalidad_id: number | null;
 }
 
 export interface VentanillaOpcion extends OpcionCatalogoVentanilla {
@@ -263,6 +268,7 @@ export interface CatalogosVentanilla {
   programas: OpcionCatalogoVentanilla[];
   subprogramas: (OpcionCatalogoVentanilla & { programa_id: number })[];
   componentes: OpcionCatalogoVentanilla[];
+  modalidades: ModalidadVentanilla[];
   proyectos: ProyectoVentanilla[];
   ventanillas: VentanillaOpcion[];
   municipios: MunicipioVentanilla[];
@@ -347,4 +353,50 @@ export interface RespuestaAltaSolicitud {
   conceptos: { id: number; orden: number; tipo_apoyo_id: number; beneficiario_id: number }[];
   beneficiarios_creados: { id: number; folio: string }[];
   documentos: DocumentoSolicitud[];
+}
+
+// ---------------------------------------------------------------------------
+// Funciones puras de encadenamiento (Build 8, 14.7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Filtra las modalidades activas de un componente dado.
+ * R14-1: si hay modalidades pero modalidadId es null, devuelve [] (requiere seleccion).
+ */
+export function modalidadesDeComponente(
+  modalidades: ModalidadVentanilla[],
+  componenteId: number | null
+): ModalidadVentanilla[] {
+  if (!componenteId) return [];
+  return modalidades.filter((m) => m.componente_id === componenteId);
+}
+
+/**
+ * Filtra los proyectos aplicables segun componente y modalidad.
+ * Regla R14-1:
+ *   - Si hay modalidades para el componente pero modalidadId es null -> devuelve []
+ *   - Si base queda vacia tras filtrar por componente -> devuelve TODOS los proyectos
+ *     (garantiza no regresion para TR/CAA/DIN con PEO).
+ */
+export function proyectosAplicables(
+  proyectos: ProyectoVentanilla[],
+  modalidades: ModalidadVentanilla[],
+  componenteId: number | null,
+  modalidadId: number | null
+): ProyectoVentanilla[] {
+  const modsDelComponente = modalidadesDeComponente(modalidades, componenteId);
+  // Si el componente tiene modalidades pero no se ha seleccionado ninguna -> vacio.
+  if (modsDelComponente.length > 0 && modalidadId === null) {
+    return [];
+  }
+  const base = proyectos.filter(
+    (p) =>
+      p.componente_id === componenteId &&
+      (modalidadId === null || p.modalidad_id === modalidadId)
+  );
+  // Fallback: si base queda vacia, devuelve todos los proyectos (no regresion).
+  if (base.length === 0) {
+    return proyectos;
+  }
+  return base;
 }

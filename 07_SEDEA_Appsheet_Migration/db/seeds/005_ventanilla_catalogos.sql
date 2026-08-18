@@ -180,9 +180,13 @@ SELECT t.requisito, t.componentes, t.tipos_persona,
 
 -- Cualquier regla sobrante de una carga previa se desactiva (nunca se borra:
 -- puede estar referenciada por solicitudes ya recibidas).
+-- IMPORTANTE: solo se tocan filas sin proyecto_id (docs genericos y PEO).
+-- Los docs de proyectos especificos (CEJ y futuros) nunca son tocados aqui;
+-- cada migracion de proyecto es responsable de gestionar sus propios docs.
 UPDATE documentos_requeridos d
    SET activo = FALSE
  WHERE d.activo
+   AND d.proyecto_id IS NULL   -- solo docs genericos; los de proyecto especifico no se tocan
    AND NOT EXISTS (
    SELECT 1
      FROM tmp_reglas_documentos t

@@ -4,7 +4,7 @@
 // unica llamada a E42. El folio es de solo lectura: lo genera el backend (D41)
 // y se muestra al confirmar el guardado. Pantalla EN LINEA: no se guarda nada
 // en el navegador ni se encola nada (D32).
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type {
   CatalogosVentanilla,
@@ -76,6 +76,24 @@ export default function NuevaSolicitud() {
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [resultado, setResultado] = useState<RespuestaAltaSolicitud | null>(null);
+
+  // B7-C: timer de redirección automática al aparecer el modal de folio generado.
+  // Se cancela si el usuario pulsa "Ver solicitud" antes de 4 s.
+  const timerRedireccionRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!resultado) return;
+    // Iniciar countdown de 4 s al montar el modal con el folio.
+    timerRedireccionRef.current = setTimeout(() => {
+      navegar(`/solicitudes/${resultado.solicitud.id}?nuevo=1`);
+    }, 4000);
+    return () => {
+      if (timerRedireccionRef.current) {
+        clearTimeout(timerRedireccionRef.current);
+        timerRedireccionRef.current = null;
+      }
+    };
+  }, [resultado, navegar]);
 
   // Paso 1
   const [programaId, setProgramaId] = useState('');
@@ -670,7 +688,14 @@ export default function NuevaSolicitud() {
               <button
                 type="button"
                 data-testid="btn-ver-solicitud"
-                onClick={() => navegar(`/solicitudes/${resultado.solicitud.id}`)}
+                onClick={() => {
+                  // Cancelar el timer automático y navegar de inmediato con ?nuevo=1.
+                  if (timerRedireccionRef.current) {
+                    clearTimeout(timerRedireccionRef.current);
+                    timerRedireccionRef.current = null;
+                  }
+                  navegar(`/solicitudes/${resultado.solicitud.id}?nuevo=1`);
+                }}
               >
                 Ver solicitud
               </button>

@@ -2635,3 +2635,184 @@ Continúa la numeración de §7, §8.11, §9.9, §10.11 y §11.9. Base: `API=htt
 306. `README.md` documenta el módulo de ventanilla: (a) qué es el rol `ventanilla` y a qué accede y a qué no; (b) cómo se asigna el **alcance** por municipios y componentes y que **vacío = todos**; (c) el **esquema del folio** con su ejemplo `PEO-SJR-AME-0001-26` y el fallback de `siglas_folio`; (d) que la solicitud **entra directo a producción sin pasar por staging** y crea **un beneficiario por concepto**; (e) que el **domicilio del solicitante y la ubicación del apoyo son distintos** y que el beneficiario hereda la ubicación del apoyo; y (f) que la solicitud **no se edita** después de guardada y las correcciones van por `/correcciones`.
 
 **Definición de "terminado" (build 6):** los **306** criterios pasan (240 acumulados de los builds 1–5, con las excepciones ya declaradas en §11.8, + **66** de esta extensión).
+
+# 13. EXTENSIÓN — Build 7: Casas Ejidales y mejoras de ventanilla
+
+> **CONTINUACIÓN LITERAL DE `SPEC.md`.** Esta sección se **agrega al final** de `SPEC.md` (después de la línea "Definición de 'terminado' (build 6)"). **Nada de las secciones 1–12 se reescribe ni se renegocia**: todas sus reglas siguen vigentes palabra por palabra. Mismo monorepo, mismo `docker-compose.yml`, mismos 3 servicios (`db`, `backend`, `pwa`). **No se agrega ninguna dependencia npm nueva** (§12.12 sigue vigente). Código comentado en español, UI en español.
+
+## 13.1 Objetivo de la extensión
+
+Dos tipos de entregable en un solo build: (a) dar de alta el **proyecto Casas Ejidales** (`CEJ`) con sus 8 documentos requeridos en la BD y en el módulo de ventanilla existente, sin crear ningún programa, subprograma ni componente nuevo; y (b) cuatro **mejoras de UX** en las pantallas de ventanilla — visor inline de PDF en el detalle de documentos, redirección automática post-guardado con banner de confirmación, zona de drag & drop en el checklist de documentos, y carátula imprimible del expediente — todas sin dependencias npm nuevas ni cambios de esquema.
+
+## 13.2 Decisiones de producto (implementar tal cual, no preguntar)
+
+- **D45. Casas Ejidales es un PROYECTO nuevo, no un programa nuevo.** Se modela como una fila en `proyectos` (clave `CEJ`, nombre "Casas Ejidales", `prefijo_folio='CEJ'`, `componente_id=NULL`, igual que PEO). La jerarquía Programa → Subprograma sigue siendo la misma existente: "Apoyo al Campo Queretano 2026" → "Impulso a la Productividad". **No se crea ningún registro en `programas`, `subprogramas` ni `componentes`.**
+- **D46. Los 8 documentos requeridos de Casas Ejidales son propios del proyecto CEJ.** Se insertan como 8 filas nuevas en `documentos_requeridos` con `proyecto_id = <id de CEJ>`, `tipos_persona = '{grupo}'`, `componentes = NULL` (aplican con cualquier componente). El texto de cada documento se toma literalmente del PDF `CamScanner 17-08-2026 10.27.pdf`. No se reutilizan las 8 filas del anexo PEO (§12.7.2): son entidades separadas con su propio `proyecto_id`.
+- **D47. El folio CEJ sigue el mismo esquema.** `CEJ-{clave_regional}-{siglas_municipio}-{consecutivo 4 dígitos}-{año 2 dígitos}`. El generador de folios ya lo soporta: solo necesita la nueva fila en `proyectos` con `prefijo_folio='CEJ'`.
+- **D48. No se restringe `tipo_persona` en el backend para CEJ.** La documentación del PDF lista requisitos solo para "Grupos de productores", pero la validación a nivel API no cambia (E42 sigue aceptando `fisica`, `moral`, `grupo` con cualquier proyecto). El algoritmo de E41 devolverá solo los 8 documentos CEJ cuando `tipo_persona='grupo'`; para otros tipos el checklist vendrá de las reglas generales (§12.7.1) sin los CEJ-específicos.
+- **D49. Visor inline: tipo de archivo determinado por extensión del `archivo_nombre`.** La tabla `solicitud_documentos` no guarda `content-type`, pero sí `archivo_nombre`. Si termina en `.pdf` → `<iframe>`; si termina en `.jpg`, `.jpeg`, `.png` o `.webp` → `<img>`. Si la extensión es desconocida o nula, se muestra solo el `<a>` enlace sin viewer inline. El enlace `<a data-testid="enlace-archivo">` se mantiene en todos los casos como descarga de respaldo.
+- **D50. Redirección post-guardado: timer cancelable.** El contador de 4 s inicia al montar el modal `modal-folio-generado`. Si el usuario pulsa "Ver solicitud" antes de los 4 s, la navegación es inmediata y el timer se cancela (`clearTimeout`). La URL destino incluye `?nuevo=1`. En `DetalleSolicitud.tsx`, `useSearchParams` detecta el param, muestra el banner, y reemplaza la URL con `navigate(location.pathname, {replace:true})` para que al recargar o al volver con "atrás" no aparezca de nuevo.
+- **D51. Drag & drop: solo el primer archivo de la lista.** Si el usuario suelta varios archivos, se procesa `event.dataTransfer.files[0]` y se ignoran los demás. Sin validación de MIME en cliente antes de enviar (la validación ya existe en E46). La zona usa los eventos `dragover`, `dragleave`, `drop` del DOM nativo; sin librería.
+- **D52. Carátula imprimible: `window.print()` en la misma pestaña.** No se abre ventana nueva. Se aplica `@media print` dentro del mismo archivo TSX: oculta todo el layout excepto `[data-testid="caratula-imprimible"]`. Las casillas de documentos se renderizan como `<input type="checkbox" disabled>` (no marcadas) para que el papel impreso muestre cuadros vacíos para check manual.
+
+## 13.3 Modelo de datos — `db/migrations/014_casas_ejidales.sql`
+
+Esta migración es **100 % aditiva e idempotente**. No toca ninguna tabla, columna ni índice existente. El script `db/migrar.ts` ya existente la ejecuta sin modificación.
+
+```sql
+-- Proyecto nuevo: Casas Ejidales (CEJ)
+INSERT INTO proyectos (clave, nombre, prefijo_folio, componente_id, activo)
+VALUES ('CEJ', 'Casas Ejidales', 'CEJ', NULL, TRUE)
+ON CONFLICT (clave) DO NOTHING;
+
+-- 8 documentos requeridos para Casas Ejidales (solo grupos de productores).
+-- componentes = NULL => aplica con cualquier componente.
+-- Para idempotencia se usa WHERE NOT EXISTS verificando (requisito, proyecto_id).
+INSERT INTO documentos_requeridos (requisito, componentes, tipos_persona, proyecto_id, orden, activo)
+SELECT req, NULL, '{grupo}', proy.id, ord, TRUE
+FROM (VALUES
+  ('Solicitud mediante escrito libre dirigida al Titular de la Secretaría', 1),
+  ('Ficha técnica', 2),
+  ('Acta integración del grupo de productores', 3),
+  ('Identificación oficial vigente con fotografía (INE o pasaporte) del representante del grupo de productores', 4),
+  ('CURP del representante del grupo de productores', 5),
+  ('Constancia de Situación Fiscal del representante del grupo de productores', 6),
+  ('Comprobante de domicilio del representante de grupo de productores', 7),
+  ('Relación de beneficiarios directos del grupo de productores', 8)
+) AS docs(req, ord)
+CROSS JOIN (SELECT id FROM proyectos WHERE clave = 'CEJ') AS proy
+WHERE NOT EXISTS (
+  SELECT 1 FROM documentos_requeridos dr
+  WHERE dr.requisito = docs.req
+    AND dr.proyecto_id = proy.id
+);
+```
+
+> **Nota de implementación:** si el Generator prefiere añadir un índice único parcial `CREATE UNIQUE INDEX IF NOT EXISTS idx_docsreq_req_proyecto ON documentos_requeridos (requisito, proyecto_id) WHERE proyecto_id IS NOT NULL;` como parte de la misma migración, puede hacerlo y sustituir el `WHERE NOT EXISTS` por `ON CONFLICT (requisito, proyecto_id) WHERE proyecto_id IS NOT NULL DO NOTHING`. Cualquiera de las dos estrategias es válida; lo que no se permite es que la migración ejecutada dos veces duplique filas.
+
+**Fallback de `siglas_folio`:** la migración 014 no toca `municipios.siglas_folio`; el seed 005 ya las llenó en Build 6 (criterio 252). Si hay municipios nuevos sin siglas, el fallback determinista de §12.5 los cubre.
+
+## 13.4 Pantallas afectadas (delta sobre §12.8)
+
+### 13.4.1 `pwa/src/pantallas/DetalleSolicitud.tsx`
+
+Cuatro cambios independientes en el mismo archivo, sin romper ningún `data-testid` existente:
+
+**1. Visor inline (B7-A):** en el bloque de cada documento, donde hoy existe solo `<a data-testid="enlace-archivo">`, agregar encima un viewer condicional basado en la extensión de `archivo_nombre`: si termina en `.pdf` → `<iframe data-testid="visor-pdf-documento" src={url} width="100%" height="400px" title="Documento adjunto" />`; si termina en `.jpg`, `.jpeg`, `.png` o `.webp` → `<img data-testid="visor-imagen-documento" src={url} alt="Documento adjunto" style={{maxWidth:'100%'}} />`. El `<a>` sigue presente en ambos casos.
+
+**2. Banner post-guardado (B7-C):** al montar, leer `useSearchParams()`. Si existe `nuevo=1`, mostrar `<div data-testid="banner-nuevo" role="status">Solicitud {folio} registrada. Adjunta los documentos requeridos.</div>` y llamar `navigate(location.pathname, {replace:true})` para quitar el param del historial. El banner se desmonta al hacer clic (`onClick`) o tras `setTimeout(10000)`.
+
+**3. Drag & drop (B7-D):** encima de cada `<input type="file" data-testid="input-archivo-documento">`, agregar `<div data-testid="zona-drop-documento" className="zona-drop" onDragOver={e => {e.preventDefault(); e.currentTarget.classList.add('zona-drop--activa');}} onDragLeave={e => e.currentTarget.classList.remove('zona-drop--activa')} onDrop={e => {e.preventDefault(); e.currentTarget.classList.remove('zona-drop--activa'); void adjuntar(docId, e.dataTransfer.files[0] ?? null);}}>Arrastra aquí el archivo</div>`.
+
+**4. Carátula imprimible (B7-E):** botón `<button data-testid="btn-imprimir-caratula" onClick={() => window.print()}>Imprimir carátula</button>` en la tarjeta superior. Sección `<div data-testid="caratula-imprimible" className="caratula">` siempre presente en el DOM, oculta en pantalla normal (`display:none` en CSS), visible solo en `@media print`. Contiene: `[data-testid="caratula-folio"]`, `[data-testid="caratula-solicitante"]` (nombre o razón social según tipo_persona), `[data-testid="caratula-municipio"]`, `[data-testid="caratula-programa"]`, `[data-testid="caratula-fecha"]` (fecha en formato `toLocaleDateString('es-MX')`), `[data-testid="caratula-conceptos"]` (tabla con filas `caratula-fila-concepto`), `[data-testid="caratula-lista-documentos"]` (lista de ítems `caratula-item-documento` cada uno con `<input type="checkbox" disabled />`). CSS `@media print` oculta `.tarjeta` y `.modal-fondo` para que solo la carátula se imprima.
+
+### 13.4.2 `pwa/src/pantallas/NuevaSolicitud.tsx`
+
+**Redirección automática (B7-C):** en el bloque del modal `modal-folio-generado`, al montar (cuando `resultado !== null`), iniciar `const timer = setTimeout(() => navegar(`/solicitudes/${resultado.solicitud.id}?nuevo=1`), 4000)` guardado en una `ref`. El botón `btn-ver-solicitud` cancela el timer y navega inmediatamente a `/solicitudes/${resultado.solicitud.id}?nuevo=1`. El modal desaparece en ambos casos al navegar.
+
+## 13.5 Assumptions nuevas (continúa la numeración de §12.11)
+
+55. **El PDF CamScanner 17-08-2026 10.27.pdf muestra cabeceras de PEO**, no de un programa independiente "Casas Ejidales". El usuario indicó que ese PDF corresponde a los requisitos de Casas Ejidales. Se resuelve modelando "Casas Ejidales" como un PROYECTO nuevo (`CEJ`) dentro del programa y subprograma ya existentes, con los 8 documentos listados en el PDF tomados verbatim. No se crea programa, subprograma ni componente nuevo.
+56. **Prefijo de folio `CEJ`** (3 letras, "Casas EJidales"). Consistente con PEO (3 letras). Alternativas descartadas: `CE` (2 letras, rompe la consistencia visual), `CASEJ` (5 letras, más largo sin necesidad).
+57. **El backend no restringe `tipo_persona` para el proyecto CEJ.** La restricción "solo grupos de productores" es documental. El algoritmo E41 la hace efectiva naturalmente: los 8 documentos CEJ tienen `tipos_persona='{grupo}'` y no aparecen en el checklist de `fisica`/`moral`. Forzar la restricción en E42 requeriría columna nueva y agrega complejidad sin beneficio real.
+58. **El visor inline determina el tipo de archivo por extensión de `archivo_nombre`** (ya almacenado en `solicitud_documentos`). Si la extensión es nula o desconocida, solo se muestra el `<a>`. No se añade columna `content_type` (evita migración extra).
+59. **La URL con `?nuevo=1` produce el banner una sola vez.** `DetalleSolicitud.tsx` llama a `navigate(location.pathname, {replace:true})` en el primer render con el param presente, eliminándolo del historial. Recargar la página, botón "atrás" o enlace directo sin el param no muestran el banner.
+60. **Idempotencia de la migración 014 con `WHERE NOT EXISTS`.** Si en el futuro el Generator prefiere un índice único parcial sobre `(requisito, proyecto_id)`, puede añadirlo en la misma migración 014 sin romper nada: ese índice no existía antes, es aditivo.
+
+## 13.6 Dependencias y archivos
+
+**Sin dependencias npm nuevas.** Los cuatro cambios de UX usan únicamente React, DOM nativo y CSS.
+
+**Archivos nuevos:**
+
+```
+db/migrations/014_casas_ejidales.sql
+```
+
+**Archivos modificados:**
+
+```
+pwa/src/pantallas/DetalleSolicitud.tsx   (visor inline, banner, drag & drop, carátula)
+pwa/src/pantallas/NuevaSolicitud.tsx     (timer de redirección en modal)
+README.md                                (documentar proyecto CEJ y mejoras de UX)
+```
+
+**No se modifica:** ningún archivo de backend, ningún seed existente, `docker-compose.yml`, `packages/shared/src/*`, `pwa/src/sync/*`, `pwa/src/db/indexeddb.ts`, ni ninguna ruta API.
+
+---
+
+## 13.7 Rubric extendido (criterios 307–343)
+
+Continúa la numeración de §7, §8.11, §9.9, §10.11, §11.9 y §12.13. Base: `API=http://localhost:3000`, `APP=http://localhost:8080`. Tokens: `T_ADMIN`, `T_VEN2` (`ventanilla2`, alcance "todos"). **Nota de actualización:** el criterio 250 documentó el estado de Build 6 con 42 documentos activos; tras Build 7 el valor correcto es 50 (se verifica en criterio 342).
+
+### Base de datos — migración 014 (307–312)
+
+La migración 014 es pura inserción; no altera columnas, tablas ni índices existentes. Los criterios de BD de §12.13 (241–250) deben seguir pasando íntegramente.
+
+307. Existe `db/migrations/014_casas_ejidales.sql` y sigue **sin existir** `db/migrations/011_*.sql` (criterio 231 intacto); ejecutar el script `db/migrar.ts` sobre una BD de Build 6 ya poblada sale con código 0 y sin error.
+308. `SELECT clave, prefijo_folio, componente_id FROM proyectos WHERE clave = 'CEJ'` devuelve exactamente **1 fila** con `prefijo_folio = 'CEJ'` y `componente_id IS NULL`; `SELECT count(*) FROM proyectos` devuelve ≥ **2**.
+309. `SELECT count(*) FROM documentos_requeridos WHERE activo = TRUE AND proyecto_id = (SELECT id FROM proyectos WHERE clave = 'CEJ')` devuelve exactamente **8**.
+310. Las 8 filas CEJ tienen `tipos_persona` igual a `{grupo}` (o `'{grupo}'` en notación de array de PostgreSQL) y `componentes IS NULL`; sus textos de `requisito` incluyen exactamente: `Solicitud mediante escrito libre dirigida al Titular de la Secretaría`, `Ficha técnica`, `Acta integración del grupo de productores`, `Identificación oficial vigente con fotografía (INE o pasaporte) del representante del grupo de productores`, `CURP del representante del grupo de productores`, `Constancia de Situación Fiscal del representante del grupo de productores`, `Comprobante de domicilio del representante de grupo de productores` y `Relación de beneficiarios directos del grupo de productores`.
+311. La migración 014 es **idempotente**: ejecutarla una segunda vez no produce error y `SELECT count(*) FROM proyectos WHERE clave = 'CEJ'` sigue siendo **1** y `SELECT count(*) FROM documentos_requeridos WHERE proyecto_id = (SELECT id FROM proyectos WHERE clave='CEJ')` sigue siendo **8**.
+312. La migración 014 no altera catálogos existentes: `SELECT count(*) FROM componentes` devuelve **3** (sin cambio), `SELECT count(*) FROM ventanillas` devuelve **5** (sin cambio), `SELECT count(*) FROM programas` devuelve **1** (sin cambio), `SELECT count(*) FROM subprogramas` devuelve **1** (sin cambio).
+
+### API — Casas Ejidales en el módulo de ventanilla (313–319)
+
+El proyecto CEJ se integra de forma transparente en los endpoints existentes (E40, E41, E42). No hay endpoints nuevos, ni cambios de RBAC ni de esquema de validación en el backend.
+
+313. `GET $API/api/solicitudes/catalogos` con `T_VEN2` devuelve en `proyectos` un array con ≥ **2** elementos; uno de ellos tiene `clave:'CEJ'` y `prefijo_folio:'CEJ'`.
+314. `POST $API/api/solicitudes/documentos-requeridos` con `T_VEN2` y `{"componente_id":<id de cualquier componente válido>,"tipo_persona":"grupo","proyecto_id":<id de CEJ>}` devuelve **200** con `documentos` que incluye `Ficha técnica` y `Relación de beneficiarios directos del grupo de productores`; el mismo cuerpo **sin** `proyecto_id` **no** incluye esos dos requisitos (son exclusivos del proyecto CEJ).
+315. `POST $API/api/solicitudes` con `T_VEN2` y payload válido (`tipo_persona:'grupo'`, `proyecto_id:<id CEJ>`, 1 concepto, `declaracion_aceptada:true`, municipio y componente dentro del alcance de `ventanilla2`) devuelve **201** con `solicitud.folio` que cumple `^CEJ-[A-Z]{3}-[A-Z]{3}-0001-\d{2}$` y `SELECT origen FROM solicitudes WHERE id=<id>` devuelve `solicitud_ventanilla`.
+316. El contador de folios CEJ es **independiente** del de PEO: tras el criterio 315, `SELECT consecutivo FROM solicitud_folios WHERE prefijo='CEJ'` devuelve **1** y `SELECT consecutivo FROM solicitud_folios WHERE prefijo='PEO'` tiene el mismo valor que antes del criterio 315 (no aumentó).
+317. `POST $API/api/solicitudes` con proyecto `CEJ` y `tipo_persona:'fisica'` devuelve **201** (no hay restricción de tipo de persona a nivel API); la lista de documentos calculada por E41 para ese alta **no** incluye los 8 documentos CEJ (que tienen `tipos_persona='{grupo}'`).
+318. Tras el criterio 315, `SELECT beneficiario_id FROM solicitud_conceptos WHERE solicitud_id=<id CEJ>` devuelve un valor no nulo, y `SELECT folio FROM beneficiarios WHERE id=<beneficiario_id>` devuelve el folio con prefijo `CEJ`.
+319. Regresión: `POST $API/api/solicitudes` con proyecto `PEO` sigue devolviendo folio con prefijo `PEO`; el criterio 286 sigue pasando (E41 con `proyecto_id=<PEO>` devuelve `Ficha técnica`); el criterio 261 sigue pasando con PEO.
+
+### PWA — visor inline de PDF en DetalleSolicitud (320–323)
+
+El visor inline no requiere cambios de backend. La URL del `<iframe>` o `<img>` es la misma URL autenticada que ya usa el `<a data-testid="enlace-archivo">`.
+
+320. Playwright: en `/solicitudes/:id`, tras subir un archivo **PDF** mediante `input-archivo-documento` (o directamente con curl hacia E46), el ítem del documento muestra `[data-testid="visor-pdf-documento"]` (elemento `iframe`) con atributo `src` no vacío, y `[data-testid="enlace-archivo"]` sigue presente; el conteo de `[data-testid="visor-imagen-documento"]` en ese mismo ítem es **0**.
+321. Playwright: si el archivo adjunto es un **JPG**, el ítem muestra `[data-testid="visor-imagen-documento"]` (elemento `img`) con `src` no vacío; el conteo de `[data-testid="visor-pdf-documento"]` en ese ítem es **0**; el `<a data-testid="enlace-archivo">` sigue presente.
+322. `grep -rn` en `pwa/src/pantallas/DetalleSolicitud.tsx` **no** encuentra ningún `import` cuyo especificador contenga `pdf.js`, `react-pdf`, `pdfjs`, `pdfmake` ni `html2pdf`; la implementación del visor se realiza únicamente con la etiqueta `iframe` del DOM nativo.
+323. Playwright: el atributo `src` del `[data-testid="visor-pdf-documento"]` es la misma URL que el `href` del `[data-testid="enlace-archivo"]` del mismo ítem (`await locator.getAttribute('src') === await linkLocator.getAttribute('href')`), confirmando que ambos usan la URL autenticada generada por `urlConToken`.
+
+### PWA — redirección automática post-guardado con banner (324–328)
+
+El modal `modal-folio-generado` ya existe (criterio 303). Esta subsección verifica los cambios de B7-C: timer de 4 s, destino con `?nuevo=1` y banner en `DetalleSolicitud.tsx`.
+
+324. Playwright: en `/solicitudes/nueva`, tras guardar una solicitud válida aparece `[data-testid="modal-folio-generado"]` con `[data-testid="texto-folio"]` no vacío y `[data-testid="btn-ver-solicitud"]`; al pulsar el botón la URL cambia a `/solicitudes/<id>?nuevo=1` en menos de 1 s y el modal desaparece.
+325. Playwright: sin pulsar "Ver solicitud", `page.waitForURL(/\/solicitudes\/\d+\?nuevo=1/, {timeout: 6000})` resuelve antes de 6 s (el timer de 4 s dispara la navegación automática).
+326. Playwright: al llegar a `/solicitudes/<id>?nuevo=1`, existe `[data-testid="banner-nuevo"]` con texto que contiene el folio y la cadena "Adjunta los documentos requeridos"; y la URL en el historial **ya no** contiene `?nuevo=1` (fue reemplazada con `navigate(path, {replace:true})`).
+327. Playwright: hacer clic en `[data-testid="banner-nuevo"]` hace que `page.locator('[data-testid="banner-nuevo"]').count()` sea **0** en menos de 1 s.
+328. Playwright: esperar 11 s desde la aparición del banner sin hacer clic: `page.locator('[data-testid="banner-nuevo"]').count()` es **0** (el `setTimeout(10000)` lo desmontó); navegar a `/solicitudes/<mismo id>` (sin `?nuevo=1`) confirma que el conteo de `[data-testid="banner-nuevo"]` es **0** en accesos normales.
+
+### PWA — zona de drag & drop en DetalleSolicitud (329–332)
+
+La zona de drop es un añadido visual encima del input file existente; el input sigue siendo el fallback. Sin librería externa.
+
+329. Playwright: en `/solicitudes/:id`, cada `[data-testid="item-documento"]` contiene exactamente **1** elemento `[data-testid="zona-drop-documento"]`; `grep -rn` en `pwa/src/pantallas/DetalleSolicitud.tsx` **no** encuentra ningún `import` de librería de drag & drop (react-dropzone, filepond, uppy, etc.).
+330. Playwright: `page.dispatchEvent('[data-testid="zona-drop-documento"]:first-child', 'dragover')` cambia el estado visual de la zona; verificar con `page.locator('[data-testid="zona-drop-documento"]:first-child').evaluate(el => el.classList.contains('zona-drop--activa'))` devuelve `true`; disparar `dragleave` y verificar que devuelve `false`.
+331. Playwright: crear un `DataTransfer` con un archivo JPG (`new File([new Uint8Array([0xff,0xd8,0xff])], 'test.jpg', {type:'image/jpeg'})`), despachar `drop` sobre `[data-testid="zona-drop-documento"]:first-child` — tras el drop el servidor responde **201** y aparece `[data-testid="enlace-archivo"]` en ese ítem (mismo resultado que subir por `input-archivo-documento`).
+332. Playwright: el `input-archivo-documento` del mismo ítem sigue presente y funcional tras la adición del drag & drop (criterio 304 sigue pasando sin modificación referente a subida de archivos).
+
+### PWA — carátula imprimible del expediente (333–339)
+
+La carátula vive en el mismo `DetalleSolicitud.tsx`, visible solo en `@media print`. El botón llama a `window.print()` nativamente. Sin librería externa.
+
+333. Playwright: en `/solicitudes/:id` existe `[data-testid="btn-imprimir-caratula"]` con texto "Imprimir carátula"; al evaluarlo con `page.evaluate(() => { window._printCalled = false; const orig = window.print.bind(window); window.print = () => { window._printCalled = true; }; })` y luego pulsar el botón, `await page.evaluate(() => window._printCalled)` devuelve `true`.
+334. Playwright: `page.locator('[data-testid="caratula-imprimible"]').count()` es **1** (el elemento existe en el DOM); dentro de él existen `[data-testid="caratula-folio"]` con el folio de la solicitud, `[data-testid="caratula-solicitante"]` con el nombre o razón social, `[data-testid="caratula-municipio"]` con el nombre del municipio de la ubicación del apoyo, y `[data-testid="caratula-programa"]` con texto no vacío.
+335. Playwright: `[data-testid="caratula-conceptos"]` dentro de `caratula-imprimible` contiene al menos **1** elemento `[data-testid="caratula-fila-concepto"]`; cada fila incluye el nombre del concepto y un valor numérico de monto visible en el DOM.
+336. Playwright: `[data-testid="caratula-lista-documentos"]` dentro de `caratula-imprimible` contiene tantos `[data-testid="caratula-item-documento"]` como elementos `[data-testid="item-documento"]` tiene la sección de documentos de esa solicitud; y cada `caratula-item-documento` contiene exactamente **1** elemento `input[type="checkbox"]` con el atributo `disabled` presente y **sin** `checked`.
+337. Playwright: `[data-testid="caratula-fecha"]` contiene un texto no vacío que **no** es una cadena ISO 8601 pura (no es solo dígitos, letras y guiones como `2026-08-17T18:00:00.000Z`); incluye al menos un separador legible como `/` o la palabra de un mes en español.
+338. `grep -rn` en `pwa/src/pantallas/DetalleSolicitud.tsx` **no** encuentra ningún `import` de librería de generación de PDF (jspdf, html2pdf, pdfmake, etc.); la única llamada relacionada con impresión es `window.print()`.
+339. `grep -rn` en `pwa/src/pantallas/DetalleSolicitud.tsx` o en su archivo CSS asociado **sí** encuentra la cadena `@media print`; y dentro de ese bloque existe una regla con `display: none` o `visibility: hidden` aplicada a elementos que no son la carátula (por ejemplo `.tarjeta`, el layout principal, o un selector equivalente).
+
+### Regresiones y documentación (340–343)
+
+340. Los criterios 291, 292 y 304 siguen pasando: subir un archivo JPG por `input-archivo-documento` devuelve **201**, `GET` del `archivo_url` con token devuelve **200** con `content-type` de imagen, en el detalle se puede marcar `chk-documento-recibido` y subir archivos sin error (ninguna regresión introducida por los cambios de drag & drop ni por el visor inline).
+341. El criterio 296 (regresión general: `GET /api/health`, login, catálogos, staging, auditoría y correcciones) sigue pasando sin cambios.
+342. `SELECT count(*) FROM documentos_requeridos WHERE activo` devuelve **50** tras aplicar la migración 014 (42 de Build 6 + 8 de CEJ); `SELECT count(*) FROM proyectos` devuelve ≥ **2**; y `SELECT count(*) FROM documentos_requeridos WHERE activo AND proyecto_id IS NULL` devuelve el mismo valor que en Build 6 para las reglas generales (ninguna fila existente fue modificada ni eliminada).
+343. `README.md` documenta el proyecto Casas Ejidales: (a) que es un **proyecto nuevo** (`CEJ`) bajo el programa "Apoyo al Campo Queretano 2026" y subprograma "Impulso a la Productividad", sin componente asignado; (b) el prefijo de folio `CEJ` y su estructura `CEJ-{regional}-{municipio}-{consecutivo}-{año}`; (c) que los 8 documentos requeridos aplican a **grupos de productores** (listados explícitamente); (d) cómo aplicar la migración 014 sobre una BD de Build 6 existente sin downtime; y (e) que las mejoras de UX (visor PDF, banner post-guardado, drag & drop, carátula imprimible) no requieren variable de entorno nueva ni migración adicional.
+
+**Definición de terminado (build 7):** los **343** criterios pasan (306 acumulados de los builds 1–6 + **37** de esta extensión).

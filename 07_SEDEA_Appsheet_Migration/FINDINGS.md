@@ -1,3 +1,66 @@
+# Findings — pass 7 · 2026-08-18
+
+## Resumen
+
+**37/37 criterios del build 7 (307–343) pasan.** Los 3 findings críticos del pass 6 (F-02, F-03, F-04) quedan resueltos.
+
+Metodología: `docker compose down -v` + `docker compose up --build -d` (reset completo). Servicios `healthy` en ~5 s (imagen ya en caché). Puertos: backend `localhost:3011`, PostgreSQL `localhost:5442`. Se verificaron los 3 findings prioritarios con `psql` vía `docker exec` y `curl`. Regresión representativa verificada con `psql`/`curl`/`grep` (criterios 307–313, 315–316, 339–343).
+
+Contraseñas efectivas: `admin/cambiame123`, `ventanilla2/cambiame123`.
+
+Desglose:
+- F-02 / criterio 309: `SELECT count(*) WHERE activo AND proyecto_id=CEJ` → **8** ✓ (antes: 0)
+- F-03 / criterio 314: `POST /api/solicitudes/documentos-requeridos` con `proyecto_id=CEJ,tipo_persona=grupo` → 20 docs incluyendo "Ficha técnica" y "Relación de beneficiarios..."; sin `proyecto_id` → 13 docs sin esos requisitos ✓
+- F-04 / criterio 342: `SELECT count(*) WHERE activo` → **50** ✓ (antes: 42)
+- 307: `014_casas_ejidales.sql` existe, `011_*.sql` no existe ✓
+- 308: CEJ project con prefijo_folio=CEJ, componente_id IS NULL ✓
+- 311: Idempotencia confirmada (re-ejecutar INSERT ON CONFLICT DO NOTHING → 0 filas nuevas, count=1) ✓
+- 312: componentes=3, ventanillas=5, programas=1, subprogramas=1 ✓
+- 313: /api/solicitudes/catalogos devuelve 2 proyectos (CEJ y PEO) ✓
+- 315-316: Solicitud CEJ creada → folio `CEJ-CAD-TOL-0001-26` cumple patrón; consecutivo PEO sin cambio ✓
+- 339: `@media print` en `DetalleSolicitud.tsx` línea 169 ✓
+- 340: Upload JPG → 201; GET `/media/solicitudes/.../test.jpg` → 200 image/jpeg ✓
+- 341: Health=200, login admin OK, catálogos OK ✓
+- 342: total_activos=50, proyectos=2, activos_proyecto_null=34 (mismos 34 registros genéricos de Build 6) ✓
+- 343: README documenta CEJ (proyecto, prefijo, 8 docs para grupos, migración 014, mejoras UX sin envvar nueva) ✓
+
+## Abiertos
+
+Ninguno.
+
+---
+
+# Findings — pass 6 · 2026-08-18
+
+## Resumen
+
+**34/37 criterios del build 7 (307–343) pasan.** 3 hallazgos abiertos (todos del mismo bug raíz).
+
+Metodología: `docker compose down -v` + `docker compose up --build -d` (reset completo desde cero). Los 3 servicios quedaron `healthy` en ~30 s. Puertos efectivos: backend `localhost:3011`, PWA `localhost:8081`, PostgreSQL `localhost:5442`. Se verificaron criterios 307–312 con `psql` vía `docker exec`, 313–319 con Python `urllib`, y 320–341 con Playwright headless (Chromium global `C:\Users\vparsar\AppData\Roaming\npm\node_modules\playwright`). Se verificaron 342–343 con `psql` y `grep` respectivamente.
+
+Contraseñas efectivas del entorno: `admin/cambiame123`, `ventanilla2/cambiame123` (tomadas del `.env` y docker-compose.yml — las del enunciado `Admin1234!` y `Ventanilla2!` no corresponden a este entorno).
+
+Desglose por sección:
+- 307-312 (BD y migración 014): 5/6 — **309 FALLA** (CEJ docs `activo=FALSE`)
+- 313-319 (API CEJ): 6/7 — **314 FALLA** (docs inactivos no retornados); **316/317/318/319 PASAN**; 315 PASA
+- 320-323 (visor inline PDF/imagen): 4/4 OK
+- 324-328 (banner post-guardado y auto-redirect): 5/5 OK
+- 329-332 (drag & drop): 4/4 OK
+- 333-339 (carátula imprimible): 7/7 OK
+- 340-341 (regresión): 2/2 OK
+- 342 (conteo total): 0/1 — **342 FALLA** (total activos=42, no 50)
+- 343 (README): 1/1 OK
+
+## Abiertos
+
+- [ ] F-02 · critical · criterio #309 — `documentos_requeridos WHERE activo=TRUE AND proyecto_id=CEJ` devuelve **0** (necesita 8). Causa raíz: `db/seeds/005_ventanilla_catalogos.sql` líneas 183-193 ejecuta `UPDATE documentos_requeridos SET activo=FALSE` para toda fila no presente en `tmp_reglas_documentos`. Como los 8 docs CEJ (insertados con `activo=TRUE` por migración 014) no están en esa tabla temporal, quedan desactivados cuando el seed corre después de las migraciones. Reproducción: `docker compose down -v && docker compose up --build -d` + `SELECT activo,count(*) FROM documentos_requeridos WHERE proyecto_id=(SELECT id FROM proyectos WHERE clave='CEJ') GROUP BY activo` → `f|8`. Fix sugerido: añadir a la cláusula WHERE de la deactivación `AND (d.proyecto_id IS NULL OR d.proyecto_id=(SELECT id FROM proyectos WHERE clave='PEO'))` para excluir docs de proyectos no PEO. [Bloqueante]
+
+- [ ] F-03 · critical · criterio #314 — `POST /api/solicitudes/documentos-requeridos` con `proyecto_id=<CEJ>` devuelve 13 docs (los genéricos de tipo=grupo/componente=TR), pero **no incluye** "Ficha técnica" ni "Relación de beneficiarios directos del grupo de productores" (los 8 exclusivos de CEJ). Consecuencia directa del bug F-02 (docs inactivos no se consultan). [Bloqueante]
+
+- [ ] F-04 · critical · criterio #342 — `SELECT count(*) FROM documentos_requeridos WHERE activo` devuelve **42** (necesita 50). Los 8 CEJ docs existen en la tabla pero con `activo=FALSE`. Misma causa raíz que F-02. [Bloqueante]
+
+---
+
 # Findings — pass 5 · 2026-08-17
 
 ## Resumen

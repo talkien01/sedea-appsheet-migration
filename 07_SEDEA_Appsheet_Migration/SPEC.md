@@ -3187,3 +3187,941 @@ export function proyectosAplicables(
 | 386 | Criterios 1-343 vuelven a pasar sobre el build desplegado. | Re-run evaluator. |
 
 **Definición de terminado (build 8):** los **43** criterios pasan (343 acumulados de los builds 1-7 + **43** de esta extensión). Total acumulado: **386** criterios.
+
+# 15. EXTENSIÓN — Rediseño visual completo de la PWA: design system, tema dual y layout responsivo (Build 9)
+
+> Esta sección **extiende** el SPEC. No sustituye ni reinterpreta nada de las secciones 1-14.
+> Todo lo definido antes sigue vigente tal cual. Los criterios 1-386 siguen siendo obligatorios
+> y deben volver a pasar sin modificación alguna de su enunciado.
+>
+> **Este build es exclusivamente visual.** Cero cambios de lógica de negocio, cero cambios de
+> endpoints, cero cambios de esquema de base de datos, cero cambios de contrato de API.
+
+---
+
+## 15.1 Objetivo
+
+Sustituir el lenguaje visual improvisado del build 1 (verde institucional + CSS plano de 758 líneas
++ barra superior única que amontona 8 enlaces) por el **design system de IntechQRO** (naranja/ink,
+Space Grotesk/Inter/JetBrains Mono, dos modos completos) aplicado a una **arquitectura de layout de
+aplicación** —sidebar en escritorio, barra inferior en móvil— pensada para el capturista de campo que
+usa el teléfono con una sola mano y para el analista de gestión que trabaja en escritorio con tablas
+densas.
+
+## 15.2 Scope
+
+**SÍ incluye**
+
+1. Reestructuración de `pwa/src/styles/` en 6 archivos: `tokens.css`, `fuentes.css`, `base.css`,
+   `componentes.css`, `cascaron.css` y `global.css` (este último solo `@import`).
+2. Adopción literal de los tokens de `_referencia_diseno/tokens.css` (bloques `:root`,
+   `[data-mode="dark"]` y `[data-mode="light"]`), **más** una capa de tokens semánticos propios
+   (éxito / aviso / peligro / info) que la referencia no trae y la app sí necesita.
+3. Capa de **alias de compatibilidad**: las variables actuales (`--verde`, `--gris-texto`,
+   `--gris-borde`, `--blanco`, `--radio`, `--sombra`…) se conservan como nombres pero se
+   redefinen apuntando a los tokens nuevos, para no romper ninguna referencia existente
+   (incluidas las de `DetalleSolicitud.tsx`, que usa `var(--verde, #0b6b3a)` inline).
+4. Carga de las tres familias tipográficas **sin depender de ninguna CDN externa**
+   (`@font-face` con `local()` + archivos servidos por la propia app + fallback a `system-ui`).
+5. Componente nuevo de cascarón responsivo (`Cascaron.tsx`) con:
+   - `BarraLateral.tsx` (sidebar) en tablet y escritorio, colapsable a rail de íconos.
+   - `BarraInferior.tsx` (barra inferior de accesos rápidos) en móvil, con hoja "Más".
+   - `FranjaEstado.tsx` — la reconversión de `BarraEstado.tsx` a franja delgada de estado.
+6. Componente nuevo `ToggleTema.tsx` + módulo `pwa/src/tema/tema.ts` (hook + persistencia) +
+   script inline anti-parpadeo en `pwa/index.html`.
+7. Componente nuevo `Iconos.tsx` con SVG inline propios (cero dependencias npm).
+8. Aplicación consistente del nuevo lenguaje visual (tarjetas, tipografía, radios, sombras,
+   botones, inputs, tablas, badges, modales) a las 17 pantallas existentes.
+9. Extracción de la definición de navegación por rol a `pwa/src/navegacion/menu.ts`
+   (mismas condiciones de rol que hoy están hardcodeadas en `BarraEstado.tsx`, sin cambiarlas).
+10. Colores de las gráficas de `/dashboard` leídos de las variables CSS del tema activo.
+11. Rubric extendido (criterios **387-446**).
+
+**NO incluye**
+
+- Ninguna modificación a `backend/`, `db/`, `packages/shared/`, `scripts/`.
+- Ninguna modificación a `pwa/nginx.conf.template`, `pwa/Dockerfile`, `pwa/vite.config.ts`
+  (Service Worker / `vite-plugin-pwa` intactos), `pwa/src/api/`, `pwa/src/db/`, `pwa/src/sync/`.
+- Ninguna dependencia npm nueva. `pwa/package.json` no cambia en `dependencies`
+  ni en `devDependencies`.
+- Ningún rediseño de **contenido**: no se agrega, quita ni renombra ningún campo de formulario,
+  ninguna columna de tabla, ningún texto legal, ningún mensaje de validación, ningún paso de flujo.
+- Ningún `data-testid` existente se elimina ni se renombra. Solo se **agregan** los nuevos.
+- Ninguna adaptación de la paleta a verde SEDEA (decisión explícita del cliente, ver §15.15 A15-1).
+- Ningún reemplazo del logotipo institucional: la marca en el cascarón es tipográfica
+  (ver §15.15 A15-3). No se copia el logo de IntechQRO.
+- Ningún cambio a los estilos de impresión de la carátula de solicitud
+  (`DetalleSolicitud.tsx`, `@media print`): la carátula se sigue imprimiendo en negro sobre blanco
+  independientemente del tema activo.
+
+---
+
+## 15.3 Sistema de tokens
+
+### 15.3.1 `pwa/src/styles/tokens.css` — capa 1: primitivos (copia literal de la referencia)
+
+Se copia **tal cual** de `_referencia_diseno/tokens.css` el bloque `:root` completo:
+
+| Grupo | Tokens |
+|---|---|
+| Marca | `--brand-orange: #FF5A1F`, `--brand-orange-soft: #FF7A47`, `--brand-orange-deep: #E03E00`, `--brand-blue: #1E40FF`, `--brand-blue-soft: #5773FF` |
+| Neutros cálidos | `--ink-1000: #0A0A0C`, `--ink-900: #131318`, `--ink-800: #1C1C24`, `--ink-700: #2A2A35`, `--ink-600: #3D3D4A`, `--ink-500: #6E6E7E`, `--ink-400: #9A9AA8`, `--ink-300: #C4C4CC`, `--ink-200: #E4E4E8`, `--ink-100: #F2F2F0`, `--ink-50: #FAFAF7`, `--ink-0: #FFFFFF` |
+| Tipografía | `--font-display`, `--font-body`, `--font-mono` |
+| Radios | `--r-xs: 4px`, `--r-sm: 8px`, `--r-md: 12px`, `--r-lg: 18px`, `--r-xl: 24px`, `--r-2xl: 32px` |
+| Sombra 3D | `--shadow-int: 0.65`, `--shadow-spread: 0.5` |
+
+### 15.3.2 Capa 2: modo oscuro — `[data-mode="dark"]` (copia literal)
+
+| Token | Valor |
+|---|---|
+| `--bg` | `var(--ink-1000)` → `#0A0A0C` |
+| `--bg-elev` | `var(--ink-900)` → `#131318` |
+| `--bg-elev-2` | `var(--ink-800)` → `#1C1C24` |
+| `--bg-elev-3` | `var(--ink-700)` → `#2A2A35` |
+| `--fg` | `var(--ink-50)` → `#FAFAF7` |
+| `--fg-muted` | `var(--ink-400)` → `#9A9AA8` |
+| `--fg-subtle` | `var(--ink-500)` → `#6E6E7E` |
+| `--border` | `rgba(255,255,255,0.08)` |
+| `--border-strong` | `rgba(255,255,255,0.16)` |
+| `--accent` | `var(--brand-orange)` |
+| `--accent-2` | `var(--brand-blue-soft)` |
+| `--grid-line` | `rgba(255,255,255,0.04)` |
+| `--shadow-card` / `--shadow-pop` / `--shadow-glow` / `--shadow-text` | tal cual la referencia (`--shadow-text: none`) |
+
+### 15.3.3 Capa 2: modo claro — `[data-mode="light"]` (copia literal)
+
+| Token | Valor |
+|---|---|
+| `--bg` | `#F5F4EE` |
+| `--bg-elev` / `--bg-elev-2` / `--bg-elev-3` | `#FFFFFF` |
+| `--fg` | `var(--ink-1000)` → `#0A0A0C` |
+| `--fg-muted` | `var(--ink-500)` → `#6E6E7E` |
+| `--fg-subtle` | `var(--ink-400)` → `#9A9AA8` |
+| `--border` | `rgba(10,10,12,0.08)` |
+| `--border-strong` | `rgba(10,10,12,0.18)` |
+| `--accent` | `var(--brand-orange)` |
+| `--accent-2` | `var(--brand-blue)` |
+| `--grid-line` | `rgba(10,10,12,0.06)` |
+| `--shadow-card` / `--shadow-pop` / `--shadow-glow` / `--shadow-text` | tal cual la referencia (fórmulas `calc()` con `--shadow-int` / `--shadow-spread`) |
+
+> **Diferencia respecto a `bg-elev-2` / `bg-elev-3` en claro:** la referencia los deja los tres en
+> `#FFFFFF`. Para una app de gestión eso deja las cabeceras de tabla y los rails sin separación
+> visual. Se añade **solo en `[data-mode="light"]`** el token derivado
+> `--bg-sunk: #ECEBE4` (fondo hundido: `th`, rail del sidebar, campos deshabilitados).
+> En `[data-mode="dark"]`, `--bg-sunk: var(--ink-800)`.
+
+### 15.3.4 Capa 3: tokens semánticos propios (no existen en la referencia)
+
+La app tiene semáforo GPS, badges de alerta, mensajes error/aviso/info/éxito y estado de red.
+Esos son colores **semánticos**, no de marca: no se "naranjizan".
+
+| Token | dark | light | Uso |
+|---|---|---|---|
+| `--exito` | `#4ADE80` | `#15803D` | texto/borde de `.mensaje.exito`, `.badge.capturado`, `.semaforo.verde`, `.badge.alerta-ninguna`, punto verde de "En línea" |
+| `--exito-bg` | `rgba(74,222,128,0.12)` | `#E6F4EA` | fondo de los anteriores |
+| `--aviso` | `#FBBF24` | `#92400E` | `.mensaje.aviso`, `.semaforo.ambar`, `.badge.alerta-media`, `.campo-difiere` |
+| `--aviso-bg` | `rgba(251,191,36,0.12)` | `#FDF3E2` | fondo |
+| `--peligro` | `#FCA5A5` | `#B91C1C` | `.mensaje.error`, `.semaforo.rojo`, `.badge.alerta-alta`, `button.peligro`, indicador `.sin-conexion` |
+| `--peligro-bg` | `rgba(252,165,165,0.12)` | `#FBE4E2` | fondo |
+| `--info` | `var(--brand-blue-soft)` | `var(--brand-blue)` | **único uso del azul de marca**: `.mensaje.info` y badges informativos |
+| `--info-bg` | `rgba(87,115,255,0.12)` | `#E8ECFF` | fondo |
+| `--sobre-acento` | `var(--ink-1000)` | `var(--ink-1000)` | color de texto sobre fondo `--accent` (ver §15.3.6) |
+| `--sobre-peligro` | `var(--ink-1000)` | `var(--ink-0)` | texto sobre `button.peligro` |
+| `--bg-sunk` | `var(--ink-800)` | `#ECEBE4` | fondo hundido |
+
+> **`button.peligro` sólido**: en light usa fondo `#B91C1C` con texto blanco (7.0:1);
+> en dark usa fondo `#7F1D1D` con texto `#FEE2E2` (8.9:1). Se declaran como
+> `--peligro-solido` / `--sobre-peligro`.
+
+### 15.3.5 Capa 4: alias de compatibilidad (obligatoria, no opcional)
+
+Se declaran **dentro de cada bloque de modo**, después de los tokens semánticos, para que los
+selectores existentes y los `var(--verde, #0b6b3a)` inline de `DetalleSolicitud.tsx` sigan
+resolviendo. Se marcan con el comentario `/* DEPRECADO: usar el token nuevo */`.
+
+| Alias antiguo | Nuevo valor | Nota |
+|---|---|---|
+| `--verde` | `var(--accent)` | pasa a ser naranja; el nombre queda por compatibilidad |
+| `--verde-claro` | `var(--brand-orange-soft)` | hover del botón primario |
+| `--verde-suave` | `color-mix(in srgb, var(--accent) 12%, var(--bg-elev))` | fondos teñidos de acento |
+| `--gris-texto` | `var(--fg)` | |
+| `--gris-medio` | `var(--fg-muted)` | |
+| `--gris-borde` | `var(--border)` | |
+| `--gris-fondo` | `var(--bg)` | |
+| `--blanco` | `var(--bg-elev)` | **crítico**: en dark no puede seguir siendo `#fff` |
+| `--ambar` | `var(--aviso)` | |
+| `--rojo` | `var(--peligro)` | |
+| `--radio` | `var(--r-md)` | 8px → 12px |
+| `--sombra` | `var(--shadow-card)` | |
+
+Los literales hex del build 1 (`#0b6b3a`, `#128a4c`, `#e6f2ea`, `#d7dce3`, `#f5f7f9`, `#1f2430`,
+`#5b6472`, `#eef1f4`, `#eceff2`, `#e3e8ec`, `#fafcfb`, `#f9fafb`, `#e5e7eb`, `#b3261e`, `#c98600`,
+`#7bd88f`, `#ffd0cd`, `#a7b3ad`, `#b6bec9`, `#2b6cb0`, `#fbe4e2`, `#fdf1d9`, `#f2c2be`, `#bfe0cc`,
+`#f0dcae`, `#fbe9e7`, `#fdf3e2`) **desaparecen** de `pwa/src/styles/` y de `Dashboard.tsx`.
+Única excepción permitida: el bloque `@media print` de `DetalleSolicitud.tsx`, que conserva
+`#000` y blanco por ser tinta sobre papel.
+
+### 15.3.6 Contraste — decisiones fijadas
+
+- **Texto sobre naranja**: nunca blanco. `#FFFFFF` sobre `#FF5A1F` da ≈ 3.0:1 (falla AA).
+  Se usa `--sobre-acento` = `#0A0A0C`, que da ≈ 6.9:1. Aplica a `button`, `.boton`,
+  `.chip.activo`, indicador de ruta activa y `.progreso > div` (esta última sin texto).
+- **`--fg-subtle` nunca se usa para texto** en modo claro (`#9A9AA8` sobre `#F5F4EE` ≈ 2.6:1).
+  Solo para separadores, iconografía decorativa y placeholders no informativos.
+- **`--accent` como color de texto**: permitido sobre `--bg` y `--bg-elev` en ambos modos
+  (dark ≈ 5.4:1, light ≈ 3.5:1) **solo a partir de 18px o 14px bold** (AA para texto grande).
+  Para texto pequeño de acento se usa `--fg` con peso 600 y el naranja como borde/fondo.
+
+---
+
+## 15.4 Tipografía
+
+### 15.4.1 Verificación de la referencia
+
+`_referencia_diseno/tokens.css` **declara** las familias pero **no** las carga: no contiene
+`@import url(...)` ni `@font-face`. Toda la carga es responsabilidad de este build.
+
+### 15.4.2 Estrategia sin CDN (`pwa/src/styles/fuentes.css`)
+
+```css
+/* Cada familia se resuelve en 3 escalones: instalada en el sistema -> servida por
+   la propia app -> fallback de sistema. La app NUNCA depende de una CDN externa. */
+@font-face {
+  font-family: 'Space Grotesk';
+  src: local('Space Grotesk'), url('/fuentes/SpaceGrotesk-Variable.woff2') format('woff2');
+  font-weight: 300 700;
+  font-display: swap;
+}
+/* idem 'Inter' -> /fuentes/Inter-Variable.woff2, font-weight 100 900 */
+/* idem 'JetBrains Mono' -> /fuentes/JetBrainsMono-Variable.woff2, font-weight 100 800 */
+```
+
+- Los `.woff2` se colocan en `pwa/public/fuentes/` (se sirven desde el mismo origen; Vite los
+  copia a `dist/` sin procesar).
+- Si los archivos no se pueden obtener durante el build, **la app debe seguir funcionando**:
+  los stacks de `--font-display`, `--font-body` y `--font-mono` terminan siempre en
+  `system-ui, sans-serif` / `ui-monospace, monospace`, y `font-display: swap` garantiza que
+  nunca haya texto invisible. En ese caso se deja
+  `pwa/public/fuentes/LEEME.txt` documentando qué archivos faltan y de dónde bajarlos.
+- **Prohibido**: `<link rel="stylesheet" href="https://fonts.googleapis.com/...">`,
+  `@import url('https://fonts.gstatic.com/...')` o cualquier equivalente.
+- No se instala `@fontsource/*` ni ningún paquete npm de fuentes.
+
+### 15.4.3 Escala tipográfica de aplicación
+
+La escala del brandbook (`.bb-hero-title` hasta 124px, `.bb-h2` hasta 64px) es de landing page y
+**se descarta**. La escala de este build:
+
+| Rol | Familia | Tamaño / interlineado | Peso | Tracking | Aplica a |
+|---|---|---|---|---|---|
+| Título de pantalla | display | 24px / 1.2 | 600 | -0.02em | `h1` |
+| Sección | display | 18px / 1.3 | 600 | -0.01em | `h2` |
+| Subsección | display | 15px / 1.35 | 600 | 0 | `h3`, `fieldset legend` |
+| Cuerpo | body | 15px / 1.5 | 400 | 0 | `body`, `p`, `td`, `.dato` |
+| Etiqueta | body | 12px / 1.4 | 600 | 0.04em, `uppercase` | `label`, `th`, `.metrica-etiqueta`, `.origen-candidato` |
+| Auxiliar | body | 13px / 1.45 | 400 | 0 | `.detalle`, `.metrica-detalle`, `.bb-variant-desc` |
+| Dato / clave | mono | 13px / 1.4 | 400 | 0.02em | CURP, folios, claves de catálogo, IDs, coordenadas GPS, versiones |
+| Métrica | display | 32px / 1.05 | 600 | -0.02em | `.metrica-valor` |
+| Folio destacado | mono | 22px / 1.2 | 700 | 0.06em | `.folio-grande` |
+| Contraseña temporal | mono | 24px / 1.3 | 700 | 0.12em | `.password-temporal` |
+| Nav (rail/sidebar) | body | 13px / 1.2 | 500 | 0 | items del sidebar |
+
+- `body` baja de 16px a **15px** para densificar tablas de gestión.
+- **Excepción móvil obligatoria**: en `max-width: 767px`, `input`, `select` y `textarea`
+  mantienen `font-size: 16px` (por debajo de 16px iOS Safari hace zoom automático al enfocar).
+- `text-shadow: var(--shadow-text)` del brandbook **se descarta en toda la app**: perjudica la
+  legibilidad de datos densos. Única excepción permitida: la marca del cascarón en modo claro.
+
+---
+
+## 15.5 Arquitectura del cascarón
+
+### 15.5.1 Breakpoints exactos
+
+| Nombre | Rango | Navegación | Sidebar |
+|---|---|---|---|
+| **Móvil** | `< 768px` | barra inferior fija + hoja "Más" | no se monta |
+| **Tablet** | `768px – 1023px` | sidebar en modo **rail** (solo íconos) | 72px, expandible a overlay |
+| **Escritorio** | `≥ 1024px` | sidebar **expandido** | 256px, colapsable a rail de 72px |
+
+Viewports de referencia para la evaluación: **390×844** (móvil), **820×1180** (tablet),
+**1440×900** (escritorio). El viewport por defecto de Playwright (1280×720) cae en escritorio.
+
+### 15.5.2 Regla de montaje: JS, no CSS
+
+El cambio entre sidebar y barra inferior se hace **montando/desmontando componentes** con
+`matchMedia`, **no** con `display: none`. Motivo: si ambas barras existieran simultáneamente en el
+DOM, los `data-testid` de navegación (`nav-dashboard`, `nav-usuarios`, …) estarían duplicados y
+los criterios 1-386 —que hacen `page.click('[data-testid=nav-...]')`— fallarían por selector
+ambiguo (strict mode violation de Playwright).
+
+```
+pwa/src/tema/viewport.ts
+  export type Ancho = 'movil' | 'tablet' | 'escritorio';
+  export function useAncho(): Ancho   // matchMedia('(min-width: 768px)') + '(min-width: 1024px)',
+                                      // con listener; valor inicial calculado sincrónicamente.
+```
+
+**Invariante duro:** en cualquier viewport, cada `data-testid` que empiece con `nav-` aparece
+**como máximo una vez** en el DOM.
+
+### 15.5.3 Estructura del cascarón
+
+```
+<div class="cascaron" data-ancho="escritorio|tablet|movil">
+  <FranjaEstado />                     <!-- fija arriba, 40px (36px en móvil) -->
+  <BarraLateral />                     <!-- solo tablet/escritorio -->
+  <main class="contenido" id="contenido">
+    <Outlet />                          <!-- pantalla activa -->
+  </main>
+  <BarraInferior />                    <!-- solo móvil -->
+</div>
+```
+
+- `.cascaron` es `display: grid` en tablet/escritorio:
+  `grid-template-columns: var(--ancho-lateral) 1fr; grid-template-rows: var(--alto-franja) 1fr;`
+  con `--ancho-lateral: 256px` (o `72px` colapsado) y `--alto-franja: 40px`.
+- En móvil es una columna simple con `padding-bottom: calc(64px + env(safe-area-inset-bottom))`
+  para que la barra inferior no tape el contenido.
+- `<main class="contenido">` conserva la clase actual. Cambia su regla: deja de ser
+  `max-width: 960px; margin: 0 auto` y pasa a `max-width: 1180px; padding: 24px` en escritorio,
+  `padding: 20px` en tablet y `padding: 16px 14px` en móvil. Sigue centrado.
+- El scroll vertical vive en `<main>` (`overflow-y: auto`), no en `<body>`, para que sidebar y
+  franja queden fijos sin `position: fixed` en escritorio.
+- Enlace de salto accesible: `<a class="salto-contenido" href="#contenido">Ir al contenido</a>`
+  como primer hijo, visible solo con foco.
+
+### 15.5.4 `BarraLateral.tsx` (tablet y escritorio)
+
+`<nav data-testid="barra-lateral" aria-label="Navegación principal">`
+
+- **Cabecera**: marca (glifo + "SEDEA" en display 600 + subtítulo mono 10px "CAMPO 2026").
+  En modo rail solo el glifo.
+- **Cuerpo**: items agrupados en secciones con encabezado mono 10px uppercase `--fg-muted`.
+  Orden y agrupación fijos (§15.5.6). Cada item: ícono 20px + etiqueta.
+  - Reposo: `color: var(--fg-muted)`, sin fondo.
+  - Hover: `background: var(--bg-elev-2)`, `color: var(--fg)`.
+  - **Activo** (`aria-current="page"`): `background: color-mix(in srgb, var(--accent) 14%, transparent)`,
+    `color: var(--fg)`, y barra vertical de 3px en `--accent` pegada al borde izquierdo,
+    con `border-radius: 0 var(--r-sm) var(--r-sm) 0`.
+  - Alto de item: 40px (escritorio), 44px (tablet). En rail: 44×44 centrado.
+- **Pie**: `<MenuUsuario />` (los dos botones de cuenta) + `<ToggleTema />` +
+  botón `[data-testid="colapsar-lateral"]`.
+- **Modo rail**: `--ancho-lateral: 72px`, etiquetas ocultas con
+  `clip-path` + clase `.sr-solo` (siguen en el árbol de accesibilidad y siguen siendo clickeables
+  por `data-testid`); cada item lleva `title` y `aria-label` con el mismo texto.
+- **Colapsado persistido**: `localStorage['sedea.lateral']` = `'rail' | 'expandido'`.
+  Default: `expandido` en ≥1024px, `rail` en 768-1023px.
+- En tablet, tocar la marca expande el sidebar como **overlay** de 256px sobre el contenido, con
+  velo `rgba(0,0,0,.45)`; se cierra con Escape, con click en el velo o al navegar.
+
+### 15.5.5 `BarraInferior.tsx` (móvil)
+
+`<nav data-testid="barra-inferior" aria-label="Accesos rápidos">`
+
+- `position: fixed; bottom: 0; left: 0; right: 0; z-index: 950;`
+  `background: color-mix(in srgb, var(--bg-elev) 92%, transparent);`
+  `backdrop-filter: blur(16px) saturate(140%); border-top: 1px solid var(--border);`
+  `padding-bottom: env(safe-area-inset-bottom);`
+- Alto útil 60px. **Máximo 5 celdas**: hasta 4 destinos del rol + el botón "Más".
+- Cada celda: `min-width: 44px; min-height: 48px`, ícono 22px arriba + etiqueta 10px abajo,
+  `flex: 1`. Área táctil efectiva ≥ 44×44 CSS px.
+- Activo: ícono y etiqueta en `--accent` + punto de 4px bajo la etiqueta.
+- Botón `[data-testid="mas-opciones"]` (ícono de tres puntos): abre `HojaMas`, un
+  `<div role="dialog" aria-modal="true" data-testid="hoja-mas">` que sube desde abajo
+  (`transform: translateY(100%)` → `0`, 220ms `ease-out`), con velo, y contiene:
+  los destinos del rol que no cupieron, `<MenuUsuario />` y `<ToggleTema />`.
+  Se cierra con Escape, con click en el velo, con arrastre hacia abajo y al navegar.
+  El foco entra a la hoja al abrir y vuelve al botón al cerrar.
+
+### 15.5.6 `pwa/src/navegacion/menu.ts` — catálogo único de destinos
+
+Fuente única de verdad para sidebar y barra inferior. **Las condiciones de rol son exactamente
+las que hoy están en `BarraEstado.tsx` y en `rutas.tsx`; no se tocan.**
+
+| # | `id` | Ruta | `data-testid` | Roles | Grupo | Ícono |
+|---|---|---|---|---|---|---|
+| 1 | `beneficiarios` | `/beneficiarios` | `nav-beneficiarios` *(nuevo)* | capturista, admin | Campo | usuarios |
+| 2 | `sync` | `/sync` | `nav-sync` *(nuevo)* | capturista, admin | Campo | sincronizar |
+| 3 | `dashboard` | `/dashboard` | `nav-dashboard` | admin, auditor, editor_datos | Gestión | gráfica |
+| 4 | `auditoria` | `/auditoria` | `nav-auditoria` *(nuevo)* | auditor, admin | Gestión | lupa |
+| 5 | `depuracion` | `/depuracion` | `nav-depuracion` | editor_datos, admin | Gestión | filtro |
+| 6 | `correcciones` | `/correcciones` | `nav-correcciones` | editor_datos, admin | Gestión | lápiz |
+| 7 | `solicitudes` | `/solicitudes` | `nav-solicitudes` | ventanilla, admin | Ventanilla | documento |
+| 8 | `usuarios` | `/usuarios` | `nav-usuarios` | admin, editor_datos | Administración | escudo |
+
+- Los `data-testid` marcados *(nuevo)* son **aditivos**. Los 5 preexistentes
+  (`nav-dashboard`, `nav-depuracion`, `nav-correcciones`, `nav-solicitudes`, `nav-usuarios`)
+  conservan su nombre exacto.
+- El sidebar muestra **todos** los destinos del rol, en el orden de la tabla, agrupados por grupo.
+  Los encabezados de grupo se ocultan si el grupo queda vacío para ese rol.
+
+**Reparto en la barra inferior por rol** (primeros 4 de la tabla que apliquen; el resto va a "Más"):
+
+| Rol | Celdas visibles | En "Más" |
+|---|---|---|
+| `capturista` | Beneficiarios, Sincronización | — (solo cuenta y tema) |
+| `ventanilla` | Solicitudes | — |
+| `auditor` | Dashboard, Auditoría | — |
+| `editor_datos` | Dashboard, Depuración, Correcciones, Usuarios | — |
+| `admin` | Beneficiarios, Sincronización, Dashboard, Auditoría | Depuración, Correcciones, Solicitudes, Usuarios |
+
+### 15.5.7 `FranjaEstado.tsx` — reconversión de `BarraEstado.tsx`
+
+**Decisión documentada:** `BarraEstado.tsx` **se renombra** a `FranjaEstado.tsx` y pierde toda
+responsabilidad de navegación (los 6 `<Link>` que hoy renderiza se mudan a `menu.ts` +
+`BarraLateral` / `BarraInferior`). Conserva **íntegra y sin tocar** su lógica actual:
+`useEstadoRed()`, `contarPendientes()`, `alCambiarCola()`, el `setInterval` de 3s,
+`sincronizarPendientes()` y la rama de bloqueo por `debe_cambiar_password`.
+La clase CSS `.barra-estado` se conserva como alias de `.franja-estado` para no romper selectores.
+
+Franja fija superior, **40px de alto** (36px en móvil), `background: var(--bg-elev)`,
+`border-bottom: 1px solid var(--border)`, `z-index: 900`. Contenido de izquierda a derecha:
+
+| Zona | Contenido | Móvil (<768) | Tablet/Escritorio |
+|---|---|---|---|
+| Izquierda | glifo + "SEDEA" | visible | oculto (la marca vive en el sidebar); en su lugar, el título de la ruta activa |
+| Centro-derecha | `[data-testid="estado-red"]` | píldora con punto + texto | igual |
+| | `[data-testid="contador-pendientes"]` | píldora `Pendientes: N` | igual |
+| | botón "Sincronizar ahora" | solo ícono, `aria-label` completo | ícono + texto |
+| | `[data-testid="usuario-actual"]` | nombre truncado (`text-overflow: ellipsis`, máx 12ch) | nombre completo con rol y regional |
+| | `<ToggleTema />` | visible | visible |
+
+- **`usuario-actual` se mueve** de `MenuUsuario.tsx` a `FranjaEstado.tsx`, para que exista y sea
+  visible en los 3 viewports (en móvil `MenuUsuario` vive dentro de la hoja "Más", que está
+  cerrada por defecto). `MenuUsuario.tsx` queda solo con `nav-cambiar-password` y
+  `nav-cerrar-sesion`, y conserva su `data-testid="menu-usuario"`.
+- Estilo de las píldoras (`.indicador`): base `.bb-tag` del brandbook —
+  `border-radius: 99px`, `font-family: var(--font-mono)`, `font-size: 11px`,
+  `padding: 4px 10px`, `background: var(--bg-elev-2)`, `border: 1px solid var(--border)`.
+  - En línea: punto `--exito`, texto `--fg-muted`.
+  - Sin conexión: `background: var(--peligro-bg)`, `color: var(--peligro)`,
+    `border-color: var(--peligro)`, punto `--peligro`. **El texto "Sin conexión" se mantiene**
+    (la información no se transmite solo por color).
+  - Pendientes > 0: `color: var(--accent)`, `border-color: var(--accent)`.
+- **Estado bloqueado** (`perfil.debe_cambiar_password === true`): `Cascaron` no monta ni sidebar
+  ni barra inferior; solo la franja con marca, `usuario-actual` y `nav-cerrar-sesion`.
+  El criterio 10.8.4 sigue pasando sin cambios.
+
+---
+
+## 15.6 Toggle de tema
+
+### 15.6.1 `pwa/src/tema/tema.ts`
+
+```
+export type Modo = 'dark' | 'light';
+const CLAVE = 'sedea.tema';
+
+modoGuardado(): Modo | null          // lee localStorage; ignora valores inválidos
+modoDelSistema(): Modo               // matchMedia('(prefers-color-scheme: dark)') ? 'dark' : 'light'
+aplicarModo(m: Modo): void           // document.documentElement.setAttribute('data-mode', m)
+                                     // + actualiza <meta name="theme-color">
+useTema(): { modo, alternar, esExplicito }
+```
+
+Reglas:
+1. **Origen del modo inicial**: `modoGuardado() ?? modoDelSistema()`.
+2. **Persistencia**: solo se escribe `localStorage['sedea.tema']` cuando el usuario pulsa el
+   toggle. Los valores admitidos son exactamente `"dark"` y `"light"`.
+3. **Seguimiento del sistema**: mientras **no** exista la clave en `localStorage`, un listener de
+   `matchMedia('(prefers-color-scheme: dark)')` cambia el tema en vivo. En cuanto el usuario
+   elige, el listener deja de aplicar cambios (`esExplicito === true`).
+4. `data-mode` se pone en `<html>` (`document.documentElement`), **no** en `<body>`.
+5. El toggle **no** dispara ninguna petición HTTP ni escritura en IndexedDB.
+
+### 15.6.2 Script anti-parpadeo (`pwa/index.html`)
+
+Inline, síncrono, en `<head>` **antes** de `<script type="module" src="/src/main.tsx">`:
+
+```html
+<script>
+  (function () {
+    try {
+      var g = localStorage.getItem('sedea.tema');
+      var m = (g === 'dark' || g === 'light') ? g
+        : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-mode', m);
+      document.querySelector('meta[name=theme-color]')
+        .setAttribute('content', m === 'dark' ? '#0A0A0C' : '#F5F4EE');
+    } catch (e) { document.documentElement.setAttribute('data-mode', 'dark'); }
+  })();
+</script>
+```
+
+Además, en `index.html`:
+- `<meta name="theme-color" content="#0A0A0C">` (sustituye a `#0b6b3a`).
+- Se añade `<meta name="color-scheme" content="dark light">`.
+- Se añade `<link rel="preload" as="font" type="font/woff2" crossorigin href="/fuentes/Inter-Variable.woff2">`
+  (solo la de cuerpo; opcional y con `onerror` silencioso).
+
+### 15.6.3 `pwa/src/componentes/ToggleTema.tsx`
+
+```html
+<button type="button"
+        data-testid="toggle-tema"
+        class="toggle-tema"
+        aria-pressed={modo === 'light'}
+        aria-label="Cambiar a modo claro"   <!-- o "Cambiar a modo oscuro" -->
+        title="…mismo texto…">
+  <IconoSol|IconoLuna />
+</button>
+```
+
+- Estilo base: `.bb-nav-mode` del brandbook adaptado — píldora 32×32 (44×44 en móvil),
+  `border-radius: 99px`, `background: var(--bg-elev-2)`, `border: 1px solid var(--border)`,
+  `color: var(--fg)`.
+- Ícono: **sol** cuando el modo activo es `dark` (indica a dónde vas), **luna** cuando es `light`.
+  El `aria-label` describe la acción, no el estado.
+- Transición: `background-color .25s ease, color .25s ease` en `html, body` (ya viene de la
+  referencia); el ícono rota 180° en 200ms. Todo bajo `@media (prefers-reduced-motion: reduce)`
+  se desactiva.
+- **Puntos de montaje**: (a) pie del sidebar en tablet/escritorio; (b) franja de estado en móvil;
+  (c) esquina superior derecha de `/login`. Regla: **exactamente uno visible por viewport**.
+
+---
+
+## 15.7 Adopción del brandbook — qué sí y qué no
+
+`_referencia_diseno/brandbook.css` es la hoja de una landing page de marketing. Se toma lo
+estructural y se descarta lo editorial.
+
+### 15.7.1 Se adopta
+
+| Patrón del brandbook | Se convierte en |
+|---|---|
+| `.bb-card` | base de `.tarjeta`, `.metrica`, `.modal`, `.comparador .candidato`, `.campos-bloqueados` |
+| `.bb-tag` | base de `.chip`, `.badge`, `.indicador`, `.semaforo` |
+| `.bb-mono` | clase utilitaria `.mono` para CURP, folios, claves, coordenadas |
+| `.bb-nav-mode` | base visual de `ToggleTema` |
+| `.bb-landing-btn` / `.bb-landing-btn-primary` | base de `button.secundario` y de `button` (primario) |
+| `.bb-slide-bullet` | filas de `.lista-documentos` (checklist de documentos, §12.9) |
+| `.bb-variant-card:hover` / `.is-active` (elevación + anillo de acento) | tarjetas seleccionables del `ComparadorDuplicados` |
+| `--grid-line` + patrón de rejilla de `.bb-hero-grid` | fondo decorativo **solo** de `/login` y `/sin-permiso` |
+| `--r-*`, `--shadow-card`, `--shadow-pop` | radios y sombras de toda la app |
+| `backdrop-filter: blur(20px) saturate(140%)` de `.bb-nav` | franja de estado y barra inferior |
+
+### 15.7.2 Se descarta (y por qué)
+
+| Patrón | Motivo |
+|---|---|
+| `.bb-nav` (nav superior de landing) | es exactamente el antipatrón que este build elimina |
+| `.bb-hero*`, `.bb-section` (padding 100px) | escala editorial; desperdicia viewport en una app de captura |
+| `.bb-h2` con `clamp(36px,5vw,64px)` | títulos gigantes ilegibles en tablas densas |
+| `text-shadow: var(--shadow-text)` | reduce legibilidad de datos; se anula globalmente |
+| `--shadow-glow` (halo naranja) | distrae en formularios; se permite **solo** en el botón de entrar de `/login` |
+| `.bb-pillars`, `.bb-variant-picker`, `.bb-logo-*`, `.bb-dod-*`, `.bb-construction` | material de brand book, sin equivalente funcional |
+| `.bb-brand-grid`, `.bb-neutral-row` | muestrarios de color |
+| `.bb-bcard*` (tarjeta de presentación, `rotateY/rotateX`) | sin equivalente |
+| `.bb-deck-*`, `.bb-slide*` (salvo `.bb-slide-bullet`) | plantilla de presentación |
+| `.bb-landing-*` (salvo los botones) | mockup de sitio web |
+| `.bb-footer` | una app de gestión no lleva footer de marketing |
+| `logo.jsx` (variantes A/B/C de IntechQRO) | es la marca de otra empresa (ver A15-3) |
+| Breakpoint único `980px` del brandbook | insuficiente; se usan 768/1024 (§15.5.1) |
+
+---
+
+## 15.8 Mapeo de componentes CSS existentes
+
+Todas las clases actuales **conservan su nombre**. Solo cambia su declaración. Ninguna clase se
+elimina de `global.css` sin reemplazo equivalente.
+
+| Clase | Cambio |
+|---|---|
+| `.contenido` | `max-width` 960→1180px; padding responsivo; scroll propio |
+| `.tarjeta` | `bg-elev` + `border` + `--r-lg` (18px) + `--shadow-card`; padding 20px (16px móvil); `margin-bottom: 16px` |
+| `h1`/`h2` | familia display, escala §15.4.3, `text-shadow: none` |
+| `label` | 12px, 600, uppercase, `letter-spacing: .04em`, `--fg-muted` |
+| `input/select/textarea` | `bg: var(--bg-elev-2)`, `border: 1px solid var(--border)`, `--r-sm` (8px), alto 40px (48px móvil), `:focus-visible` → `border-color: var(--accent)` + `box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent)` |
+| `input:disabled` | `bg: var(--bg-sunk)`, `color: var(--fg-subtle)`, `cursor: not-allowed` |
+| `button` / `.boton` | primario: `bg: var(--accent)`, `color: var(--sobre-acento)`, `--r-sm`, alto 40px (48px móvil), peso 600, `:hover` → `--brand-orange-soft`, `:active` → `--brand-orange-deep`, `:disabled` → `bg: var(--bg-sunk)` + `color: var(--fg-subtle)` |
+| `button.secundario` | `bg: var(--bg-elev-2)`, `color: var(--fg)`, `border: 1px solid var(--border-strong)`; hover `bg: var(--bg-elev-3)` |
+| `button.peligro` | `bg: var(--peligro-solido)`, `color: var(--sobre-peligro)` |
+| `.acciones` | `gap: 10px`; en móvil `flex-direction: column` y botones a ancho completo cuando hay ≥3 |
+| `.chip` / `.chip.activo` | base `.bb-tag`; activo `bg: var(--accent)`, `color: var(--sobre-acento)`; alto mínimo 36px (44px móvil) |
+| `.lista` / `.lista a` | filas de 56px (64px móvil), separador `--border`, hover `bg: var(--bg-elev-2)`, `:focus-visible` con anillo de acento |
+| `.badge.*` | `.bb-tag` + token semántico correspondiente (§15.3.4) |
+| `table`, `th`, `td` | `th`: `bg: var(--bg-sunk)`, `color: var(--fg)`, 12px uppercase mono-tracking; `td`: 13px, `padding: 10px 12px`; `tbody tr:hover`: `bg: var(--bg-elev-2)`; primera columna `position: sticky; left: 0` en `.tabla-contenedor` con scroll |
+| `.tabla-contenedor` | `overflow-x: auto`; en móvil, sombra lateral que indica scroll (`background-attachment: local`) |
+| `.semaforo.*` | tokens `--exito/--aviso/--peligro` + su `-bg`; conserva los 3 estados semánticos |
+| `.mensaje.*` | `--r-md`, borde 1px del token, fondo `-bg`, texto del token; ícono 16px al inicio |
+| `.vacio` | `--fg-muted`, padding 40px, con ícono ilustrativo 32px `--fg-subtle` |
+| `.toast` | `bg: var(--bg-elev-3)`, `color: var(--fg)`, `--shadow-pop`; en móvil sube a `bottom: calc(76px + env(safe-area-inset-bottom))` para no quedar bajo la barra inferior |
+| `.progreso` | `bg: var(--bg-sunk)`, relleno `--accent`, alto 8px, `--r-xs` |
+| `.mapa` / `.mapa-mini` | conserva alturas (380/240px); `--r-md`; en móvil `.mapa` pasa a `260px`; los controles Leaflet reciben `--bg-elev`/`--fg` y `z-index` por debajo de la barra inferior |
+| `.previa`, `.foto-grande`, `td img.miniatura` | `--r-md`, borde `--border`, `background: var(--bg-sunk)` mientras carga |
+| `.login-caja` | ancho 380→400px, centrada vertical con `min-height: 100dvh`, `--shadow-pop` |
+| `.dato` | `strong` en 12px uppercase `--fg-muted`; valor 15px `--fg` |
+| `.paginacion` | botones ≥ 44px en móvil |
+| `.filtros` | `gap: 12px`; en móvil `grid-template-columns: 1fr 1fr` y el campo de búsqueda a ancho completo |
+| `.tarjetas-resumen` / `.metrica` | grid `repeat(auto-fit, minmax(160px, 1fr))`; `.metrica` con base `.bb-card` y `--bg-elev`; `.metrica-valor` en display 32px |
+| `.comparador .candidato` | ancho 300→320px; `.candidato-actual` → anillo de 2px `--accent` |
+| `.campos-candidato .campo-difiere` | `bg: var(--aviso-bg)`, `color: var(--aviso)`, más un punto ámbar de 6px (no solo color) |
+| `.campos-bloqueados` | `border: 1px dashed var(--border-strong)`, `bg: var(--bg-sunk)` |
+| `.lienzo-grafica` | sin cambios estructurales; altura sigue viniendo por prop |
+| `.modal-fondo` | velo `rgba(10,10,12,.6)` + `backdrop-filter: blur(6px)`; en móvil el `.modal` se ancla abajo tipo hoja |
+| `.modal` | base `.bb-card` + `--shadow-pop`, `--r-xl`; `max-height: 92dvh` |
+| `.password-temporal` | mono 24px, `bg: var(--bg-sunk)`, borde punteado `--accent` |
+| `.menu-usuario` | deja de ser `margin-left: auto` en una barra horizontal; pasa a bloque vertical en el pie del sidebar y en la hoja "Más" |
+| `.casilla` | área táctil 44px en móvil; `input[type=checkbox/radio]` con `accent-color: var(--accent)`, tamaño 18px (22px móvil) |
+| `.lista-casillas` | `minmax(220px, 1fr)` → `minmax(200px,1fr)`; 1 columna en móvil |
+| `.lista-documentos li` | base `.bb-slide-bullet`: fondo `--bg-elev-2`, `--r-sm`, `gap: 12px`, sin `border-bottom` |
+| `.declaraciones` | `bg: var(--bg-sunk)`, `border: 1px solid var(--border)`, `--r-md`, 14px/1.6 |
+| `.folio-grande` | mono 22px 700, `color: var(--accent)`, `letter-spacing: .06em`; encima, etiqueta "FOLIO" 10px mono `--fg-muted` |
+| `fieldset` / `legend` | `border: 1px solid var(--border)`, `--r-md`, `legend` en display 15px 600 |
+| **nuevas** | `.franja-estado` (+ alias `.barra-estado`), `.barra-lateral`, `.nav-item`, `.nav-grupo`, `.barra-inferior`, `.celda-inferior`, `.hoja-mas`, `.toggle-tema`, `.salto-contenido`, `.mono`, `.sr-solo` |
+
+---
+
+## 15.9 Las 17 pantallas — qué cambia en cada una
+
+> `pwa/src/pantallas/` contiene 18 archivos, pero `FichaBeneficiario.tsx` sirve dos rutas
+> (`modo="campo"` y `modo="correccion"`) y `SinPermiso.tsx` es una pantalla de sistema, no de
+> negocio. El conteo de trabajo es de **17 pantallas de producto** + `SinPermiso`.
+>
+> **Regla transversal para las 17**: no se agrega, quita ni renombra ningún campo, columna,
+> etiqueta, texto legal, validación ni botón. Solo cambia la envoltura visual (tarjetas,
+> espaciados, tipografía, botones, inputs, tablas) y, donde se indica, la **disposición** en móvil.
+
+| # | Pantalla | Qué cambia |
+|---|---|---|
+| 1 | `Login.tsx` | Fondo con rejilla `--grid-line` + resplandor naranja de esquina. Tarjeta 400px centrada con `--shadow-pop`. Marca tipográfica grande arriba. Botón de entrar a ancho completo, 48px, con `--shadow-glow`. `ToggleTema` en la esquina superior derecha. Sin cascarón. |
+| 2 | `Beneficiarios.tsx` | Filtros pasan a tarjeta propia con grid responsivo (4 col escritorio / 2 tablet / 1 móvil). Chips de estado con estilo `.bb-tag`. Lista con filas de 64px en móvil, avatar-inicial circular con la letra del nombre, nombre en 15px 600 y CURP en mono 12px `--fg-muted`, badge a la derecha. Botón "Nueva captura" pasa a FAB sobre la barra inferior en móvil. |
+| 3 | `FichaBeneficiario.tsx` (modo campo) | Cabecera con nombre en display 24px + CURP mono + badges de estado. Datos en dos columnas (una en móvil) con `.dato` reestilizado. Mini-mapa con `--r-md`. Acciones agrupadas en pie fijo de tarjeta. |
+| 4 | `FichaBeneficiario.tsx` (modo corrección) | Igual que 3, más `.campos-bloqueados` con fondo hundido y candado 14px junto a la leyenda; los editables se distinguen por borde `--border-strong`. |
+| 5 | `NuevaCaptura.tsx` | Flujo en tarjetas apiladas numeradas (1 Foto · 2 GPS · 3 Datos) con índice mono. `CapturaFoto`: zona de arrastre/captura de 200px con borde punteado `--border-strong` y previa `--r-md`. `CapturaGPS`: semáforo grande 44px + coordenadas en mono. Botón de guardar fijo al pie en móvil (encima de la barra inferior). |
+| 6 | `Sync.tsx` | Barra de progreso rediseñada (8px, `--accent`). Contadores como `.metrica`. Bitácora de sincronización en lista mono 12px con estados semánticos. |
+| 7 | `Auditoria.tsx` | Filtros en tarjeta. Mapa a `--r-md` con altura 380px (260px móvil). Tabla de resultados con cabecera `--bg-sunk` y primera columna sticky; en móvil, la tabla se sustituye por lista de tarjetas compactas (mismo contenido, misma información, sin scroll horizontal). |
+| 8 | `Expediente.tsx` | Cabecera de expediente con folio mono destacado. Galería de fotos en grid `auto-fill minmax(140px,1fr)` con `--r-md`. Bloques de metadatos en tarjetas. Botón de exportar PDF como secundario. |
+| 9 | `Depuracion.tsx` | Tarjetas de métricas arriba (`.metrica` rediseñada). Tabla densa: `td` 13px, hover `--bg-elev-2`, badges de alerta con token semántico + texto. Filtros colapsables en móvil (`<details>` estilizado). |
+| 10 | `DepuracionDetalle.tsx` | `ComparadorDuplicados` con tarjetas de 320px, la actual con anillo `--accent`; campos que difieren con fondo `--aviso-bg` **y** punto ámbar. En móvil, comparación en scroll horizontal con indicador de desplazamiento. |
+| 11 | `DepuracionCatalogos.tsx` | Tabla con claves de catálogo en `.mono`. Acciones de fila como botones ícono 36px con `title`. |
+| 12 | `Correcciones.tsx` | Igual tratamiento que Depuración: métricas + tabla; en móvil, lista de tarjetas. `FormEdicionBeneficiario` con inputs y `fieldset` nuevos. |
+| 13 | `Dashboard.tsx` | Grid de métricas `auto-fit minmax(180px,1fr)`. **Las 4 constantes de color de gráfica (`VERDE`, `GRIS`, `AMBAR`, `AZUL`) se sustituyen por lectura de las variables CSS del tema activo** (`getComputedStyle(document.documentElement).getPropertyValue('--accent')`, `--exito`, `--aviso`, `--info`, `--fg-muted`) y las gráficas se vuelven a construir cuando cambia `data-mode`. Ejes, rejilla y leyenda de Chart.js toman `--fg-muted` y `--border`. Cada gráfica dentro de una `.tarjeta`; 1 columna en móvil. |
+| 14 | `Usuarios.tsx` | Tabla con rol en `.bb-tag`, estado activo/inactivo con token semántico + texto. `FormUsuario`, `ModalResetPassword` y `ModalPasswordTemporal` con el `.modal` nuevo; en móvil los modales se anclan abajo como hoja. `.password-temporal` rediseñada. |
+| 15 | `Solicitudes.tsx` | Filtros en tarjeta. Folio en `.mono` como primera columna. Estados de solicitud con tokens semánticos. En móvil, lista de tarjetas con folio destacado. Botón "Nueva solicitud" como FAB en móvil. |
+| 16 | `NuevaSolicitud.tsx` | El formulario largo (Solicitante · Alcance · Actividad · Conceptos · Documentos · Declaraciones) pasa a `fieldset` estilizados con numeración mono, y en escritorio gana un índice lateral pegajoso (`position: sticky`) dentro del contenido con anclas a cada sección. `TablaConceptos` con inputs alineados y totales en mono 600. `ChecklistDocumentos` con filas tipo `.bb-slide-bullet`. `BloqueAlcance` con `.lista-casillas` a 1 columna en móvil y casillas de 22px. Los selectores encadenados (Programa → Subprograma → Componente → Modalidad → Proyecto) se muestran como cadena visual con separadores. **Cero cambios a la lógica de encadenamiento ni a las validaciones.** |
+| 17 | `DetalleSolicitud.tsx` | `.folio-grande` rediseñado con etiqueta "FOLIO". Bloques de datos en tarjetas. Los `var(--verde, #0b6b3a)` inline se sustituyen por `var(--accent)` sin fallback hex. **El bloque `@media print` de la carátula se deja intacto** (negro sobre blanco). Botón de imprimir como primario. |
+| — | `SinPermiso.tsx` | Pantalla centrada con ícono 48px `--fg-subtle`, mensaje en display 18px y botón de volver. Fondo con rejilla `--grid-line`. |
+| — | `CambiarPassword.tsx` | Reusa `.login-caja` rediseñada. Indicador de fuerza de contraseña con `.progreso` (sin cambiar ninguna regla de validación). |
+
+---
+
+## 15.10 Estructura de archivos
+
+```
+pwa/
+  index.html                       # MODIF: script anti-parpadeo, theme-color, color-scheme, preload
+  public/
+    fuentes/                       # NUEVO
+      Inter-Variable.woff2
+      SpaceGrotesk-Variable.woff2
+      JetBrainsMono-Variable.woff2
+      LEEME.txt                    # origen y licencia (OFL) de cada archivo
+  src/
+    main.tsx                       # SIN CAMBIOS (sigue importando './styles/global.css')
+    styles/
+      global.css                   # MODIF: solo @import en orden fijo
+      tokens.css                   # NUEVO: primitivos + dark + light + semánticos + alias
+      fuentes.css                  # NUEVO: @font-face
+      base.css                     # NUEVO: reset, html/body, tipografía, foco, .mono, .sr-solo
+      componentes.css              # NUEVO: tarjeta, botón, input, chip, badge, tabla, mensaje, modal…
+      cascaron.css                 # NUEVO: franja, sidebar, rail, barra inferior, hoja "Más", toggle
+    tema/
+      tema.ts                      # NUEVO: modo, persistencia, useTema
+      viewport.ts                  # NUEVO: useAncho() con matchMedia
+    navegacion/
+      menu.ts                      # NUEVO: catálogo de destinos por rol
+    componentes/
+      Cascaron.tsx                 # NUEVO
+      BarraLateral.tsx             # NUEVO
+      BarraInferior.tsx            # NUEVO
+      HojaMas.tsx                  # NUEVO
+      FranjaEstado.tsx             # NUEVO (renombre de BarraEstado.tsx; lógica idéntica)
+      ToggleTema.tsx               # NUEVO
+      Iconos.tsx                   # NUEVO: SVG inline 24×24, stroke currentColor, width 1.75
+      Marca.tsx                    # NUEVO: glifo + wordmark SEDEA
+      BarraEstado.tsx              # ELIMINADO (sustituido por FranjaEstado.tsx)
+      MenuUsuario.tsx              # MODIF: pierde `usuario-actual`, gana disposición vertical
+    rutas.tsx                      # MODIF: Layout() -> <Cascaron />
+    pantallas/*.tsx                # MODIF: solo className y estructura de envoltura
+```
+
+`global.css` queda exactamente así:
+
+```css
+/* Punto de entrada de estilos. El orden importa: tokens antes que todo. */
+@import './tokens.css';
+@import './fuentes.css';
+@import './base.css';
+@import './componentes.css';
+@import './cascaron.css';
+```
+
+**Comandos de desarrollo (sin cambios):**
+
+```
+cd pwa
+npm run dev         # Vite en http://localhost:5173
+npm run typecheck   # tsc --noEmit
+npm run build       # vite build -> pwa/dist
+npm run preview     # http://localhost:8080
+```
+
+**Dependencias npm:** cero altas, cero bajas, cero cambios de versión.
+Íconos = SVG inline propios. Fuentes = `.woff2` locales. Modo = `data-mode` + `localStorage`.
+
+---
+
+## 15.11 Accesibilidad
+
+1. Objetivo táctil mínimo **44×44 CSS px** en `< 768px` para todo elemento interactivo
+   (botones, links de lista, chips, casillas, celdas de la barra inferior, toggle).
+2. `:focus-visible` global: `outline: 2px solid var(--accent); outline-offset: 2px`.
+   Se prohíbe `outline: none` sin sustituto visible.
+3. `aria-current="page"` en el destino activo del sidebar y de la barra inferior.
+4. Landmarks: `<nav aria-label="Navegación principal">` (sidebar),
+   `<nav aria-label="Accesos rápidos">` (barra inferior), `<main id="contenido">`,
+   `<header>` (franja de estado).
+5. Enlace de salto al contenido, visible solo con foco.
+6. Trampa de foco en `HojaMas` y en los modales existentes; Escape cierra; el foco vuelve
+   al disparador.
+7. `@media (prefers-reduced-motion: reduce)`: `animation-duration: .01ms !important;`
+   `transition-duration: .01ms !important;` y sin transformaciones de entrada de la hoja.
+8. **Ninguna información se transmite solo por color**: el estado de red conserva su texto,
+   los badges de alerta conservan su etiqueta, el semáforo GPS conserva su palabra, y los
+   campos que difieren en el comparador llevan un punto además del fondo.
+9. Contrastes mínimos, medidos con el algoritmo WCAG 2.1 sobre los valores computados:
+   `--fg`/`--bg` ≥ 7:1, `--fg-muted`/`--bg` ≥ 4.5:1, texto de botón primario ≥ 4.5:1,
+   texto de cada `.mensaje.*` sobre su fondo ≥ 4.5:1, cada estado del semáforo ≥ 4.5:1,
+   en **ambos** modos.
+10. `lang="es-MX"` en `<html>` se conserva; todo `aria-label` nuevo va en español.
+
+---
+
+## 15.12 Riesgos y mitigaciones
+
+| Riesgo | Mitigación |
+|---|---|
+| Duplicar `data-testid` entre sidebar y barra inferior rompe los criterios 1-386 | montaje condicional por `useAncho()`, nunca `display:none` (§15.5.2) + criterio 419 |
+| `--blanco` seguía siendo `#fff` en dark → texto blanco sobre blanco | `--blanco` se realiasa a `var(--bg-elev)` (§15.3.5) + criterio 426 |
+| `DetalleSolicitud.tsx` usa `var(--verde, #0b6b3a)` inline | la capa de alias garantiza que `--verde` siempre resuelve; además se limpian los fallbacks hex |
+| Fuentes no disponibles offline | `local()` + archivos propios + fallback `system-ui` + `font-display: swap` (§15.4.2) |
+| Parpadeo de tema al recargar | script inline síncrono en `<head>` (§15.6.2) |
+| Chart.js con colores fijos ilegibles en dark | lectura desde variables CSS + reconstrucción al cambiar `data-mode` (§15.9 #13) |
+| La barra inferior tapa botones de guardar / toasts / controles de Leaflet | `padding-bottom` del `<main>` + `bottom` del `.toast` calculados con la altura de la barra + `env(safe-area-inset-bottom)` |
+| El renombre de `BarraEstado.tsx` rompe un import | es el único consumidor (`rutas.tsx`); `typecheck` lo detecta |
+| Tabla ancha con scroll horizontal en móvil | en Auditoría, Depuración, Correcciones y Solicitudes la tabla se sustituye por lista de tarjetas en `< 768px`, con el mismo contenido |
+
+---
+
+## 15.13 Assumptions
+
+- **A15-1** La paleta **no** se adapta a verde SEDEA. Naranja `#FF5A1F` + neutros ink son la base;
+  el azul de marca queda restringido a `--info` (mensajes informativos). Decisión explícita del
+  cliente, no se reabre.
+- **A15-2** Los verdes que sobreviven (`--exito`, `.semaforo.verde`, `.badge.capturado`, punto de
+  "En línea") son **semánticos**, no de marca. No se convierten a naranja.
+- **A15-3** No se usa el logotipo de IntechQRO (`logo.jsx` es la marca de otra empresa) ni se
+  inventa un escudo institucional. La marca del cascarón es tipográfica: glifo geométrico
+  propio (cuadrado con esquina achaflanada y una barra en `--accent`) + wordmark "SEDEA" en
+  Space Grotesk 600, con subtítulo mono "CAMPO 2026". Si el cliente entrega el escudo oficial,
+  se sustituye solo el glifo.
+- **A15-4** Modo inicial por defecto = preferencia del sistema. Si el sistema no expresa
+  preferencia, `dark` (la referencia es primordialmente un design system de data-center y la app
+  se usa en campo, donde el modo oscuro consume menos batería en OLED).
+- **A15-5** Clave de `localStorage` para el tema: `sedea.tema`. Para el estado del sidebar:
+  `sedea.lateral`. Prefijo `sedea.` reservado para preferencias de UI; no colisiona con las
+  claves de IndexedDB ni con las de sesión.
+- **A15-6** Breakpoints 768 / 1024 (no los 980 del brandbook), para que el viewport por defecto
+  de Playwright (1280×720) caiga inequívocamente en escritorio y no altere los criterios 1-386.
+- **A15-7** `BarraEstado.tsx` se **renombra** a `FranjaEstado.tsx` en vez de conservarse con el
+  nombre viejo: su responsabilidad cambia (deja de ser "barra de navegación + estado" para ser
+  solo "franja de estado") y mantener el nombre viejo confundiría. La clase CSS `.barra-estado`
+  sí se conserva como alias, y toda su lógica se copia sin modificar una línea.
+- **A15-8** `data-testid="usuario-actual"` se traslada de `MenuUsuario` a `FranjaEstado` para
+  garantizar que exista y sea visible en los 3 viewports. El testid no cambia de nombre.
+- **A15-9** Se agregan 3 `data-testid` de navegación que hoy no existen
+  (`nav-beneficiarios`, `nav-sync`, `nav-auditoria`) porque el sidebar sí expone esos destinos.
+  Son aditivos y no afectan ningún criterio previo.
+- **A15-10** En móvil, las tablas de gestión se sustituyen por listas de tarjetas.
+  Se conserva **exactamente la misma información** (mismos campos, mismos textos, mismos
+  `data-testid` de fila); cambia solo la disposición. Los criterios previos que consultan esas
+  tablas se ejecutan en el viewport por defecto (escritorio) y no se ven afectados.
+- **A15-11** Los `.woff2` de Inter, Space Grotesk y JetBrains Mono se distribuyen bajo SIL Open
+  Font License 1.1, que permite el alojamiento propio y la redistribución. Se documenta en
+  `pwa/public/fuentes/LEEME.txt`.
+- **A15-12** No se implementa un tercer modo "automático" en la UI del toggle. El toggle es
+  binario (claro ↔ oscuro); el seguimiento del sistema es el estado inicial implícito y se
+  abandona en cuanto el usuario elige.
+- **A15-13** El resplandor naranja (`--shadow-glow`) y el patrón de rejilla se limitan a `/login`
+  y `/sin-permiso`. Dentro de la app son ruido visual sobre formularios de captura.
+- **A15-14** La carátula imprimible de `DetalleSolicitud` no se tematiza: sigue siendo negra sobre
+  blanca en cualquier modo, porque es un documento oficial que se firma en papel.
+
+---
+
+## 15.14 Rubric de evaluación — Build 9 (criterios 387-446)
+
+> Los criterios 1-386 de las secciones 1-14 siguen vigentes y deben seguir pasando **sin cambio de
+> enunciado**. Verificables con `grep`, `git diff` y Playwright.
+> Los criterios visuales se evalúan en los 3 viewports de referencia: **390×844**, **820×1180**
+> y **1440×900**, salvo que se indique otro.
+> Las mediciones de contraste usan la fórmula de luminancia relativa de WCAG 2.1 sobre los
+> valores devueltos por `getComputedStyle`.
+
+### Tokens y paleta
+
+387. Existe `pwa/src/styles/tokens.css` y declara en `:root` los literales `#FF5A1F`
+     (`--brand-orange`), `#1E40FF` (`--brand-blue`), la escala completa `--ink-1000` … `--ink-0`,
+     los seis radios `--r-xs` … `--r-2xl` y los tres tokens `--font-display`, `--font-body`,
+     `--font-mono`.
+388. `tokens.css` contiene un bloque `[data-mode="dark"]` y un bloque `[data-mode="light"]`, y
+     ambos definen al menos `--bg`, `--bg-elev`, `--bg-elev-2`, `--fg`, `--fg-muted`, `--border`,
+     `--accent`, `--shadow-card` y `--bg-sunk`.
+389. Con `document.documentElement.setAttribute('data-mode','dark')`,
+     `getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()` es `#0A0A0C`
+     (case-insensitive); con `'light'` es `#F5F4EE`.
+390. Los alias de compatibilidad resuelven en ambos modos: `--verde` computa al mismo valor que
+     `--accent`, `--gris-texto` al mismo que `--fg`, `--gris-borde` al mismo que `--border` y
+     `--blanco` al mismo que `--bg-elev` (en dark `--blanco` **no** es `#ffffff`).
+391. `grep -ri "0b6b3a\|128a4c\|e6f2ea\|d7dce3\|f5f7f9\|b6bec9\|2b6cb0" pwa/src` no devuelve
+     ninguna coincidencia fuera del bloque `@media print` de `DetalleSolicitud.tsx`.
+392. Existen los 6 archivos `pwa/src/styles/{tokens,fuentes,base,componentes,cascaron,global}.css`
+     y `global.css` contiene únicamente comentarios y cinco sentencias `@import` en el orden
+     tokens → fuentes → base → componentes → cascaron.
+393. `pwa/src/main.tsx` sigue importando exactamente `'./styles/global.css'` y `'leaflet/dist/leaflet.css'`.
+394. `--sobre-acento` está definido en ambos modos y la regla del botón primario usa
+     `color: var(--sobre-acento)`; el `color` computado de un `button` primario **no** es
+     `rgb(255, 255, 255)` en ningún modo.
+395. `git diff` sobre `pwa/package.json` no muestra ninguna línea agregada ni eliminada dentro de
+     `"dependencies"` ni de `"devDependencies"`: cero dependencias npm nuevas.
+396. `grep -ri "fonts.googleapis.com\|fonts.gstatic.com\|use.typekit" pwa/` no devuelve ninguna
+     coincidencia; con las peticiones a hosts externos bloqueadas por Playwright
+     (`page.route('**://fonts.*/**', r => r.abort())`), la app carga y muestra texto legible.
+
+### Tipografía
+
+397. `getComputedStyle(document.body).fontFamily` contiene `Inter` y contiene además al menos uno
+     de `system-ui` o `sans-serif` como fallback final.
+398. `getComputedStyle(h1).fontFamily` en cualquier pantalla contiene `Space Grotesk` y un
+     fallback de sistema; el `fontSize` computado de `h1` está entre 22px y 28px.
+399. En `/solicitudes/:id`, `getComputedStyle('.folio-grande').fontFamily` contiene
+     `JetBrains Mono` o `ui-monospace`, y su `fontWeight` computado es 700.
+400. Todas las reglas `@font-face` de `pwa/src/styles/fuentes.css` declaran `font-display: swap`
+     y su `src` empieza por `local(`.
+401. En viewport 390×844, todo `input`, `select` y `textarea` visible en `/login` y en
+     `/solicitudes/nueva` tiene `fontSize` computado ≥ 16px.
+
+### Toggle de tema
+
+402. En cada ruta autenticada existe exactamente **un** `[data-testid="toggle-tema"]` visible.
+403. Click en `[data-testid="toggle-tema"]` cambia `document.documentElement.dataset.mode` de
+     `dark` a `light`; un segundo click lo devuelve a `dark`.
+404. Tras cada click, `localStorage.getItem('sedea.tema')` es exactamente el valor de
+     `document.documentElement.dataset.mode`.
+405. Tras `page.reload()`, `document.documentElement.dataset.mode` conserva el modo elegido, y ese
+     atributo ya está presente en el primer `document`ex evaluado tras `domcontentloaded`
+     (script anti-parpadeo activo).
+406. Con `localStorage` vacío y `colorScheme: 'dark'` emulado, la app arranca con
+     `data-mode="dark"`; con `colorScheme: 'light'` emulado, arranca con `data-mode="light"`.
+407. Con `localStorage['sedea.tema'] = 'light'` preestablecido y `colorScheme: 'dark'` emulado, la
+     app arranca y permanece en `data-mode="light"`.
+408. `[data-testid="toggle-tema"]` tiene un `aria-label` no vacío en español y un `aria-pressed`
+     de valor `"true"` o `"false"` coherente con el modo activo.
+409. El toggle es alcanzable con `Tab` y se activa con `Enter` y con `Space`.
+410. `document.querySelector('meta[name=theme-color]').content` es `#0A0A0C` en dark y `#F5F4EE`
+     en light; en ningún caso `#0b6b3a`.
+411. `/login` (sin sesión) contiene un `[data-testid="toggle-tema"]` visible y funcional.
+412. Alternar el tema no genera ninguna petición HTTP (`page.on('request')` no registra nada tras
+     el click) ni modifica el contador de `[data-testid="contador-pendientes"]`.
+
+### Cascarón y responsive
+
+413. Existe `pwa/src/componentes/Cascaron.tsx`, `rutas.tsx` lo usa como `element` del layout, y
+     `grep -r 'to="/dashboard"\|to="/usuarios"\|to="/solicitudes"' pwa/src/componentes/FranjaEstado.tsx`
+     no devuelve nada (la franja ya no navega).
+414. Viewport 1440×900: `[data-testid="barra-lateral"]` está visible y su `boundingBox().width`
+     está entre 240 y 280 px; `[data-testid="barra-inferior"]` tiene `count() === 0`.
+415. Viewport 1440×900: click en `[data-testid="colapsar-lateral"]` deja el sidebar con
+     `width` ≤ 80 px, los items siguen teniendo `aria-label` no vacío y siguen siendo clickeables;
+     `localStorage['sedea.lateral']` vale `'rail'`; tras `reload()` el sidebar sigue en rail.
+416. Viewport 820×1180: `[data-testid="barra-lateral"]` está presente con `width` ≤ 80 px por
+     defecto y `[data-testid="barra-inferior"]` tiene `count() === 0`.
+417. Viewport 390×844: `[data-testid="barra-inferior"]` está visible, su borde inferior coincide
+     con el del viewport, y `[data-testid="barra-lateral"]` tiene `count() === 0`.
+418. Viewport 390×844: la barra inferior contiene entre 2 y 5 elementos interactivos, y **todos**
+     tienen `boundingBox()` con `width ≥ 44` y `height ≥ 44`.
+419. Viewport 390×844: click en `[data-testid="mas-opciones"]` abre `[data-testid="hoja-mas"]`,
+     que contiene `[data-testid="nav-cambiar-password"]` y `[data-testid="nav-cerrar-sesion"]`;
+     `Escape` la cierra y el foco vuelve al botón.
+420. En los 3 viewports y en las rutas `/beneficiarios`, `/dashboard`, `/solicitudes`,
+     `/usuarios`, `/depuracion` y `/auditoria` (con el rol correspondiente):
+     `document.documentElement.scrollWidth <= window.innerWidth + 1` (sin scroll horizontal
+     de página).
+421. En cada uno de los 3 viewports, para cada `data-testid` que empieza con `nav-`,
+     `page.locator('[data-testid=X]').count()` es ≤ 1.
+422. `[data-testid="estado-red"]` es visible en los 3 viewports y su texto sigue siendo
+     exactamente `En línea` o `Sin conexión`.
+423. `[data-testid="contador-pendientes"]` es visible en los 3 viewports y su texto sigue
+     coincidiendo con `/^Pendientes: \d+$/`.
+424. `[data-testid="usuario-actual"]` existe y es visible en los 3 viewports.
+425. Con `perfil.debe_cambiar_password === true`: no existen `[data-testid="barra-lateral"]` ni
+     `[data-testid="barra-inferior"]`, y sí existe `[data-testid="nav-cerrar-sesion"]`
+     (el criterio de la §10.8.4 sigue pasando).
+426. El destino correspondiente a la ruta actual tiene `aria-current="page"` en el sidebar
+     (escritorio/tablet) y en la barra inferior (móvil), y su `color` computado difiere del de los
+     destinos inactivos.
+427. El DOM contiene `<main>` con `id="contenido"`, un `<nav aria-label="Navegación principal">`
+     en escritorio y un `<nav aria-label="Accesos rápidos">` en móvil.
+428. Existe un enlace de salto `a[href="#contenido"]` que es el primer elemento enfocable con
+     `Tab` y se hace visible al recibir foco.
+429. Viewport 390×844 en `/beneficiarios`: el `.toast` (tras disparar una acción que lo muestre)
+     no se solapa con `[data-testid="barra-inferior"]` (sus `boundingBox()` no se intersecan).
+
+### Lenguaje visual en las pantallas
+
+430. En las 17 pantallas, todo elemento `.tarjeta` computa `backgroundColor` igual al valor de
+     `--bg-elev` del modo activo, `borderRadius` ≥ 12px y `boxShadow` distinto de `none`.
+431. En modo dark, ninguna `.tarjeta`, `.modal`, `.metrica` ni `.declaraciones` computa
+     `backgroundColor: rgb(255, 255, 255)`.
+432. En `/depuracion`, `/correcciones`, `/usuarios` y `/solicitudes` (viewport 1440×900), los `th`
+     computan `backgroundColor` igual a `--bg-sunk` y `color` igual a `--fg`, en ambos modos.
+433. Viewport 390×844: en `/depuracion` y `/auditoria` no hay ningún `<table>` con
+     `scrollWidth > clientWidth` visible; el contenido se presenta como lista de tarjetas.
+434. En `/dashboard`, ninguna gráfica usa los literales `#128a4c`, `#b6bec9`, `#c98600` ni
+     `#2b6cb0` (`grep` sobre `Dashboard.tsx` vacío); tras alternar el tema, los datasets se
+     reconstruyen y los colores de eje/leyenda de Chart.js cambian.
+435. En `/auditoria` (390×844), el contenedor `.mapa` mide ≥ 240px de alto y sus controles Leaflet
+     no se solapan con `[data-testid="barra-inferior"]`.
+436. En `/usuarios` (390×844), al abrir el modal de alta, el `.modal` es visible por completo
+     dentro del viewport (o con scroll interno propio) y su ancho es ≤ el ancho del viewport.
+437. En `/login` (390×844): `document.documentElement.scrollWidth <= window.innerWidth + 1` y el
+     botón de entrar tiene `boundingBox().height ≥ 44`.
+438. Viewport 390×844: todo `input`, `select`, `textarea`, `button`, `a.boton` y `.chip` visible
+     tiene `boundingBox().height ≥ 44`.
+439. Al enfocar por teclado un `button`, un `a` y un `input` en cada modo, el estilo computado
+     muestra `outlineStyle !== 'none'` con `outlineWidth ≥ 2px`.
+440. El semáforo GPS conserva sus tres clases `.semaforo.verde`, `.semaforo.ambar` y
+     `.semaforo.rojo` con sus textos actuales, y ninguna computa el naranja de marca como color
+     de texto.
+
+### Contraste accesible en ambos modos
+
+441. En dark: contraste `--fg` sobre `--bg` ≥ 7:1 y `--fg-muted` sobre `--bg` ≥ 4.5:1.
+442. En light: contraste `--fg` sobre `--bg` ≥ 7:1 y `--fg-muted` sobre `--bg` ≥ 4.5:1.
+443. En ambos modos, el contraste entre el `color` y el `backgroundColor` computados de un
+     `button` primario es ≥ 4.5:1.
+444. En ambos modos, el contraste texto/fondo de `.mensaje.error`, `.mensaje.aviso`,
+     `.mensaje.info` y `.mensaje.exito`, y el de cada `.semaforo.*` y cada `.badge.alerta-*`,
+     es ≥ 4.5:1.
+445. Ninguna información se transmite solo por color: `[data-testid="estado-red"]` contiene texto,
+     cada `.badge.alerta-*` contiene texto, y `.campos-candidato .campo-difiere` incluye un
+     indicador no cromático además del fondo.
+
+### No regresión de negocio
+
+446. `git diff --stat` sobre `backend/`, `db/`, `packages/`, `scripts/`,
+     `pwa/nginx.conf.template`, `pwa/Dockerfile`, `pwa/vite.config.ts`, `pwa/src/api/`,
+     `pwa/src/db/` y `pwa/src/sync/` está **vacío**; y la suite completa de criterios **1-386**
+     vuelve a pasar sobre el build con el rediseño aplicado.

@@ -159,11 +159,11 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
     );
     const ventanillas = catalogos.ventanillas.filter((v) => permitidas.includes(Number(v.id)));
 
-    // Filtra modalidades: solo las de componentes permitidos por el alcance.
-    const componentesIds = alcance.componentes === 'todos' ? [] : (alcance.componentes ?? []);
-    const idsComponentes = new Set(componentesIds);
+    // Filtra modalidades: solo las de componentes dentro del alcance. Usa el
+    // mismo helper que componentes/municipios, que ya trata 'todos' como
+    // "sin restriccion" (un alcance 'todos' ve TODAS las modalidades).
     const modalidades = catalogos.modalidades.filter((m: any) =>
-      idsComponentes.has(Number(m.componente_id))
+      dentroDeAlcance(alcance.componentes, Number(m.componente_id))
     );
 
     return respuesta.status(200).send({

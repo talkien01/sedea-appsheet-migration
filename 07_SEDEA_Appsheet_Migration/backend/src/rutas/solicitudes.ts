@@ -53,11 +53,11 @@ import {
   tiposApoyoActivos
 } from '../db/queries/solicitudes.js';
 
-const consultarUna = async <T>(sql: string, values?: unknown[]) => {
+const consultarUna = async <T extends Record<string, unknown>>(sql: string, values?: unknown[]) => {
   const { rows } = await pool.query<T>(sql, values);
   return rows[0] ?? null;
 };
-const consultar = async <T>(sql: string, values?: unknown[]) => {
+const consultar = async <T extends Record<string, unknown>>(sql: string, values?: unknown[]) => {
   const { rows } = await pool.query<T>(sql, values);
   return rows;
 };

@@ -37,6 +37,7 @@ import {
   TIPOS_ADJUNTO_SOLICITUD,
   guardarAdjuntoSolicitud
 } from '../servicios/almacenamiento.js';
+import { pool } from '../db/pool.js';
 import {
   beneficiariosDeSolicitud,
   catalogosDelAlta,
@@ -51,6 +52,15 @@ import {
   obtenerSolicitud,
   tiposApoyoActivos
 } from '../db/queries/solicitudes.js';
+
+const consultarUna = async <T>(sql: string, values?: unknown[]) => {
+  const { rows } = await pool.query<T>(sql, values);
+  return rows[0] ?? null;
+};
+const consultar = async <T>(sql: string, values?: unknown[]) => {
+  const { rows } = await pool.query<T>(sql, values);
+  return rows;
+};
 
 const error403 = (codigo: string, mensaje: string) => new ErrorApi(403, codigo, mensaje);
 const error404 = (mensaje: string) => new ErrorApi(404, 'no_encontrado', mensaje);
@@ -153,6 +163,7 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       programas: catalogos.programas,
       subprogramas: catalogos.subprogramas,
       componentes,
+      modalidades: catalogos.modalidades,
       proyectos: catalogos.proyectos,
       ventanillas,
       municipios,
@@ -262,6 +273,44 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
     const ventanilla = cat.ventanilla;
     const componente = cat.componente;
     const proyecto = cat.proyecto;
+
+    // --- Validación de modalidad_id (Build 8, E42) -------------------------
+    // Si se proporciona modalidad_id, debe ser activa y del mismo componente.
+    let modalidadIdFinal: number | null = datos.modalidad_id ?? null;
+    if (modalidadIdFinal !== null) {
+      const modalidadRow = await consultarUna<{ id: number; componente_id: number }>(
+        'SELECT id, componente_id FROM modalidades WHERE id = $1 AND activo',
+        [modalidadIdFinal]
+      );
+      if (!modalidadRow) {
+        throw error422('modalidad_invalida', 'La modalidad seleccionada no existe o está inactiva.');
+      }
+      if (modalidadRow.componente_id !== Number(componente.id)) {
+        throw error422('modalidad_invalida', 'La modalidad no corresponde al componente seleccionado.');
+      }
+      // Si el proyecto tiene modalidad_id asignada y difiere -> 422.
+      const proyectoModalidadId = Number(proyecto.modalidad_id);
+      if (proyecto.modalidad_id !== null && proyectoModalidadId !== modalidadIdFinal) {
+        throw error422('modalidad_no_corresponde_proyecto',
+          'La modalidad no corresponde al proyecto seleccionado.');
+      }
+    } else {
+      // Si el componente tiene modalidades (PET) y no se envia modalidad_id -> 422.
+      const modalidadesDelComponente = await consultar<{ id: number }>(
+        'SELECT id FROM modalidades WHERE componente_id = $1 AND activo',
+        [Number(componente.id)]
+      );
+      if (modalidadesDelComponente.length > 0) {
+        // El componente tiene modalidades: se requiere modalidad_id.
+        // Excepción: si el proyecto ya tiene modalidad_id, la usamos.
+        if (proyecto.modalidad_id !== null) {
+          modalidadIdFinal = Number(proyecto.modalidad_id);
+        } else {
+          throw error422('modalidad_requerida',
+            'Este componente requiere seleccionar una modalidad.');
+        }
+      }
+    }
 
     const municipioUbicacion = await municipioActivo(datos.apoyo.ubicacion.municipio_id);
     if (!municipioUbicacion) {
@@ -379,7 +428,7 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
           const { rows } = await cliente.query<{ id: string }>(
             `INSERT INTO solicitudes (
                folio, capturado_por, programa_id, subprograma_id, componente_id, proyecto_id,
-               ventanilla_id, regional_id,
+               ventanilla_id, regional_id, modalidad_id,
                tipo_persona, nombre_solicitante, sexo, fecha_nacimiento, correo, telefono, curp,
                razon_social, num_integrantes,
                dom_municipio_id, dom_localidad, dom_delegacion, dom_cp, dom_tipo_asentamiento,
@@ -394,16 +443,16 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
                ben_mujeres_lengua_indigena,
                ubi_municipio_id, ubi_localidad, ubi_ejido, ubi_coordenadas,
                declaracion_aceptada, declaracion_version, observaciones, origen)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,
-                     $9,$10,$11,$12::date,$13,$14,$15,
-                     $16,$17,
-                     $18,$19,$20,$21,$22,$23,$24,$25,
-                     $26,$27,$28,$29,$30,$31,
-                     $32,$33,$34,$35,$36,
-                     $37,$38,$39,$40,
-                     $41,$42,$43,$44,$45,$46,$47,
-                     $48,$49,$50,$51,
-                     TRUE,$52,$53,'solicitud_ventanilla')
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,
+                     $10,$11,$12,$13::date,$14,$15,$16,
+                     $17,$18,
+                     $19,$20,$21,$22,$23,$24,$25,$26,
+                     $27,$28,$29,$30,$31,$32,
+                     $33,$34,$35,$36,$37,
+                     $38,$39,$40,$41,
+                     $42,$43,$44,$45,$46,$47,$48,
+                     $49,$50,$51,$52,
+                     TRUE,$53,$54,'solicitud_ventanilla')
              RETURNING id`,
             [
               folio,
@@ -414,6 +463,7 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
               datos.proyecto_id,
               datos.ventanilla_id,
               Number(ventanilla.regional_id),
+              modalidadIdFinal,
 
               tipoPersona,
               nombre,
@@ -625,7 +675,8 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
         ventanilla: ventanilla.clave,
         regional_id: Number(ventanilla.regional_id),
         tipo_persona: tipoPersona,
-        nombre_solicitante: nombre
+        nombre_solicitante: nombre,
+        modalidad: fila?.modalidad ?? null
       },
       conceptos: resultado.conceptosGuardados,
       beneficiarios_creados: resultado.beneficiariosCreados,

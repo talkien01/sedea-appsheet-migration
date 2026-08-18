@@ -175,6 +175,7 @@ export const esquemaCrearSolicitud = z
     componente_id: z.number().int().positive(),
     proyecto_id: z.number().int().positive(),
     ventanilla_id: z.number().int().positive(),
+    modalidad_id: z.number().int().positive().nullable().optional(),
 
     tipo_persona: z.enum(TIPOS_PERSONA),
     nombre_solicitante: z.string(),

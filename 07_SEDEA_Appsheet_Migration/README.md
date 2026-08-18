@@ -273,8 +273,8 @@ la cola de sincronización offline. Sin conexión muestra
 `docker compose up --build` aplica solas las migraciones nuevas (`012` y `013`),
 pero **el seed automático solo corre con la base vacía**, así que en una
 instalación que ya está operando hay que sembrar una vez los catálogos del
-módulo (componentes, ventanillas, proyecto, siglas de folio y las 42 reglas de
-documentación). El archivo es idempotente y **no toca ningún usuario ni
+módulo (componentes, ventanillas, proyecto, siglas de folio y las reglas de
+documentación — 42 de Build 6 más las 8 de Casas Ejidales que agrega la migración 014). El archivo es idempotente y **no toca ningún usuario ni
 contraseña**:
 
 ```bash
@@ -364,7 +364,8 @@ localidad y el ejido de la sección 4.1.
 ### Documentos requeridos
 
 El checklist se calcula solo, según componente, tipo de persona, proyecto y
-conceptos elegidos (42 reglas sembradas, incluidas exclusiones: las
+conceptos elegidos (50 reglas sembradas — 42 de Build 6 y 8 de Casas Ejidales —,
+incluidas exclusiones: las
 "Cotizaciones" no se piden si el único concepto es fertilizante, pero vuelven a
 pedirse si hay un segundo concepto no excluido). Al guardar, el checklist se
 **materializa copiando el texto**: cambiar las reglas después no altera las
@@ -378,6 +379,78 @@ Una vez guardada **no hay edición ni borrado** (`PATCH`/`DELETE` sobre
 fuente de verdad. Lo único que sigue siendo modificable es el checklist de
 documentos. Si un dato del beneficiario derivado está mal, se corrige por
 **`/correcciones`**, que deja traza en la bitácora.
+
+---
+
+## Casas Ejidales (proyecto CEJ)
+
+### Qué es
+
+**Casas Ejidales** es un **proyecto nuevo** (`CEJ`) dentro del programa ya
+existente:
+
+| Nivel | Valor |
+|---|---|
+| Programa | Apoyo al Campo Queretano 2026 |
+| Subprograma | Impulso a la Productividad |
+| Componente | _Sin restricción_ (campo `componente_id IS NULL`) |
+| Proyecto | Casas Ejidales — clave `CEJ` |
+
+No se creó ningún programa, subprograma ni componente nuevo: Casas Ejidales
+se integra en la jerarquía existente igual que el proyecto PEO.
+
+### Estructura del folio CEJ
+
+```
+CEJ-{clave_regional}-{siglas_municipio}-{consecutivo 4 dígitos}-{año 2 dígitos}
+```
+
+Ejemplo: `CEJ-SJR-AME-0001-26`
+
+El contador de folios CEJ es **independiente** del de PEO: cada combinación
+`(prefijo='CEJ', regional, municipio, año)` tiene su propio consecutivo.
+El fallback de siglas del municipio aplica igual que para PEO (primeras 3
+letras del nombre normalizado).
+
+### Documentos requeridos (grupos de productores)
+
+Los 8 documentos aplican cuando `tipo_persona='grupo'`. Para `fisica` o
+`moral` el algoritmo E41 los omite automáticamente.
+
+1. Solicitud mediante escrito libre dirigida al Titular de la Secretaría
+2. Ficha técnica
+3. Acta integración del grupo de productores
+4. Identificación oficial vigente con fotografía (INE o pasaporte) del representante del grupo de productores
+5. CURP del representante del grupo de productores
+6. Constancia de Situación Fiscal del representante del grupo de productores
+7. Comprobante de domicilio del representante de grupo de productores
+8. Relación de beneficiarios directos del grupo de productores
+
+### Aplicar la migración 014 sobre una BD de Build 6 sin downtime
+
+Si la instalación ya está en producción con Build 6, aplica la migración
+aditiva (100 % idempotente, no toca ninguna fila existente):
+
+```bash
+docker compose exec -T db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  < db/migrations/014_casas_ejidales.sql
+```
+
+También puedes hacer un `docker compose up --build` normal: el runner de
+migraciones aplica automáticamente las que aún no se hayan ejecutado. El
+servicio no necesita bajarse para aplicarla.
+
+### Mejoras de UX incluidas en Build 7
+
+Las siguientes mejoras en las pantallas de ventanilla **no requieren
+variable de entorno nueva ni migración adicional**:
+
+| Mejora | Descripción |
+|---|---|
+| **Visor inline de PDF** | Tras adjuntar un PDF, el detalle muestra un `<iframe>` en lugar de solo el enlace de descarga. Las imágenes JPG/PNG/WEBP se muestran con `<img>`. |
+| **Banner post-guardado** | Al guardar una solicitud, la redirección automática (4 s) lleva a `/solicitudes/:id?nuevo=1`. El detalle muestra un banner de confirmación que desaparece al tocarlo o a los 10 s. |
+| **Drag & drop** | Cada documento del checklist tiene una zona de arrastre encima del selector de archivo. Sin librerías externas. |
+| **Carátula imprimible** | El botón "Imprimir carátula" llama a `window.print()`. Se imprime solo el bloque con folio, solicitante, municipio, proyecto, conceptos y lista de documentos con casillas vacías para check manual. |
 
 ---
 

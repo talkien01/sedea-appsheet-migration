@@ -159,11 +159,18 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
     );
     const ventanillas = catalogos.ventanillas.filter((v) => permitidas.includes(Number(v.id)));
 
+    // Filtra modalidades: solo las de componentes permitidos por el alcance.
+    const componentesIds = alcance.componentes === 'todos' ? [] : (alcance.componentes ?? []);
+    const idsComponentes = new Set(componentesIds);
+    const modalidades = catalogos.modalidades.filter((m: any) =>
+      idsComponentes.has(Number(m.componente_id))
+    );
+
     return respuesta.status(200).send({
       programas: catalogos.programas,
       subprogramas: catalogos.subprogramas,
       componentes,
-      modalidades: catalogos.modalidades,
+      modalidades,
       proyectos: catalogos.proyectos,
       ventanillas,
       municipios,

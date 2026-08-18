@@ -209,6 +209,11 @@ export default function DetalleSolicitud() {
         <p className="dato">
           Recibida el {new Date(s.recibida_en).toLocaleString('es-MX')} en {s.ventanilla_nombre} ·
           Componente {s.componente} · Proyecto {s.proyecto}
+          {s.modalidad && (
+            <>
+              {' '}· Modalidad <span data-testid="dato-modalidad">{s.modalidad_nombre}</span>
+            </>
+          )}
         </p>
         {error && (
           <div className="mensaje error" role="alert">

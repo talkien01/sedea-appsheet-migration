@@ -99,6 +99,7 @@ export default function NuevaSolicitud() {
   const [programaId, setProgramaId] = useState('');
   const [subprogramaId, setSubprogramaId] = useState('');
   const [componenteId, setComponenteId] = useState('');
+  const [modalidadId, setModalidadId] = useState('');
   const [proyectoId, setProyectoId] = useState('');
   const [ventanillaId, setVentanillaId] = useState('');
 
@@ -146,6 +147,40 @@ export default function NuevaSolicitud() {
       }
     })();
   }, [enLinea]);
+
+  // --- Al cambiar Componente: reset modalidadId, preseleccionar si hay 1.
+  useEffect(() => {
+    if (!catalogos) return;
+    const modsDelComponente = (catalogos.modalidades ?? []).filter(
+      (m) => String(m.componente_id) === componenteId
+    );
+    if (modsDelComponente.length === 1) {
+      setModalidadId(String(modsDelComponente[0].id));
+    } else {
+      setModalidadId('');
+    }
+  }, [componenteId, catalogos]);
+
+  // --- Proyectos aplicables segun componente y modalidad (R14-1).
+  const proyectosFiltrados = useMemo(() => {
+    if (!catalogos) return [];
+    const compId = componenteId ? Number(componenteId) : null;
+    const modId = modalidadId ? Number(modalidadId) : null;
+    // Si hay modalidades pero no se selecciono ninguna -> vacio.
+    const modsDelComponente = (catalogos.modalidades ?? []).filter(
+      (m) => m.componente_id === compId
+    );
+    if (modsDelComponente.length > 0 && modId === null) {
+      return [];
+    }
+    const base = (catalogos.proyectos ?? []).filter(
+      (p) =>
+        p.componente_id === compId &&
+        (modId === null || p.modalidad_id === modId)
+    );
+    // Fallback: si base vacia -> todos (no regresion TR/CAA/DIN).
+    return base.length === 0 ? catalogos.proyectos : base;
+  }, [catalogos, componenteId, modalidadId]);
 
   const idsConceptos = useMemo(
     () => conceptos.map((c) => Number(c.tipo_apoyo_id)).filter((n) => Number.isInteger(n) && n > 0),
@@ -261,6 +296,7 @@ export default function NuevaSolicitud() {
         componente_id: Number(componenteId),
         proyecto_id: Number(proyectoId),
         ventanilla_id: Number(ventanillaId),
+        modalidad_id: modalidadId ? Number(modalidadId) : null,
         tipo_persona: solicitante.tipo_persona,
         nombre_solicitante: solicitante.nombre_solicitante,
         sexo: solicitante.sexo || null,
@@ -416,12 +452,65 @@ export default function NuevaSolicitud() {
                   name="componente"
                   data-testid={`radio-componente-${c.clave}`}
                   checked={componenteId === String(c.id)}
-                  onChange={() => setComponenteId(String(c.id))}
+                  onChange={() => {
+                    setComponenteId(String(c.id));
+                    // Al cambiar componente, el proyecto se limpia si ya no aplica.
+                    const modsDelComponente = (catalogos.modalidades ?? []).filter(
+                      (m) => m.componente_id === c.id
+                    );
+                    if (modsDelComponente.length === 0) {
+                      // Sin modalidades: validar que el proyecto siga aplicando.
+                      const proyectoAunValido = (catalogos.proyectos ?? []).some(
+                        (p) => String(p.id) === proyectoId && p.componente_id === c.id
+                      );
+                      if (!proyectoAunValido) setProyectoId('');
+                    }
+                  }}
                 />
                 {c.clave} — {c.nombre}
               </label>
             ))}
           </fieldset>
+
+          {/* Selector de Modalidad (Build 8): solo si el componente tiene modalidades */}
+          {(catalogos?.modalidades ?? []).some(
+            (m) => String(m.componente_id) === componenteId
+          ) && (
+            <div className="campo">
+              <label htmlFor="select-modalidad">Modalidad</label>
+              <select
+                id="select-modalidad"
+                data-testid="select-modalidad"
+                value={modalidadId}
+                onChange={(e) => {
+                  setModalidadId(e.target.value);
+                  // Al cambiar modalidad, limpiar proyecto si ya no aplica.
+                  const modId = Number(e.target.value);
+                  const proyectoAunValido = (catalogos.proyectos ?? []).some(
+                    (p) => String(p.id) === proyectoId && p.modalidad_id === modId
+                  );
+                  if (!proyectoAunValido) setProyectoId('');
+                }}
+              >
+                <option value="">Selecciona una modalidad</option>
+                {(catalogos.modalidades ?? [])
+                  .filter((m) => String(m.componente_id) === componenteId)
+                  .map((m) => (
+                    <option key={m.id} value={String(m.id)}>
+                      {m.nombre}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
+
+          {/* Si el componente no tiene modalidades, mostrar "No aplica" */}
+          {componenteId &&
+            !(catalogos?.modalidades ?? []).some(
+              (m) => String(m.componente_id) === componenteId
+            ) && (
+            <p className="dato" data-testid="modalidad-no-aplica">No aplica</p>
+          )}
 
           <div className="campo">
             <label htmlFor="select-proyecto">Proyecto</label>
@@ -432,7 +521,7 @@ export default function NuevaSolicitud() {
               onChange={(e) => setProyectoId(e.target.value)}
             >
               <option value="">Selecciona un proyecto</option>
-              {(catalogos?.proyectos ?? []).map((p) => (
+              {proyectosFiltrados.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nombre}
                 </option>

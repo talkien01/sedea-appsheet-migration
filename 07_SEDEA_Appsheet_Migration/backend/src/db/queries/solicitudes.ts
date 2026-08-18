@@ -16,7 +16,7 @@ export interface FilaVentanilla {
 
 /** Catalogos completos (sin filtrar por alcance: eso lo hace la ruta E40). */
 export async function catalogosVentanilla() {
-  const [programas, subprogramas, componentes, proyectos, ventanillas, municipios, tiposApoyo] =
+  const [programas, subprogramas, componentes, modalidades, proyectos, ventanillas, municipios, tiposApoyo] =
     await Promise.all([
       consultar<any>('SELECT id, clave, nombre FROM programas WHERE activo ORDER BY nombre'),
       consultar<any>(
@@ -24,7 +24,10 @@ export async function catalogosVentanilla() {
       ),
       consultar<any>('SELECT id, clave, nombre FROM componentes WHERE activo ORDER BY clave'),
       consultar<any>(
-        'SELECT id, clave, nombre, prefijo_folio, componente_id FROM proyectos WHERE activo ORDER BY nombre'
+        'SELECT id, clave, nombre, componente_id FROM modalidades WHERE activo ORDER BY nombre'
+      ),
+      consultar<any>(
+        'SELECT id, clave, nombre, prefijo_folio, componente_id, modalidad_id FROM proyectos WHERE activo ORDER BY nombre'
       ),
       consultar<FilaVentanilla>(
         'SELECT id, clave, nombre, regional_id, clave_folio, es_central FROM ventanillas WHERE activo ORDER BY clave'
@@ -37,7 +40,7 @@ export async function catalogosVentanilla() {
       )
     ]);
 
-  return { programas, subprogramas, componentes, proyectos, ventanillas, municipios, tiposApoyo };
+  return { programas, subprogramas, componentes, modalidades, proyectos, ventanillas, municipios, tiposApoyo };
 }
 
 /** Fila de `componentes` por id (solo activas). */
@@ -66,7 +69,7 @@ export async function catalogosDelAlta(datos: {
     consultarUna<any>('SELECT id, clave FROM componentes WHERE id = $1 AND activo', [
       datos.componente_id
     ]),
-    consultarUna<any>('SELECT id, clave, prefijo_folio FROM proyectos WHERE id = $1 AND activo', [
+    consultarUna<any>('SELECT id, clave, prefijo_folio, modalidad_id FROM proyectos WHERE id = $1 AND activo', [
       datos.proyecto_id
     ]),
     consultarUna<FilaVentanilla>(
@@ -204,7 +207,8 @@ export async function obtenerSolicitud(id: number) {
             v.clave AS ventanilla, v.nombre AS ventanilla_nombre,
             pr.nombre AS programa_nombre, sp.nombre AS subprograma_nombre,
             mu.nombre AS ubi_municipio, md.nombre AS dom_municipio,
-            u.usuario AS capturado_por_usuario
+            u.usuario AS capturado_por_usuario,
+            m.clave AS modalidad, m.nombre AS modalidad_nombre
        FROM solicitudes s
        JOIN componentes c ON c.id = s.componente_id
        JOIN proyectos p   ON p.id = s.proyecto_id
@@ -214,6 +218,7 @@ export async function obtenerSolicitud(id: number) {
        LEFT JOIN municipios mu ON mu.id = s.ubi_municipio_id
        LEFT JOIN municipios md ON md.id = s.dom_municipio_id
        LEFT JOIN usuarios u ON u.id = s.capturado_por
+       LEFT JOIN modalidades m ON m.id = s.modalidad_id
       WHERE s.id = $1`,
     [id]
   );

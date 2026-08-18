@@ -2860,3 +2860,330 @@ La carátula vive en el mismo `DetalleSolicitud.tsx`, visible solo en `@media pr
 343. `README.md` documenta Casas Ejidales **como concepto de apoyo, no como proyecto**: (a) que es una fila de `tipos_apoyo` (`CASAS-EJIDALES`) solicitada dentro del proyecto **PEO** ya existente, bajo el programa "Apoyo al Campo Queretano 2026" y el subprograma "Impulso a la Productividad"; (b) que el folio de esas solicitudes es el normal de PEO (`PEO-{regional}-{municipio}-{consecutivo}-{año}`) y que **no existe** ningún prefijo `CEJ` — incluyendo una nota de que la primera versión de Build 7 lo modeló mal como proyecto y que se corrigió antes de desplegar; (c) los 8 documentos requeridos listados explícitamente, que aplican a **grupos de productores** cuando se selecciona el concepto; (d) cómo aplicar la migración 014 y re-ejecutar el seed 005 sobre una BD de Build 6 existente sin downtime; y (e) que las mejoras de UX (visor PDF, banner post-guardado, drag & drop, carátula imprimible) no requieren variable de entorno nueva ni migración adicional. El README **no** contiene la cadena `CEJ`.
 
 **Definición de terminado (build 7):** los **343** criterios pasan (306 acumulados de los builds 1–6 + **37** de esta extensión).
+
+---
+
+## 14. Extensión Build 8 — Jerarquía completa: componente PET y nivel Modalidad
+
+> Esta sección **extiende** el SPEC. No sustituye ni reinterpreta nada de las secciones 1-13.
+> Todo lo definido antes sigue vigente tal cual. Los criterios 1-343 siguen siendo obligatorios.
+
+### 14.1 Objetivo
+
+Cerrar el hueco de catálogo detectado en producción: dar de alta el 4º componente **Proyectos Estratégicos Territoriales (PET)** y modelar el nivel intermedio **Modalidad** entre Componente y Proyecto, de forma que una solicitud del proyecto **PEO** (incluidos los expedientes de Casas Ejidales) se capture con su jerarquía real y no forzada a TR/CAA/DIN.
+
+Jerarquía oficial declarada en `CamScanner 17-08-2026 10.27.pdf`:
+
+```
+Programa:     Apoyo al Campo Queretano, Ejercicio 2026        -> programas.PRG-2026        (existe)
+Subprograma:  Impulso a la Productividad                      -> subprogramas.SUB-IP       (existe)
+Componente:   Proyectos Estratégicos Territoriales            -> componentes.PET           (NUEVO)
+Modalidad:    Proyectos Estratégicos Productivos y para el
+              Fortalecimiento Organizativo                    -> modalidades.MOD-PEPFO     (NUEVO)
+Proyecto:     Proyectos Estratégicos para el Fortalecimiento
+              Organizativo (PEO)                              -> proyectos.PEO             (existe, se re-liga)
+```
+
+### 14.2 Scope
+
+**SÍ incluye:**
+1. Migración **015** aditiva e idempotente: tabla `modalidades`, columna `proyectos.modalidad_id`, columna `solicitudes.modalidad_id`, alta del componente `PET`, alta de la modalidad `MOD-PEPFO`, re-ligado de `PEO` a `PET` + `MOD-PEPFO`.
+2. Ajustes al **seed 005** para que siga siendo idempotente y coherente.
+3. Contrato del endpoint de catálogos de ventanilla (**E40**): devuelve `modalidades[]` y `proyectos[].modalidad_id`.
+4. Contrato del alta (**E42**): acepta `modalidad_id` opcional, lo valida/deriva y lo persiste.
+5. Contrato del detalle (**E44**): devuelve `modalidad` y `modalidad_nombre`.
+6. Selector **Modalidad** encadenado en el formulario de ventanilla (`NuevaSolicitud.tsx`).
+7. Funciones puras de encadenamiento en `@sedea/shared` (`modalidadesDeComponente`, `proyectosAplicables`).
+8. Rubric extendido (criterios 344-386).
+
+**NO incluye:**
+- Modificación a migraciones **012, 013 ó 014** (ya aplicadas en producción).
+- Cambio al **folio**: sigue siendo `PEO-{regional}-{municipio}-{consecutivo}-{año}`.
+- Proyecto nuevo ni prefijo `CEJ`. Casas Ejidales sigue siendo **concepto de apoyo** dentro de PEO.
+- Cambio a reglas de `documentos_requeridos` (el checklist no se indexa por modalidad en este build).
+- Cambio al flujo offline de campo.
+- Dependencias npm nuevas, cambios a `docker-compose.yml` ni a `pwa/nginx.conf.template`.
+- Cambio al listado E43 (`GET /api/solicitudes`).
+- Backfill de `solicitudes.modalidad_id` en filas históricas.
+
+### 14.3 Modelo de datos
+
+**Tabla nueva `modalidades`:**
+| Columna | Tipo | Reglas |
+|---|---|---|
+| `id` | `BIGSERIAL PRIMARY KEY` | |
+| `clave` | `TEXT UNIQUE NOT NULL` | patrón corto (`MOD-PEPFO`) |
+| `nombre` | `TEXT NOT NULL` | nombre largo oficial |
+| `componente_id` | `BIGINT NOT NULL REFERENCES componentes(id)` | una modalidad por componente |
+| `activo` | `BOOLEAN NOT NULL DEFAULT TRUE` | nunca se borra, se desactiva |
+
+Índice: `idx_modalidades_componente ON modalidades (componente_id)`.
+
+**Componente nuevo:** `clave='PET'`, `nombre='Proyectos Estratégicos Territoriales'`, `activo=TRUE`.
+
+**Columnas nuevas:**
+- `proyectos.modalidad_id BIGINT NULL REFERENCES modalidades(id)` — nullable a propósito.
+- `solicitudes.modalidad_id BIGINT NULL REFERENCES modalidades(id)` — nullable, índice `idx_sol_modalidad`.
+
+**Re-ligado de PEO:**
+```
+proyectos.PEO.componente_id = componentes.PET.id      (antes NULL)
+proyectos.PEO.modalidad_id  = modalidades.MOD-PEPFO.id
+proyectos.PEO.prefijo_folio = 'PEO'                   (SIN CAMBIO)
+```
+
+### 14.4 Migración 015
+
+Archivo: `db/migrations/015_modalidades.sql`. Aditiva, idempotente, ejecutable N veces.
+
+```sql
+-- 015_modalidades.sql
+-- Build 8: nivel "Modalidad" entre Componente y Proyecto + componente PET.
+
+-- 1. Catálogo nuevo de modalidades.
+CREATE TABLE IF NOT EXISTS modalidades (
+  id            BIGSERIAL PRIMARY KEY,
+  clave         TEXT UNIQUE NOT NULL,
+  nombre        TEXT NOT NULL,
+  componente_id BIGINT NOT NULL REFERENCES componentes(id),
+  activo        BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE INDEX IF NOT EXISTS idx_modalidades_componente ON modalidades (componente_id);
+
+-- 2. Columnas nuevas, ambas NULLABLE a propósito.
+ALTER TABLE proyectos   ADD COLUMN IF NOT EXISTS modalidad_id BIGINT REFERENCES modalidades(id);
+ALTER TABLE solicitudes ADD COLUMN IF NOT EXISTS modalidad_id BIGINT REFERENCES modalidades(id);
+CREATE INDEX IF NOT EXISTS idx_sol_modalidad ON solicitudes (modalidad_id);
+
+-- 3. Cuarto componente. Los 3 existentes (TR/CAA/DIN) no se tocan.
+INSERT INTO componentes (clave, nombre) VALUES
+  ('PET', 'Proyectos Estratégicos Territoriales')
+ON CONFLICT (clave) DO UPDATE SET nombre = EXCLUDED.nombre, activo = TRUE;
+
+-- 4. Modalidad del PDF oficial, ligada a PET.
+INSERT INTO modalidades (clave, nombre, componente_id)
+SELECT 'MOD-PEPFO', 'Proyectos Estratégicos Productivos y para el Fortalecimiento Organizativo', c.id
+  FROM componentes c WHERE c.clave = 'PET'
+ON CONFLICT (clave) DO UPDATE SET nombre = EXCLUDED.nombre, componente_id = EXCLUDED.componente_id, activo = TRUE;
+
+-- 5. Re-ligado de PEO.
+UPDATE proyectos p
+   SET componente_id = c.id,
+       modalidad_id  = m.id
+  FROM componentes c, modalidades m
+ WHERE p.clave = 'PEO'
+   AND c.clave = 'PET'
+   AND m.clave = 'MOD-PEPFO';
+```
+
+### 14.5 Ajustes al seed 005
+
+1. **Componentes** — agrega `PET`:
+```sql
+INSERT INTO componentes (clave, nombre) VALUES
+  ('TR',  'Tecnificación del Riego'),
+  ('CAA', 'Captación y Almacenamiento de Agua'),
+  ('DIN', 'Dinamismo Agroalimentario'),
+  ('PET', 'Proyectos Estratégicos Territoriales')
+ON CONFLICT (clave) DO UPDATE SET nombre = EXCLUDED.nombre, activo = TRUE;
+```
+
+2. **Modalidades** — bloque nuevo:
+```sql
+INSERT INTO modalidades (clave, nombre, componente_id)
+SELECT 'MOD-PEPFO', 'Proyectos Estratégicos Productivos y para el Fortalecimiento Organizativo', c.id
+  FROM componentes c WHERE c.clave = 'PET'
+ON CONFLICT (clave) DO UPDATE SET nombre = EXCLUDED.nombre, componente_id = EXCLUDED.componente_id, activo = TRUE;
+```
+
+3. **Upsert de PEO** — cambia `componente_id = NULL` por ligado real:
+```sql
+INSERT INTO proyectos (clave, nombre, prefijo_folio, componente_id, modalidad_id)
+SELECT 'PEO', 'Proyectos Estratégicos para el Fortalecimiento Organizativo', 'PEO', c.id, m.id
+  FROM componentes c
+  JOIN modalidades m ON m.clave = 'MOD-PEPFO'
+ WHERE c.clave = 'PET'
+ON CONFLICT (clave) DO UPDATE SET
+  nombre        = EXCLUDED.nombre,
+  prefijo_folio = EXCLUDED.prefijo_folio,
+  componente_id = EXCLUDED.componente_id,
+  modalidad_id  = EXCLUDED.modalidad_id,
+  activo        = TRUE;
+```
+
+### 14.6 Contrato de API
+
+**E40 — `GET /api/solicitudes/catalogos`:**
+- Agrega clave `modalidades`: array con `id`, `clave`, `nombre`, `componente_id`.
+- `proyectos[].modalidad_id` (nullable).
+- Mismo filtro de alcance que `componentes`.
+
+**E42 — `POST /api/solicitudes`:**
+- Body opcional: `modalidad_id: z.number().int().positive().nullable().optional()`.
+- Validación: si existe, debe ser activa y del mismo componente; si el proyecto tiene `modalidad_id` y difiere → `422 modalidad_no_corresponde_proyecto`.
+- Si componente tiene modalidades y `modalidad_id` es null → `422 modalidad_requerida`.
+- Persistencia: `INSERT INTO solicitudes (... , modalidad_id)`.
+- Respuesta: `solicitud.modalidad = <clave|null>`.
+
+**E41 — `POST /api/solicitudes/documentos-requeridos`:**
+- Tolera `modalidad_id` en el body (no lo usa).
+
+**E44 — `GET /api/solicitudes/:id`:**
+- Agrega `modalidad` y `modalidad_nombre` (null en históricas).
+
+**E43 — `GET /api/solicitudes` (listado):**
+- Sin cambios.
+
+### 14.7 Encadenamiento (@sedea/shared)
+
+```ts
+export interface ModalidadVentanilla extends OpcionCatalogoVentanilla {
+  componente_id: number;
+}
+
+export function modalidadesDeComponente(
+  modalidades: ModalidadVentanilla[],
+  componenteId: number | null
+): ModalidadVentanilla[];
+
+export function proyectosAplicables(
+  proyectos: ProyectoVentanilla[],
+  modalidades: ModalidadVentanilla[],
+  componenteId: number | null,
+  modalidadId: number | null
+): ProyectoVentanilla[];
+```
+
+**Regla R14-1:** si `mods.length > 0` y `modalidadId` es null → devuelve `[]`; si `base` queda vacía tras filtrar por componente → devuelve **todos** los proyectos (garantiza no regresión para TR/CAA/DIN con PEO).
+
+### 14.8 UI — selector de Modalidad
+
+**Estado nuevo:** `const [modalidadId, setModalidadId] = useState('')`.
+
+**Si componente tiene ≥1 modalidad activa (PET):**
+```tsx
+<select id="select-modalidad" data-testid="select-modalidad"
+        value={modalidadId} onChange={(e) => setModalidadId(e.target.value)}>
+  <option value="">Selecciona una modalidad</option>
+  {modsDelComponente.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+</select>
+```
+
+**Si componente no tiene modalidades (TR/CAA/DIN):**
+```tsx
+<p className="dato" data-testid="modalidad-no-aplica">No aplica</p>
+```
+
+**Comportamiento:**
+1. Al cambiar Componente → `setModalidadId('')`; si hay 1 modalidad → preseleccionada.
+2. Si `proyectoId` ya no está en `proyectosAplicables` → se limpia.
+3. Body a E42: `modalidad_id: modalidadId ? Number(modalidadId) : null`.
+
+**DetalleSolicitud.tsx:** agrega `· Modalidad {s.modalidad_nombre}` si no es null (`[data-testid="dato-modalidad"]`).
+
+### 14.9 Alcance y administración
+
+- `PET` aparece en administración de alcance (`Usuarios.tsx`).
+- Usuarios con alcance vacío ("todos") ven PET sin acción.
+- Seed 006 no cambia: `ventanilla1` sigue con alcance solo `TR`.
+
+### 14.10 Stack, comandos y archivos
+
+- Sin cambios de stack, versiones ni dependencias.
+- Despliegue: `npm run migrar` (aplica 015) → `npm run sembrar` (re-ejecuta seeds).
+
+**Archivos:**
+| Archivo | Acción |
+|---|---|
+| `db/migrations/015_modalidades.sql` | nuevo |
+| `db/seeds/005_ventanilla_catalogos.sql` | modificado |
+| `packages/shared/src/solicitudes.ts` | tipos + 2 funciones |
+| `backend/src/db/queries/solicitudes.ts` | consultas de modalidades |
+| `backend/src/rutas/solicitudes.ts` | validación de modalidad_id |
+| `pwa/src/pantallas/NuevaSolicitud.tsx` | selector encadenado |
+| `pwa/src/pantallas/DetalleSolicitud.tsx` | muestra Modalidad |
+
+### 14.11 Assumptions del Build 8
+
+- **A14-1:** Clave componente: `PET` (2-3 letras mayúsculas).
+- **A14-2:** Clave modalidad: `MOD-PEPFO`.
+- **A14-3:** Campo "No aplica" visible cuando no hay modalidades.
+- **A14-4:** Preselección si hay 1 modalidad.
+- **A14-5:** Regla R14-1 (fallback a todos los proyectos).
+- **A14-6:** Backend no valida coherencia componente↔proyecto.
+- **A14-7:** `solicitudes.modalidad_id` persiste, históricas en `NULL`.
+- **A14-8:** Checklist no se indexa por modalidad.
+- **A14-9:** Listado E43 no expone modalidad.
+- **A14-10:** Sin modalidades para TR/CAA/DIN.
+
+### 14.12 Rubric de evaluación (344-386)
+
+#### Esquema y migración (344-353)
+
+| # | Descripción | Cómo verificar |
+|---|---|---|
+| 344 | Existe `db/migrations/015_modalidades.sql` y `git diff` sobre `012_*.sql`, `013_*.sql`, `014_*.sql` está vacío. | `ls db/migrations/015*` + `git diff HEAD -- db/migrations/01{2,3,4}_*.sql` sin output. |
+| 345 | `\\d modalidades` en psql muestra columnas `id`, `clave`, `nombre`, `componente_id`, `activo` y FK a `componentes(id)`. | `psql -c "\\d modalidades"` |
+| 346 | `SELECT clave, nombre, activo FROM componentes WHERE clave='PET'` devuelve 1 fila con `activo=true`. | `psql -c "SELECT clave, nombre, activo FROM componentes WHERE clave='PET'"` |
+| 347 | `SELECT count(*) FROM componentes WHERE activo` devuelve `4`; TR/CAA/DIN conservan nombres originales. | `psql -c "SELECT clave, nombre FROM componentes WHERE activo"` |
+| 348 | `SELECT m.clave, m.nombre, c.clave FROM modalidades m JOIN componentes c ON c.id=m.componente_id` devuelve 1 fila: `MOD-PEPFO`, `PET`. | `psql` |
+| 349 | `proyectos` tiene columna `modalidad_id` con `is_nullable='YES'`. | `information_schema.columns` query |
+| 350 | PEO tiene `componente_id=PET.id`, `modalidad_id IS NOT NULL`, `prefijo_folio='PEO'`, `activo=true`. | `psql` |
+| 351 | `SELECT count(*) FROM proyectos WHERE clave='CEJ' OR prefijo_folio='CEJ'` devuelve `0`; `tipos_apoyo` con `clave='CASAS-EJIDALES'` tiene `activo=true`. | `psql` |
+| 352 | `solicitudes` tiene `modalidad_id` nullable; solicitudes históricas conservan `componente_id` y `proyecto_id` con `modalidad_id IS NULL`. | `psql` |
+| 353 | Re-ejecutar migraciones (`npm run migrar`) termina en 0, reporta `015_modalidades.sql (ya aplicada)`, no duplica filas. | Log del migrador. |
+
+#### Idempotencia del seed 005 (354-357)
+
+| # | Descripción | Cómo verificar |
+|---|---|---|
+| 354 | Ejecutar seeder dos veces termina ambas en 0 sin errores. | `npm run sembrar && npm run sembrar` |
+| 355 | Tras re-seed, `SELECT activo FROM componentes WHERE clave='PET'` sigue `true`. | `psql` |
+| 356 | Tras re-seed, `SELECT count(*) FROM modalidades` sigue `1`; PEO conserva `componente_id=PET`, `modalidad_id=MOD-PEPFO`. | `psql` |
+| 357 | Tras re-seed, `SELECT count(*) FROM documentos_requeridos d JOIN tipos_apoyo t ON t.id=d.apoyo_id WHERE t.clave='CASAS-EJIDALES' AND d.activo` sigue `8`. | `psql` |
+
+#### API (358-370)
+
+| # | Descripción | Cómo verificar |
+|---|---|---|
+| 358 | `GET /api/solicitudes/catalogos` con alcance total incluye `modalidades[]` con `id`, `clave`, `nombre`, `componente_id`. | `curl -s ... | jq '.modalidades'` |
+| 359 | `proyectos[].modalidad_id` existe y PEO lo trae `!= null`. | `curl -s ... | jq '.proyectos[] \| select(.clave=="PEO") \| .modalidad_id'` |
+| 360 | `componentes` incluye `PET`. | `curl -s ... | jq '.componentes[] \| select(.clave=="PET")'` |
+| 361 | `GET /api/solicitudes/catalogos` con `ventanilla1` (alcance=TR): `componentes` no tiene `PET`, `modalidades=[]`. | `curl` con token ventanilla1 |
+| 362 | `POST /api/solicitudes` con `componente_id=PET`, `proyecto_id=PEO`, `modalidad_id=MOD-PEPFO` → `201`, folio `^PEO-[A-Z]{3}-[A-Z]{3}-\d{4}-\d{2}$`. | `curl -X POST ...` |
+| 363 | Respuesta 362 incluye `solicitud.modalidad="MOD-PEPFO"` y conserva claves previas. | `jq '.solicitud'` |
+| 364 | `GET /api/solicitudes/{id}` de esa solicitud → `200` con `modalidad="MOD-PEPFO"`, `modalidad_nombre="Proyectos..."`. | `curl` |
+| 365 | `POST /api/solicitudes` con `modalidad_id=999999` → `422`, `codigo="modalidad_invalida"`. | `curl | jq '.error.codigo'` |
+| 366 | `POST /api/solicitudes` con PET+PEO sin `modalidad_id` → `201`, detalle trae `modalidad="MOD-PEPFO"`. | `curl` |
+| 367 | No regresión: TR+PEO sin `modalidad_id` → `201`, folio `PEO-`, `modalidad=null`. | `curl` |
+| 368 | TR + `modalidad_id=MOD-PEPFO` → `422`, `codigo="modalidad_invalida"`. | `curl` |
+| 369 | `POST /api/solicitudes/documentos-requeridos` con/sin `modalidad_id` → mismo `total`, sin `campo_no_editable`. | `curl` |
+| 370 | `GET /api/solicitudes` → cada fila conserva campos del Build 6 (sin `modalidad`). | `jq '.[0] \| keys'` |
+
+#### UI Playwright (371-380)
+
+| # | Descripción | Cómo verificar |
+|---|---|---|
+| 371 | Existe `[data-testid="radio-componente-PET"]` con etiqueta `PET` / `Proyectos Estratégicos Territoriales`. | Playwright |
+| 372 | Con TR seleccionado: no existe `[data-testid="select-modalidad"]`, visible `[data-testid="modalidad-no-aplica"]` con `No aplica`. | Playwright |
+| 373 | No regresión: con TR, `[data-testid="select-proyecto"]` habilitado, opción PEO presente. | Playwright |
+| 374 | Con PET: aparece `[data-testid="select-modalidad"]` con 1 opción preseleccionada (`MOD-PEPFO`). | Playwright |
+| 375 | PET + modalidad → `[data-testid="select-proyecto"]` habilitado, ofrece PEO. | Playwright |
+| 376 | Cambiar de PET a TR → `select-modalidad` desaparece, vuelve `modalidad-no-aplica`. | Playwright |
+| 377 | No regresión E2E: TR completo → `201`, folio `PEO-...`, detalle sin `[data-testid="dato-modalidad"]`. | Playwright + curl |
+| 378 | E2E PET: PET + modalidad + PEO → `201`, detalle con `[data-testid="dato-modalidad"]` visible. | Playwright |
+| 379 | PET + Grupo + Casas Ejidales → Paso 6 muestra ≥8 documentos, sin `[data-testid="error-solicitud"]`. | Playwright |
+| 380 | Durante 377 y 378: ninguna respuesta `422` con `codigo="campo_no_editable"`. | Playwright |
+
+#### Infraestructura y regresión global (381-386)
+
+| # | Descripción | Cómo verificar |
+|---|---|---|
+| 381 | `npm run build` en `packages/shared`, `backend`, `pwa` → código 0, sin errores TS. | Terminal log. |
+| 382 | `git diff` de `dependencies` y `devDependencies` en los 3 `package.json` está vacío. | `git diff HEAD -- '*package.json'` |
+| 383 | `git diff` sobre `docker-compose.yml` y `pwa/nginx.conf.template` está vacío. | `git diff` |
+| 384 | `GET /api/salud` → `200`. | `curl` |
+| 385 | Flujo offline de campo intacto: captura sin red → IndexedDB → sync al reconectar. | Playwright offline test |
+| 386 | Criterios 1-343 vuelven a pasar sobre el build desplegado. | Re-run evaluator. |
+
+**Definición de terminado (build 8):** los **43** criterios pasan (343 acumulados de los builds 1-7 + **43** de esta extensión). Total acumulado: **386** criterios.

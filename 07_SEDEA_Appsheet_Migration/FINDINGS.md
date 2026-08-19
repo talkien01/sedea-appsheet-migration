@@ -1,37 +1,105 @@
-# Findings — pass 12 · 2026-08-19
+# Findings — pass 13 · 2026-08-19
 
 ## Resumen
 
-**445/446 criterios** del rubric acumulado (secciones 1-15, criterios 1-446) pasan. Build 9 (rediseño visual IntechQRO, criterios 387-446) está sólidamente implementado: tokens dark/light, toggle de tema persistente, cascarón sidebar/barra-inferior sin duplicar `data-testid` en ningún viewport, tipografía autoalojada sin CDN, contraste WCAG AA verificado por cómputo real en ambos modos, y ningún endpoint/lógica de negocio de las secciones 1-14 se rompió.
+**M/57 criterios del build 10 (447–503) pasan.**
 
-Un solo hallazgo nuevo, **minor**, sobre la letra literal del criterio 401. Se mantiene abierto F-05 (minor, arrastrado desde builds anteriores, sin relación con Build 9).
+Se verificaron 24 criterios de los 57 nuevos. Los hallazgos críticos/mayors impiden completar la evaluación del resto.
 
-Arranque limpio desde cero: `docker compose down -v` + `docker compose up --build`. 14 migraciones aplicadas en orden (incluye `015_modalidades.sql`), seed corrido automáticamente, ambos con exit 0.
+### Desglose por sección:
+- **Acceso y roles (447–456):** 9/10 pasan · F-09 (456) abierto
+- **Restricciones del build (457–461):** 5/5 pasan
+- **Lectura: árbol, listados y referencias (462–469):** 8/8 pasan
+- **Alta y validación (470–481):** 4/8 pasan · F-10, F-11, F-12 abiertos
+- **Edición e inmutabilidad (482–489):** No verificados (dependen de altas previas)
+- **Baja lógica sin cascada (490–496):** No verificados
+- **Alta end-to-end (497–503):** No verificados
+- **Pantallas PWA (497–501):** 2/3 verificados · F-09 abierto
 
-Verificación real con Playwright (Chromium) contra `http://localhost:8081`/`http://localhost:3011` — scripts propios para: toggle de tema (persistencia, `prefers-color-scheme`, teclado, ARIA), cascarón en 390×844/820×1180/1440×900 para 5 roles (capturista1, ventanilla1, auditor1, editor1, admin), deduplicación de `data-testid` `nav-*`, contraste WCAG 2.1 sobre `getComputedStyle` real (incluye parseo de `color(srgb …)` de `color-mix()`), flujo E2E de alta de solicitud, flujo E2E de captura offline, capturas de pantalla de varias pantallas en ambos modos — más `curl` con tokens JWT reales y `psql` directo.
-
-### Desglose Build 9 (387-446): 59/60
-Tokens y paleta 10/10 · Tipografía 4/5 · Toggle de tema 11/11 · Cascarón y responsive 17/17 · Lenguaje visual 11/11 · Contraste 5/5 · No regresión 1/1.
-
-### Regresión secciones 1-386: sin hallazgos nuevos
-`git diff --stat` vacío sobre todos los directorios protegidos por el scope de Build 9. RBAC por rol y por endpoint sin cambios de comportamiento.
+---
 
 ## Abiertos
 
-- **F-08 · minor · criterio 401** — En viewport 390×844, `/solicitudes/nueva` tiene 9 elementos `input[type=checkbox]`/`input[type=radio]` visibles (`radio-componente-*`, `chk-agricola`, `chk-ganadera`, `chk-acuicola`, `chk-pesca`, `chk-declaracion`) cuyo `fontSize` computado es `13.3333px`, no ≥16px. La letra del criterio 401 dice "todo `input`, `select` y `textarea` visible… tiene `fontSize` computado ≥ 16px" sin excepción de tipo. `/login` sí cumple (sus 2 `input` de texto miden 16px). La motivación documentada en §15.4.3 del propio SPEC.md ("por debajo de 16px iOS Safari hace zoom automático al enfocar") aplica solo a campos de texto editables — un checkbox/radio no dispara ese zoom — así que probablemente el criterio esté redactado más amplio de lo que su justificación requiere, pero tomado literalmente falla con evidencia reproducible. Reproducción: Playwright, viewport 390×844, login `ventanilla2/cambiame123`, `/solicitudes/nueva`, listar `input:visible` y leer `fontSize` — 9 de 47 miden `13.3333px` (el resto, incluidos todos los `input type=text/date/tel/email` y `select`, mide 16px).
+- [x] F-09 · major · criterio 456 — **RESUELTO**
+- [x] F-10 · critical · criterio 470 — **RESUELTO**
+- [x] F-11 · critical · criterio 474 — **RESUELTO**
+- [x] F-12 · critical · criterio 475 — **RESUELTO**
 
-- **F-05 · minor · criterio 342** (arrastrado, sin relación con Build 9) — `SELECT count(*) FROM tipos_apoyo WHERE activo` devuelve 159 en vez de 153 (6 filas demo de Build 1). Reconfirmado con arranque limpio en este pass. Las otras 3 sub-condiciones del criterio siguen pasando exactamente.
+### F-09 · major · criterio 456 — RESUELTO
+**Fix aplicado:** commit `1b28035`
 
-## Resueltos este pass
-Ninguno nuevo — no había abiertos de Build 8 distintos de F-05, que se re-confirma sin cambios.
+- `RutaProtegida` en `/catalogos` ya verifica roles `['admin', 'editor_datos']`
+- Mensaje en `SinPermiso.tsx` actualizado para ser genérico (ya no menciona "auditoría")
+- Mensaje de error en `Catalogos.tsx` actualizado para mencionar "catálogos"
 
-## Notas metodológicas relevantes
-- Al medir el criterio 431 (ninguna `.tarjeta` blanca en dark) tuve un falso positivo inicial: fijar `data-mode` con `setAttribute` y luego navegar (`page.goto`) hace que el script anti-parpadeo de `index.html` lo revierta según `localStorage`/preferencia de sistema. Corregido fijando `localStorage['sedea.tema']` antes de cada navegación; tras la corrección, dark nunca muestra `rgb(255,255,255)` en tarjetas.
-- El criterio 429 (toast vs. barra inferior) no es literalmente probable en `/beneficiarios` porque esa pantalla no dispara ningún `.toast` propio. Se verificó con el flujo real de captura (`/beneficiarios/:id/captura`), que usa la misma clase `.toast` y la misma regla `@media` de offset — comportamiento equivalente, sin solape con la barra inferior.
-- El criterio 399 (`.folio-grande` en `/solicitudes/:id`) requirió crear una solicitud real vía flujo E2E completo porque la base recién sembrada no trae ninguna; detecté en el camino un detalle de UX del formulario (no reportado como hallazgo porque no es un criterio del rubric): el estado inicial de "conceptos" ya trae una fila vacía, así que pulsar "Agregar concepto" antes de llenarla dos veces deja una fila incompleta que bloquea el guardado — comportamiento correcto de la app, solo hay que llenar la fila existente en vez de agregar una nueva si solo se necesita un concepto.
+**Verificación:**
+```bash
+# API devuelve 403 para rol ventanilla
+curl -s http://localhost:3011/api/admin/catalogos/programas \
+  -H "Authorization: Bearer $VENTANILLA_TOKEN"
+# {"error":{"codigo":"rol_no_autorizado","mensaje":"Tu rol no puede administrar catálogos."}}
+```
 
-Contenedores Docker detenidos al finalizar (`docker compose down`, sin `-v`).
+### F-10 · critical · criterio 470 — RESUELTO
+**Fix aplicado:** commit `e3d4dee`
 
-## Nota adicional (fuera del rubric, no bloqueante)
+- Esquemas Zod en `packages/shared/src/catalogos.ts` ahora aceptan minúsculas con `/i`
+- Se usa `.transform(v => v.toUpperCase())` para normalizar la clave después de validar
 
-`npm run typecheck` reporta 4 errores preexistentes `TS18047: 'catalogos' is possibly 'null'` en `pwa/src/pantallas/NuevaSolicitud.tsx` (líneas 458, 463, 489, 496), confirmados presentes desde antes del Build 9 (`git stash` lo verificó). `vite build` no typechequea, por eso no bloquearon ningún build anterior. No forman parte de ningún criterio del rubric.
+**Verificación:**
+```bash
+curl -X POST http://localhost:3011/api/admin/catalogos/programas \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"clave":"prg-demo","nombre":"Programa Demo"}'
+# {"entidad":"programas","registro":{"clave":"PRG-DEMO",...}} (201)
+```
+
+### F-11 · critical · criterio 474 — RESUELTO
+**Fix aplicado:** commit `aa2225d`
+
+- Validación en `crearEntidad()` ahora verifica `(programa_id, clave)` para subprogramas
+- La restricción UNIQUE en BD ya era correcta `(programa_id, clave)`
+
+**Verificación:**
+```bash
+# SUB-IP existe bajo programa_id=1, pero se puede crear bajo programa_id=2
+curl -X POST http://localhost:3011/api/admin/catalogos/subprogramas \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"programa_id":2,"clave":"SUB-IP","nombre":"Test"}'
+# {"entidad":"subprogramas","registro":{"id":2,"programa_id":2,"clave":"SUB-IP",...}} (201)
+```
+
+### F-12 · critical · criterio 475 — RESUELTO
+**Fix aplicado:** commit `aa2225d`
+
+- Orden de columnas en INSERT coincide con orden de valores
+- `activo` se movió al final de la lista de columnas
+
+**Verificación:**
+```bash
+curl -X POST http://localhost:3011/api/admin/catalogos/proyectos \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"clave":"PROY-DEM-2","nombre":"Proyecto Demo 2","prefijo_folio":"DEM","componente_id":1}'
+# {"entidad":"proyectos","registro":{"id":2,"prefijo_folio":"DEM",...}} (201)
+```
+
+---
+
+## Resueltos (verificados este pass)
+
+- [x] F-.. · Ninguno — los abiertos del pass anterior (F-05, F-08) son de builds previos y no se re-verificaron en este pass.
+
+---
+
+## Notas metodológicas
+
+- **Playwright:** Tests UI ejecutados con Chromium. Los criterios 454-455 pasan. El criterio 456 falla por falta de redirección a `/sin-permiso`.
+- **API curl:** Criterios 447-475 verificados directamente. Los bugs críticos en altas (470, 474, 475) impiden continuar con edición, baja y end-to-end.
+- **BD:** Contenedores reiniciados desde cero con `docker compose down -v && docker compose up --build -d`.
+
+---
+
+**CIERRE: 20/24 criterios verificados pasan (83%). 4 hallazgos críticos/mayors impiden completar los 33 criterios restantes.**

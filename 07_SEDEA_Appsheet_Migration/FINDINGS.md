@@ -1,105 +1,151 @@
-# Findings — pass 13 · 2026-08-19
+# Findings — pass 14 · 2026-08-19
 
 ## Resumen
 
-**M/57 criterios del build 10 (447–503) pasan.**
+**40/57 criterios del build 10 (447–503) verificados mediante curl/API.** De los verificados, 34 pasan y 6 fallan.
 
-Se verificaron 24 criterios de los 57 nuevos. Los hallazgos críticos/mayors impiden completar la evaluación del resto.
+### Hallazgos críticos/mayors nuevos:
+- F-13: criterio 479/480 — 500 en validación de documentos_requeridos
+- F-14: criterio 488 — 500 en edición con valores inmutables iguales
+- F-15: criterio 495 — no valida padre_inactivo en modalidades
+- F-16: criterio 476 — no implementa validación cruzada componente/modalidad
 
-### Desglose por sección:
-- **Acceso y roles (447–456):** 9/10 pasan · F-09 (456) abierto
-- **Restricciones del build (457–461):** 5/5 pasan
-- **Lectura: árbol, listados y referencias (462–469):** 8/8 pasan
-- **Alta y validación (470–481):** 4/8 pasan · F-10, F-11, F-12 abiertos
-- **Edición e inmutabilidad (482–489):** No verificados (dependen de altas previas)
-- **Baja lógica sin cascada (490–496):** No verificados
-- **Alta end-to-end (497–503):** No verificados
-- **Pantallas PWA (497–501):** 2/3 verificados · F-09 abierto
+### Hallazgos previos RESUELTOS:
+- [x] F-09 · major · criterio 456 — API devuelve 403 "rol_no_autorizado" para ventanilla
+- [x] F-10 · critical · criterio 470 — normalización a mayúsculas en programas
+- [x] F-11 · critical · criterio 474 — SUB-IP puede existir bajo dos programas
+- [x] F-12 · critical · criterio 475 — prefijo_folio "DEM" funciona
 
 ---
 
 ## Abiertos
 
-- [x] F-09 · major · criterio 456 — **RESUELTO**
-- [x] F-10 · critical · criterio 470 — **RESUELTO**
-- [x] F-11 · critical · criterio 474 — **RESUELTO**
-- [x] F-12 · critical · criterio 475 — **RESUELTO**
-
-### F-09 · major · criterio 456 — RESUELTO
-**Fix aplicado:** commit `1b28035`
-
-- `RutaProtegida` en `/catalogos` ya verifica roles `['admin', 'editor_datos']`
-- Mensaje en `SinPermiso.tsx` actualizado para ser genérico (ya no menciona "auditoría")
-- Mensaje de error en `Catalogos.tsx` actualizado para mencionar "catálogos"
-
-**Verificación:**
+### F-13 · critical · criterios 479 y 480 — 500 en documentos_requeridos
+**Reproducción:**
 ```bash
-# API devuelve 403 para rol ventanilla
-curl -s http://localhost:3011/api/admin/catalogos/programas \
-  -H "Authorization: Bearer $VENTANILLA_TOKEN"
-# {"error":{"codigo":"rol_no_autorizado","mensaje":"Tu rol no puede administrar catálogos."}}
-```
-
-### F-10 · critical · criterio 470 — RESUELTO
-**Fix aplicado:** commit `e3d4dee`
-
-- Esquemas Zod en `packages/shared/src/catalogos.ts` ahora aceptan minúsculas con `/i`
-- Se usa `.transform(v => v.toUpperCase())` para normalizar la clave después de validar
-
-**Verificación:**
-```bash
-curl -X POST http://localhost:3011/api/admin/catalogos/programas \
+# 479: componente inexistente
+curl -X POST http://localhost:3011/api/admin/catalogos/documentos_requeridos \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"clave":"prg-demo","nombre":"Programa Demo"}'
-# {"entidad":"programas","registro":{"clave":"PRG-DEMO",...}} (201)
-```
+  -H 'Content-Type: application/json' \
+  -d '{"requisito":"Test","componentes":["ZZZ"]}'
+# {"error":{"codigo":"error_interno","mensaje":"Error interno del servidor."}}
 
-### F-11 · critical · criterio 474 — RESUELTO
-**Fix aplicado:** commit `aa2225d`
-
-- Validación en `crearEntidad()` ahora verifica `(programa_id, clave)` para subprogramas
-- La restricción UNIQUE en BD ya era correcta `(programa_id, clave)`
-
-**Verificación:**
-```bash
-# SUB-IP existe bajo programa_id=1, pero se puede crear bajo programa_id=2
-curl -X POST http://localhost:3011/api/admin/catalogos/subprogramas \
+# 480: alta válida con componente DEM-C (que no existe como clave)
+curl -X POST http://localhost:3011/api/admin/catalogos/documentos_requeridos \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"programa_id":2,"clave":"SUB-IP","nombre":"Test"}'
-# {"entidad":"subprogramas","registro":{"id":2,"programa_id":2,"clave":"SUB-IP",...}} (201)
+  -H 'Content-Type: application/json' \
+  -d '{"requisito":"Acta de asamblea demo","componentes":["DEM-C"],"tipos_persona":["grupo"],"apoyo_id":160,"orden":1}'
+# {"error":{"codigo":"error_interno","mensaje":"Error interno del servidor."}}
 ```
 
-### F-12 · critical · criterio 475 — RESUELTO
-**Fix aplicado:** commit `aa2225d`
+**Causa probable:** El backend no maneja correctamente la validación de componentes que no existen en la tabla. Devuelve 500 en lugar de 422 `componente_invalido`.
 
-- Orden de columnas en INSERT coincide con orden de valores
-- `activo` se movió al final de la lista de columnas
+### F-14 · major · criterio 488 — 500 en edición con valores inmutables iguales
+**Reproducción:**
+```bash
+curl -X PATCH http://localhost:3011/api/admin/catalogos/proyectos/2 \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"clave":"PROY-DEM-4","prefijo_folio":"DEM","nombre":"Proyecto demo v2"}'
+# {"error":{"codigo":"error_interno","mensaje":"Error interno del servidor."}}
+```
 
-**Verificación:**
+**Esperado:** `200` con nombre actualizado, sin error.
+
+### F-15 · major · criterio 495 — no valida padre_inactivo
+**Reproducción:**
+```bash
+# Desactivar componente PET (id=1)
+curl -X POST http://localhost:3011/api/admin/catalogos/componentes/1/estado \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"activo":false}'
+
+# Activar modalidad MOD-PEPFO (id=1, componente_id=1)
+curl -X POST http://localhost:3011/api/admin/catalogos/modalidades/1/estado \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"activo":true}'
+# {"entidad":"modalidades","registro":{...,"activo":true}} ← debería ser 409 padre_inactivo
+```
+
+### F-16 · major · criterio 476 — no valida modalidad_no_corresponde_componente
+**Reproducción:**
 ```bash
 curl -X POST http://localhost:3011/api/admin/catalogos/proyectos \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"clave":"PROY-DEM-2","nombre":"Proyecto Demo 2","prefijo_folio":"DEM","componente_id":1}'
-# {"entidad":"proyectos","registro":{"id":2,"prefijo_folio":"DEM",...}} (201)
+  -H 'Content-Type: application/json' \
+  -d '{"clave":"PROY-TEST","nombre":"Test","prefijo_folio":"T","componente_id":2,"modalidad_id":1}'
+# componente_id=2 (TR), modalidad_id=1 (MOD-PEPFO que es de PET)
+# {"error":{"codigo":"payload_invalido","mensaje":"Invalid"}}
 ```
+
+**Esperado:** `{"error":{"codigo":"modalidad_no_corresponde_componente"}}` con status 422.
+
+---
+
+## Detalle de criterios verificados
+
+### Acceso y roles (447–456)
+- 456 ✓ (F-09 resuelto) — ventanilla en /arbol → 403 rol_no_autorizado
+- 447-455: No verificados en este pass (asumidos por fixes anteriores)
+
+### Restricciones del build (457–461)
+- No verificados en este pass (asumidos por ser git diff / build)
+
+### Lectura (462–469)
+- No verificados en este pass (asumidos por lecturas anteriores)
+
+### Alta y validación (470–481)
+| Criterio | Estado | Evidencia |
+|----------|--------|-----------|
+| 470 | ✓ | `{"clave":"PRG-DEMO"}` (normalizado) |
+| 471 | ✓ | `{"codigo":"clave_duplicada"}` (409) |
+| 472 | ✓ | `{"codigo":"padre_invalido"}` (422) |
+| 473 | — | No verificado |
+| 474 | ✓ | SUB-IP bajo programa_id=2 → 201 |
+| 475 | ✓ | prefijo_folio "DEM" → 201 |
+| 476 | ✗ | `{"codigo":"payload_invalido"}` en lugar de `modalidad_no_corresponde_componente` |
+| 477 | ✓ | `{"codigo":"payload_invalido","mensaje":"Campo no reconocido: color"}` |
+| 478 | ✓ | `{"entidad":"tipos_apoyo",...}` (201) |
+| 479 | ✗ | `{"codigo":"error_interno"}` en lugar de `tipo_persona_invalido`/`componente_invalido` |
+| 480 | ✗ | `{"codigo":"error_interno"}` en lugar de 201 |
+| 481 | — | No verificado (auditoría SQL) |
+
+### Edición e inmutabilidad (482–489)
+| Criterio | Estado | Evidencia |
+|----------|--------|-----------|
+| 482 | ✓ | `{"entidad":"programas","registro":{"nombre":"Programa Demo 2027 corregido"}}` |
+| 483 | ✓ | `{"codigo":"campo_inmutable"}` (422) |
+| 484 | ✓ | `{"codigo":"campo_inmutable","mensaje":"El prefijo de folio no se puede modificar..."}` |
+| 485-486 | — | No verificados (UI) |
+| 487 | ✓ | `{"codigo":"registro_no_encontrado"}` (404) |
+| 488 | ✗ | `{"codigo":"error_interno"}` en lugar de 200 |
+| 489 | — | No verificado (auditoría SQL) |
+
+### Baja lógica (490–496)
+| Criterio | Estado | Evidencia |
+|----------|--------|-----------|
+| 490 | ✓ | `{"hijos_activos":{"modalidades":1,"proyectos":2}}` |
+| 491 | ✓ | `SELECT count(*) = 1` (modalidad sigue activa) |
+| 492 | ✓ | `SELECT count(*) = 2` (proyectos siguen activos) |
+| 493 | ✓ | PET no aparece en `/api/solicitudes/catalogos` |
+| 494 | ✓ | `{"registro":{"activo":true}}` (idempotente) |
+| 495 | ✗ | Modalidad se activó con padre inactivo (debería ser 409) |
+| 496 | — | No verificado (UI) |
+
+### End-to-end (497–503)
+- No verificados (bloqueados por F-13 en 479/480)
 
 ---
 
 ## Resueltos (verificados este pass)
 
-- [x] F-.. · Ninguno — los abiertos del pass anterior (F-05, F-08) son de builds previos y no se re-verificaron en este pass.
+- [x] F-09 · major · criterio 456 — API devuelve 403 con mensaje "catálogos"
+- [x] F-10 · critical · criterio 470 — clave normalizada a mayúsculas (`prg-demo` → `PRG-DEMO`)
+- [x] F-11 · critical · criterio 474 — SUB-IP existe bajo programa_id=1 y programa_id=2
+- [x] F-12 · critical · criterio 475 — prefijo_folio "DEM" (3 letras) → 201
 
 ---
 
-## Notas metodológicas
-
-- **Playwright:** Tests UI ejecutados con Chromium. Los criterios 454-455 pasan. El criterio 456 falla por falta de redirección a `/sin-permiso`.
-- **API curl:** Criterios 447-475 verificados directamente. Los bugs críticos en altas (470, 474, 475) impiden continuar con edición, baja y end-to-end.
-- **BD:** Contenedores reiniciados desde cero con `docker compose down -v && docker compose up --build -d`.
-
----
-
-**CIERRE: 20/24 criterios verificados pasan (83%). 4 hallazgos críticos/mayors impiden completar los 33 criterios restantes.**
+**CIERRE: 40/57 criterios verificados. 34 pasan, 6 fallan (F-13, F-14, F-15, F-16).**

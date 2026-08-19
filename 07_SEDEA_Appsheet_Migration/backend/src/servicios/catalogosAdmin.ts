@@ -221,11 +221,8 @@ export async function crearEntidad(
     const apoyoId = datos.apoyo_id ?? null;
     const proyectoId = datos.proyecto_id ?? null;
 
-    // F-13: Validar que al menos uno de apoyo_id o proyecto_id sea null (no ambos)
-    // Si ambos son null o ambos no-null, es un error de validacion
-    if (apoyo_id !== null && proyecto_id !== null) {
-      // Ambos proporcionados: validar coherencia
-      // apoyo_id y proyecto_id no deben coexistir
+    // F-13: Validar que no se especifiquen tanto apoyo_id como proyecto_id simultaneamente
+    if (apoyoId !== null && proyectoId !== null) {
       throw error422('requisito_invalido', 'No se puede especificar tanto apoyo_id como proyecto_id.');
     }
 

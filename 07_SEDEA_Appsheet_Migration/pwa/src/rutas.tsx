@@ -6,8 +6,8 @@
 //   /correcciones*           -> editor_datos, admin
 //   /dashboard               -> admin, auditor, editor_datos
 //   /solicitudes*            -> ventanilla, admin (build 6, en linea)
-import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
-import BarraEstado from './componentes/BarraEstado';
+import { Navigate, Route, Routes } from 'react-router-dom';
+import Cascaron from './componentes/Cascaron';
 import RutaProtegida from './componentes/RutaProtegida';
 import Login from './pantallas/Login';
 import Sync from './pantallas/Sync';
@@ -37,23 +37,11 @@ const USUARIOS = ['admin', 'editor_datos'];
 // Modulo de ventanilla: rol nuevo `ventanilla` y admin (D34).
 const VENTANILLA = ['ventanilla', 'admin'];
 
-/** Layout comun: barra de estado siempre visible + contenido. */
-function Layout() {
-  return (
-    <>
-      <BarraEstado />
-      <main className="contenido">
-        <Outlet />
-      </main>
-    </>
-  );
-}
-
 export default function Rutas() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route element={<Layout />}>
+      <Route element={<Cascaron />}>
         <Route path="/" element={<Navigate to="/beneficiarios" replace />} />
 
         <Route

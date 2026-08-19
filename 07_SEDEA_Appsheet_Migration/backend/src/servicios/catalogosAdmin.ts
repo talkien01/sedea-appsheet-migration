@@ -410,12 +410,15 @@ export async function editarEntidad(
     if (datos[inmutable] !== undefined) {
       const valorNuevo = inmutable === 'clave' ? normalizarClave(String(datos[inmutable])) : String(datos[inmutable]);
       const valorActual = actual[inmutable];
+      // F-14: Solo rechazar si el valor es distinto (valores iguales son no-op)
       if (valorNuevo !== valorActual) {
         if (inmutable === 'prefijo_folio') {
           throw error422('campo_inmutable', 'El prefijo de folio no se puede modificar. Desactiva el proyecto y da de alta uno nuevo.');
         }
         throw error422('campo_inmutable', `El campo ${inmutable} no se puede modificar.`);
       }
+      // F-14: Si el valor es igual, removerlo de datos para que no cuente como cambio
+      delete datos[inmutable];
     }
   }
 

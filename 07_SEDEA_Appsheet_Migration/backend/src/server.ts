@@ -26,6 +26,8 @@ import rutasMiCuenta from './rutas/miCuenta.js';
 // Build 6: modulo de captura de Solicitud de Apoyo en ventanilla.
 import rutasSolicitudes from './rutas/solicitudes.js';
 import rutasAlcance from './rutas/alcance.js';
+// Build 10: administracion de catalogos jerarquicos.
+import rutasCatalogosAdmin from './rutas/catalogosAdmin.js';
 
 async function construirApp() {
   const app = Fastify({
@@ -102,6 +104,8 @@ async function construirApp() {
   // Build 6: ventanilla (E40-E46) y alcance de usuarios (E47/E48).
   await app.register(rutasSolicitudes);
   await app.register(rutasAlcance);
+  // Build 10: administracion de catalogos (E49-E54).
+  await app.register(rutasCatalogosAdmin);
 
   return app;
 }

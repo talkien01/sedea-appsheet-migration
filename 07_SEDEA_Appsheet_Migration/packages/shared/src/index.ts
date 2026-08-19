@@ -7,3 +7,5 @@ export * from './usuarios.js';
 // Build 6: modulo de Solicitud de Apoyo en ventanilla.
 export * from './solicitudes.js';
 export * from './declaraciones.js';
+// Build 10: administracion de catalogos jerarquicos.
+export * from './catalogos.js';

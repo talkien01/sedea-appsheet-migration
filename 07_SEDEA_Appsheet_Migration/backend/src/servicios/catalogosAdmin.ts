@@ -553,13 +553,14 @@ export async function cambiarEstadoEntidad(
     return { registro: actual, hijos_activos: {} };
   }
 
-  // Reactivar: verificar padre
+  // Reactivar: verificar padre (F-15: validar padre_inactivo en modalidades)
   if (activo) {
     for (const padre of def.padres) {
-      if (padre.obligatorio) {
+      const padreId = (actual as any)[padre.campo];
+      if (padreId !== null && padreId !== undefined) {
         const padreRow = await consultarUna<any>(
           `SELECT activo FROM ${padre.tabla} WHERE id = $1`,
-          [(actual as any)[padre.campo]]
+          [padreId]
         );
         if (padreRow && !padreRow.activo) {
           throw error409('padre_inactivo', `Reactiva primero el ${padre.tabla.slice(0, -1)} al que pertenece.`);

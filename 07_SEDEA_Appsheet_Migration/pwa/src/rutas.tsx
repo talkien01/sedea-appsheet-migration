@@ -27,6 +27,8 @@ import NuevaSolicitud from './pantallas/NuevaSolicitud';
 import DetalleSolicitud from './pantallas/DetalleSolicitud';
 import CambiarPassword from './pantallas/CambiarPassword';
 import SinPermiso from './pantallas/SinPermiso';
+import Catalogos from './pantallas/Catalogos';
+import CatalogoDocumentos from './pantallas/CatalogoDocumentos';
 
 const CAMPO = ['capturista', 'admin'];
 const AUDITORIA = ['auditor', 'admin'];
@@ -150,6 +152,24 @@ export default function Rutas() {
           element={
             <RutaProtegida roles={USUARIOS}>
               <Usuarios />
+            </RutaProtegida>
+          }
+        />
+
+        {/* Build 10: administracion de catalogos jerarquicos. */}
+        <Route
+          path="/catalogos"
+          element={
+            <RutaProtegida roles={USUARIOS}>
+              <Catalogos />
+            </RutaProtegida>
+          }
+        />
+        <Route
+          path="/catalogos/documentos"
+          element={
+            <RutaProtegida roles={USUARIOS}>
+              <CatalogoDocumentos />
             </RutaProtegida>
           }
         />

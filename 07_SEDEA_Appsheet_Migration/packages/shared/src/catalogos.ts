@@ -10,12 +10,12 @@ import type { TipoApoyo } from './dto.js';
 
 // --- Programas --------------------------------------------------------------
 export const esquemaProgramaAlta = z.object({
-  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/),
+  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/i).transform(v => v.toUpperCase()),
   nombre: z.string().trim().min(3).max(300)
 }).strict();
 
 export const esquemaProgramaEdicion = z.object({
-  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/).optional(),
+  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/i).transform(v => v.toUpperCase()).optional(),
   nombre: z.string().trim().min(3).max(300).optional()
 }).strict();
 
@@ -29,13 +29,13 @@ export interface Programa {
 // --- Subprogramas -----------------------------------------------------------
 export const esquemaSubprogramaAlta = z.object({
   programa_id: z.number().int().positive(),
-  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/),
+  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/i).transform(v => v.toUpperCase()),
   nombre: z.string().trim().min(3).max(300)
 }).strict();
 
 export const esquemaSubprogramaEdicion = z.object({
   programa_id: z.number().int().positive().optional(),
-  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/).optional(),
+  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/i).transform(v => v.toUpperCase()).optional(),
   nombre: z.string().trim().min(3).max(300).optional()
 }).strict();
 
@@ -49,12 +49,12 @@ export interface Subprograma {
 
 // --- Componentes ------------------------------------------------------------
 export const esquemaComponenteAlta = z.object({
-  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/),
+  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/i).transform(v => v.toUpperCase()),
   nombre: z.string().trim().min(3).max(300)
 }).strict();
 
 export const esquemaComponenteEdicion = z.object({
-  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/).optional(),
+  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/i).transform(v => v.toUpperCase()).optional(),
   nombre: z.string().trim().min(3).max(300).optional()
 }).strict();
 
@@ -67,13 +67,13 @@ export interface Componente {
 
 // --- Modalidades ------------------------------------------------------------
 export const esquemaModalidadAlta = z.object({
-  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/),
+  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/i).transform(v => v.toUpperCase()),
   nombre: z.string().trim().min(3).max(300),
   componente_id: z.number().int().positive()
 }).strict();
 
 export const esquemaModalidadEdicion = z.object({
-  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/).optional(),
+  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/i).transform(v => v.toUpperCase()).optional(),
   nombre: z.string().trim().min(3).max(300).optional(),
   componente_id: z.number().int().positive().optional()
 }).strict();
@@ -88,7 +88,7 @@ export interface Modalidad {
 
 // --- Proyectos --------------------------------------------------------------
 export const esquemaProyectoAlta = z.object({
-  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/),
+  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/i).transform(v => v.toUpperCase()),
   nombre: z.string().trim().min(3).max(300),
   prefijo_folio: z.string().trim().toUpperCase().regex(/^[A-Z]{2,5}$/),
   componente_id: z.number().int().positive().nullable().optional(),
@@ -96,7 +96,7 @@ export const esquemaProyectoAlta = z.object({
 }).strict();
 
 export const esquemaProyectoEdicion = z.object({
-  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/).optional(),
+  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/i).transform(v => v.toUpperCase()).optional(),
   nombre: z.string().trim().min(3).max(300).optional(),
   prefijo_folio: z.string().trim().toUpperCase().regex(/^[A-Z]{2,5}$/).optional(),
   componente_id: z.number().int().positive().nullable().optional(),
@@ -115,14 +115,14 @@ export interface Proyecto {
 
 // --- Tipos de Apoyo ---------------------------------------------------------
 export const esquemaTipoApoyoAlta = z.object({
-  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/),
+  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/i).transform(v => v.toUpperCase()),
   nombre: z.string().trim().min(3).max(300),
   categoria: z.string().trim().max(200).nullable().optional(),
   unidad_medida: z.string().trim().max(100).nullable().optional()
 }).strict();
 
 export const esquemaTipoApoyoEdicion = z.object({
-  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/).optional(),
+  clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/i).transform(v => v.toUpperCase()).optional(),
   nombre: z.string().trim().min(3).max(300).optional(),
   categoria: z.string().trim().max(200).nullable().optional(),
   unidad_medida: z.string().trim().max(100).nullable().optional()

@@ -105,7 +105,7 @@ async function construirApp() {
   await app.register(rutasSolicitudes);
   await app.register(rutasAlcance);
   // Build 10: administracion de catalogos (E49-E54).
-  await app.register(rutasCatalogosAdmin);
+  await app.register(rutasCatalogosAdmin, { prefix: '/api/admin/catalogos' });
 
   return app;
 }

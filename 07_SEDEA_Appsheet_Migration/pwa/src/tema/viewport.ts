@@ -35,12 +35,20 @@ export function useAncho(): Ancho {
 
     tablet.addEventListener('change', recalcular);
     escritorio.addEventListener('change', recalcular);
+    // Red de seguridad: algunos entornos (emulacion de dispositivo en
+    // herramientas de automatizacion, rotacion en iOS) cambian el viewport
+    // sin emitir el `change` de matchMedia. Sin esto, el cascaron podria
+    // quedarse montado con la barra equivocada.
+    window.addEventListener('resize', recalcular);
+    window.addEventListener('orientationchange', recalcular);
     // Por si el viewport cambio entre el primer render y el efecto.
     recalcular();
 
     return () => {
       tablet.removeEventListener('change', recalcular);
       escritorio.removeEventListener('change', recalcular);
+      window.removeEventListener('resize', recalcular);
+      window.removeEventListener('orientationchange', recalcular);
     };
   }, []);
 

@@ -966,6 +966,14 @@ input[type='radio'] {
 }
 
 /* Indice lateral pegajoso del formulario largo de solicitud (escritorio). */
+.con-indice {
+  min-width: 0;
+}
+
+.columna-pasos {
+  min-width: 0;
+}
+
 .indice-secciones {
   position: sticky;
   top: 0;
@@ -1201,6 +1209,13 @@ input[type='radio'] {
   /* Primera columna pegajosa cuando la tabla desborda horizontalmente. */
   .tabla-contenedor {
     position: relative;
+  }
+
+  .con-indice {
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
   }
 
   .indice-secciones {

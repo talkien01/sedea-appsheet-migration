@@ -79,17 +79,20 @@ export function useTema(): EstadoTema {
     return () => consulta.removeEventListener('change', alCambiar);
   }, [esExplicito]);
 
+  // La persistencia va en un efecto, no dentro del updater de setModo: el
+  // updater tiene que ser puro (StrictMode lo invoca dos veces en desarrollo).
+  useEffect(() => {
+    if (!esExplicito) return;
+    try {
+      localStorage.setItem(CLAVE, modo);
+    } catch {
+      /* modo privado sin almacenamiento: el cambio vale solo esta sesion */
+    }
+  }, [modo, esExplicito]);
+
   const alternar = useCallback(() => {
-    setModo((previo) => {
-      const siguiente: Modo = previo === 'dark' ? 'light' : 'dark';
-      try {
-        localStorage.setItem(CLAVE, siguiente);
-      } catch {
-        /* modo privado sin almacenamiento: el cambio vale solo esta sesion */
-      }
-      return siguiente;
-    });
     setEsExplicito(true);
+    setModo((previo) => (previo === 'dark' ? 'light' : 'dark'));
   }, []);
 
   return { modo, alternar, esExplicito };

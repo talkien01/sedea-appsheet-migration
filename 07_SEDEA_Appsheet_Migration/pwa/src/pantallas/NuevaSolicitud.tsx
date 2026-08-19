@@ -397,8 +397,21 @@ export default function NuevaSolicitud() {
         )}
       </div>
 
+      {/* En escritorio el formulario largo gana un indice lateral pegajoso.
+          Es puramente visual: no cambia ningun campo ni ninguna validacion. */}
+      <div className="con-indice">
+        <nav className="indice-secciones" aria-label="Secciones del formulario">
+          <a href="#paso-1">1 · Encabezado</a>
+          <a href="#paso-2">2 · Solicitante</a>
+          <a href="#paso-3">3 · Actividad</a>
+          <a href="#paso-4">4 · Datos del apoyo</a>
+          <a href="#paso-5">5 · Conceptos</a>
+          <a href="#paso-6">6 · Documentos</a>
+        </nav>
+
+        <div className="columna-pasos">
       {/* ---------------------------- Paso 1 ---------------------------- */}
-      <div className="tarjeta" data-testid="paso-1">
+      <div className="tarjeta" id="paso-1" data-testid="paso-1">
         <h2>Paso 1 — Encabezado</h2>
         <div data-testid="seccion-encabezado">
           <div className="campo">
@@ -549,7 +562,7 @@ export default function NuevaSolicitud() {
       </div>
 
       {/* ---------------------------- Paso 2 ---------------------------- */}
-      <div className="tarjeta" data-testid="paso-2">
+      <div className="tarjeta" id="paso-2" data-testid="paso-2">
         <h2>Paso 2 — Datos del solicitante</h2>
         <SeccionSolicitante
           valores={solicitante}
@@ -559,13 +572,13 @@ export default function NuevaSolicitud() {
       </div>
 
       {/* ---------------------------- Paso 3 ---------------------------- */}
-      <div className="tarjeta" data-testid="paso-3">
+      <div className="tarjeta" id="paso-3" data-testid="paso-3">
         <h2>Paso 3 — Actividad económica</h2>
         <SeccionActividad valores={actividad} cambiar={cambiarActividad} />
       </div>
 
       {/* ---------------------------- Paso 4 ---------------------------- */}
-      <div className="tarjeta" data-testid="paso-4">
+      <div className="tarjeta" id="paso-4" data-testid="paso-4">
         <h2>Paso 4 — Datos del apoyo</h2>
         <div data-testid="seccion-apoyo">
           <div className="campo">
@@ -709,7 +722,7 @@ export default function NuevaSolicitud() {
       </div>
 
       {/* ---------------------------- Paso 5 ---------------------------- */}
-      <div className="tarjeta" data-testid="paso-5">
+      <div className="tarjeta" id="paso-5" data-testid="paso-5">
         <h2>Paso 5 — Conceptos de apoyo</h2>
         <TablaConceptos
           filas={conceptos}
@@ -731,7 +744,7 @@ export default function NuevaSolicitud() {
       </div>
 
       {/* ---------------------------- Paso 6 ---------------------------- */}
-      <div className="tarjeta" data-testid="paso-6">
+      <div className="tarjeta" id="paso-6" data-testid="paso-6">
         <h2>Paso 6 — Documentos y declaraciones</h2>
         <ChecklistDocumentos
           documentos={documentos}
@@ -753,6 +766,9 @@ export default function NuevaSolicitud() {
           >
             {guardando ? 'Guardando…' : 'Guardar solicitud'}
           </button>
+        </div>
+      </div>
+
         </div>
       </div>
 

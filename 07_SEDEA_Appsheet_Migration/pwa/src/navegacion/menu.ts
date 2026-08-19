@@ -12,7 +12,8 @@ import {
   IconoLapiz,
   IconoLupa,
   IconoSincronizar,
-  IconoUsuarios
+  IconoUsuarios,
+  IconoCapas
 } from '../componentes/Iconos';
 
 export type Grupo = 'Campo' | 'Gestión' | 'Ventanilla' | 'Administración';
@@ -100,6 +101,15 @@ export const DESTINOS: Destino[] = [
     roles: ['admin', 'editor_datos'],
     grupo: 'Administración',
     Icono: IconoEscudo
+  },
+  {
+    id: 'catalogos',
+    ruta: '/catalogos',
+    etiqueta: 'Catálogos',
+    testId: 'nav-catalogos',
+    roles: ['admin', 'editor_datos'],
+    grupo: 'Administración',
+    Icono: IconoCapas
   }
 ];
 

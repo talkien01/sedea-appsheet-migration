@@ -4125,3 +4125,704 @@ npm run preview     # http://localhost:8080
      `pwa/nginx.conf.template`, `pwa/Dockerfile`, `pwa/vite.config.ts`, `pwa/src/api/`,
      `pwa/src/db/` y `pwa/src/sync/` está **vacío**; y la suite completa de criterios **1-386**
      vuelve a pasar sobre el build con el rediseño aplicado.
+
+# 16. EXTENSIÓN — Administración autoservicio de catálogos jerárquicos (Build 10)
+
+> Esta sección **extiende** `SPEC.md`. No sustituye, no reinterpreta y no renegocia **nada** de las
+> secciones 1–15. Todo lo definido antes sigue vigente palabra por palabra y los criterios **1–446**
+> siguen siendo obligatorios. Mismo monorepo, mismo `docker-compose.yml`, mismos 3 servicios
+> (`db`, `backend`, `pwa`). **Cero dependencias npm nuevas.** No se toca `pwa/nginx.conf.template`,
+> ni el mecanismo `BACKEND_HOST`/`BACKEND_PORT`, ni el flujo offline de campo
+> (`pwa/src/sync/*`, `pwa/src/db/indexeddb.ts`, service worker). Código comentado en español,
+> UI en español.
+
+---
+
+## 16.1 Objetivo
+
+Dar **autoservicio total** sobre los 7 catálogos jerárquicos de ventanilla
+(`programas` → `subprogramas` → `componentes` → `modalidades` → `proyectos` →
+`tipos_apoyo` → `documentos_requeridos`) para que `admin` y `editor_datos` puedan dar de alta el
+próximo programa, proyecto o concepto de apoyo **sin escribir una línea de SQL y sin un deploy de
+código**, tal como hoy es obligatorio hacerlo (Casas Ejidales se creó con la migración `014`,
+PET/Modalidad con la `015`).
+
+---
+
+## 16.2 Scope
+
+**SÍ incluye:**
+
+1. Un router nuevo `backend/src/rutas/catalogosAdmin.ts` con un **patrón genérico por entidad**
+   (`/api/admin/catalogos/:entidad`), 6 endpoints (**E49–E54**), sobre las 7 tablas ya existentes.
+2. Validación explícita de clave duplicada, padre inexistente/inactivo, campos inmutables y
+   coherencia componente↔modalidad, siempre con `4xx` y `codigo` estable — **nunca un 500**.
+3. Baja lógica (`activo = false`) **sin cascada**, con reactivación.
+4. Pantalla nueva `/catalogos` (árbol jerárquico + formularios de alta/edición por entidad) y
+   `/catalogos/documentos` (reglas de `documentos_requeridos`), en el lenguaje visual del Build 9.
+5. Entrada nueva en `pwa/src/navegacion/menu.ts` (destino #9, `nav-catalogos`).
+6. 4 acciones nuevas de `auditoria_log.accion` (columna TEXT libre, el esquema **no** cambia).
+7. Rubric extendido: criterios **447–503**.
+
+**NO incluye:**
+
+- **Ninguna migración.** Ver §16.3: este build **no crea** `db/migrations/016_*.sql` ni ningún otro
+  archivo SQL. No agrega tablas, columnas, constraints ni índices.
+- Modificación de las migraciones `001`–`015` ni de los seeds `001`–`006` (ya aplicados en producción).
+- `DELETE` físico de cualquier fila de catálogo, en cualquier endpoint.
+- Cambio al algoritmo del folio (§12.5), a `solicitudes`, `solicitud_conceptos`,
+  `solicitud_documentos`, ni a los endpoints E40–E48.
+- Cambio al motor de coincidencia de `documentos_requeridos` (§12.6.2): este build **edita las
+  reglas**, no cambia cómo se evalúan.
+- Administración de `ventanillas`, `municipios`, `direcciones_regionales`, `usuarios` ni `catalogos`
+  (tabla genérica). Quedan fuera: `ventanillas` y `municipios` se siguen sembrando; `usuarios` ya
+  tiene su pantalla (§10.8, §11.6, §12.8.4).
+- Cambio al flujo offline de campo, a `pwa/src/sync/*`, al service worker ni a `nginx.conf.template`.
+- Dependencias npm nuevas o cambios a `docker-compose.yml`.
+- Importación masiva de catálogos por CSV/Excel (el importador CLI de §8 no se toca).
+
+**Protocolo de evaluación (obligatorio para el Evaluator).** Los criterios 447–503 crean filas de
+catálogo nuevas y por diseño **no se borran** (D45). Por eso la verificación se corre en este orden:
+
+1. BD limpia (`docker compose down -v && docker compose up -d`), `npm run migrar && npm run sembrar`.
+2. Se verifican los criterios **1–446** (estado sembrado de fábrica).
+3. Se verifican los criterios **447–503** en el mismo despliegue.
+4. El criterio **503** exige **recrear la BD desde cero** y volver a pasar 1–446.
+
+Adicionalmente el criterio **502** obliga a que el E2E de alta completa **deje desactivado** el
+componente y el proyecto que creó, para no alterar los conteos de catálogo del Build 8.
+
+---
+
+## 16.3 Modelo de datos — **cero migraciones**
+
+**Decisión explícita: este build NO agrega ninguna migración.** Se revisaron las 7 tablas contra las
+migraciones `002`, `012` y `015` y **todas las restricciones que el módulo necesita ya existen**:
+
+| Tabla | Origen | Unicidad ya existente | ¿Falta algo? |
+|---|---|---|---|
+| `programas` | `012` | `clave TEXT UNIQUE NOT NULL` | No |
+| `subprogramas` | `012` | `UNIQUE (programa_id, clave)` | No |
+| `componentes` | `012` | `clave TEXT UNIQUE NOT NULL` | No |
+| `modalidades` | `015` | `clave TEXT UNIQUE NOT NULL` | No |
+| `proyectos` | `012` + `015` | `clave TEXT UNIQUE NOT NULL` | No |
+| `tipos_apoyo` | `002` | `clave TEXT UNIQUE NOT NULL` | No |
+| `documentos_requeridos` | `012` | — (no tiene `clave`; su identidad es `requisito`) | No |
+
+Los índices de lectura que el árbol usa también existen: `idx_modalidades_componente`,
+`idx_docsreq_activo`, y los GIN sobre `documentos_requeridos.componentes` y `.tipos_persona`.
+Los listados restantes son de decenas a ~200 filas: un `seq scan` es correcto y **no se agrega
+ningún índice nuevo** para no tocar producción. Si en el futuro un catálogo creciera a miles de
+filas, el índice se agregaría en un build posterior, no aquí.
+
+### 16.3.1 Esquema exacto que expone cada entidad
+
+Copiado literal de §12.3.1 y §14.3 — **no se inventa ninguna columna**.
+
+| Entidad (`:entidad`) | Tabla | Columnas gestionables | Padre (FK) |
+|---|---|---|---|
+| `programas` | `programas` | `clave`, `nombre`, `activo` | — |
+| `subprogramas` | `subprogramas` | `programa_id`, `clave`, `nombre`, `activo` | `programas.id` |
+| `componentes` | `componentes` | `clave`, `nombre`, `activo` | — |
+| `modalidades` | `modalidades` | `clave`, `nombre`, `componente_id`, `activo` | `componentes.id` |
+| `proyectos` | `proyectos` | `clave`, `nombre`, `prefijo_folio`, `componente_id`, `modalidad_id`, `activo` | `componentes.id` (nullable), `modalidades.id` (nullable) |
+| `tipos_apoyo` | `tipos_apoyo` | `clave`, `nombre`, `categoria`, `unidad_medida`, `activo` | — |
+| `documentos_requeridos` | `documentos_requeridos` | `requisito`, `componentes`, `tipos_persona`, `proyecto_id`, `apoyo_id`, `apoyo_etiquetas`, `apoyo_excluir_id`, `apoyo_excluir_etiquetas`, `orden`, `activo` | — (reglas transversales) |
+
+`id` nunca es escribible. `activo` nunca se escribe por `POST`/`PATCH`: solo por **E53**.
+
+### 16.3.2 Valores nuevos de `auditoria_log.accion`
+
+Columna `TEXT` libre; el esquema **no cambia** (igual que §12.3.3).
+
+| `accion` | `entidad` | `entidad_id` | `detalle` (JSONB) |
+|---|---|---|---|
+| `catalogo_creado` | nombre de la tabla (`programas`, `proyectos`, …) | id de la fila creada | `{entidad, clave, nombre, padre_id, campos}` |
+| `catalogo_actualizado` | ídem | id de la fila | `{entidad, clave, cambios:{campo:{anterior,nuevo}}}` |
+| `catalogo_estado_cambiado` | ídem | id de la fila | `{entidad, clave, activo_anterior, activo_nuevo, hijos_activos:{modalidades:N, proyectos:N}}` |
+| `regla_documento_creada` | `documentos_requeridos` | id de la regla | `{requisito, componentes, tipos_persona, proyecto_id, apoyo_id, apoyo_excluir_id}` |
+
+`detalle` nunca contiene CURP ni contraseñas (regla vigente de §12.3.3).
+
+---
+
+## 16.4 Decisiones de producto (implementar tal cual, no preguntar)
+
+- **D45. Nunca se borra: se desactiva.** No existe ningún handler `DELETE` en el router nuevo.
+  Un `DELETE /api/admin/catalogos/programas/1` debe devolver **404** (Fastify no tiene la ruta
+  registrada). Mismo patrón que usuarios y catálogos existentes.
+- **D46. La desactivación NO es en cascada.** Desactivar un `componente` deja sus `modalidades` y
+  `proyectos` con `activo = true` en la BD. El único efecto es que el padre inactivo deja de
+  aparecer en E40 y, por tanto, la rama completa deja de ser **elegible** en ventanilla. Motivo:
+  evitar desactivaciones masivas accidentales e irreversibles-por-inspección (nadie sabría qué hijos
+  ya estaban inactivos antes). La UI **avisa** con el conteo de hijos activos, pero **no** los toca.
+- **D47. `prefijo_folio` es INMUTABLE.** Solo se define en el alta de un proyecto. `PATCH` que lo
+  incluya con un valor distinto al actual ⇒ **422 `campo_inmutable`**. Para corregir un prefijo mal
+  puesto: desactivar el proyecto y crear uno nuevo. Motivo: el prefijo ya está impreso en folios
+  emitidos (`PEO-SJR-AME-0001-26`) y en `solicitud_folios (prefijo, clave_regional, siglas_municipio,
+  anio)`; cambiarlo rompería la unicidad histórica del folio.
+- **D48. `clave` también es INMUTABLE en edición**, para las 6 entidades que la tienen. Motivo: los
+  seeds y migraciones idempotentes hacen `ON CONFLICT (clave) DO UPDATE`; renombrar una clave desde
+  la UI provocaría que el siguiente `npm run sembrar` recreara un duplicado silencioso. `PATCH` con
+  `clave` distinta ⇒ **422 `campo_inmutable`**. Enviar la **misma** clave es tolerado (no-op).
+- **D49. Las claves se normalizan a mayúsculas** (`trim` + `toUpperCase`) en el alta. Todas las claves
+  existentes (`PRG-2026`, `SUB-IP`, `TR`, `PET`, `MOD-PEPFO`, `PEO`, `AP-012`, `CASAS-EJIDALES`) ya
+  cumplen, así que no hay migración de datos.
+- **D50. Pantalla EN LÍNEA, no offline-first.** Igual que `/depuracion`, `/dashboard` y `/solicitudes`
+  (D32): sin Dexie, sin cola de sync. Sin red muestra
+  *"Esta sección requiere conexión a internet."*
+- **D51. Roles: `admin` y `editor_datos`.** Mismos que ya administran staging, correcciones y
+  usuarios. `capturista`, `auditor` y `ventanilla` ⇒ **403 `rol_no_autorizado`** con mensaje
+  *"Tu rol no puede administrar catálogos."*
+- **D52. Sin alcance por Regional/Componente aquí.** Los catálogos son estatales; un `editor_datos`
+  con `regional_id` asignada administra el catálogo completo. El alcance de §12 solo aplica a
+  solicitudes.
+- **D53. Sin reordenamiento drag & drop.** El orden de las reglas de documentos se edita por el campo
+  numérico `orden`, tal como está en la tabla.
+
+---
+
+## 16.5 Contrato de endpoints (E49–E54)
+
+Router nuevo: `backend/src/rutas/catalogosAdmin.ts`, registrado con prefijo **`/api/admin/catalogos`**.
+El prefijo `/api/admin/…` es nuevo y **no colisiona** con el `/api/catalogos` existente
+(`backend/src/rutas/catalogos.ts`), que se deja intacto.
+
+Formato de error vigente del proyecto: `{"error":{"codigo":"…","mensaje":"…"}}`.
+Todos requieren `Authorization: Bearer <jwt>`; sin token ⇒ **401**.
+Guardia de rol: `app.requiereRol('admin','editor_datos')` (plugin `rbac` existente, sin cambios).
+
+| # | Método | Ruta | Descripción |
+|---|---|---|---|
+| E49 | GET | `/api/admin/catalogos/arbol` | Árbol jerárquico completo con conteos |
+| E50 | GET | `/api/admin/catalogos/:entidad` | Listado paginado/filtrado de una entidad |
+| E51 | POST | `/api/admin/catalogos/:entidad` | Alta |
+| E52 | PATCH | `/api/admin/catalogos/:entidad/:id` | Edición (sin `activo`, sin campos inmutables) |
+| E53 | POST | `/api/admin/catalogos/:entidad/:id/estado` | Activar / desactivar |
+| E54 | GET | `/api/admin/catalogos/referencias` | Opciones para los `<select>` de los formularios |
+
+`:entidad` ∈ `programas | subprogramas | componentes | modalidades | proyectos | tipos_apoyo |
+documentos_requeridos`. Cualquier otro valor ⇒ **404 `entidad_desconocida`**
+(*"No existe el catálogo solicitado."*).
+
+### 16.5.1 Patrón genérico
+
+`backend/src/servicios/catalogosAdmin.ts` define un **registro de entidades** (una sola fuente de
+verdad), y las 4 rutas mutantes son genéricas sobre él. No se escribe un handler por tabla.
+
+```ts
+// Registro unico de catalogos administrables (build 10).
+export interface DefinicionCatalogo {
+  tabla: string;                    // nombre real de la tabla
+  etiqueta: string;                 // titulo en la UI, en espanol
+  campoClave: 'clave' | null;       // null en documentos_requeridos
+  camposTexto: string[];            // columnas TEXT editables
+  camposEnteros: string[];          // columnas INTEGER editables
+  camposArreglo: string[];          // columnas TEXT[] editables
+  padres: { campo: string; tabla: string; obligatorio: boolean }[];
+  inmutables: string[];             // campos rechazados en PATCH
+  esquemaAlta: ZodObject;           // .strict()
+  esquemaEdicion: ZodObject;        // .strict()
+  hijos: { entidad: string; campo: string }[]; // para el conteo de la baja
+}
+```
+
+Esquemas Zod en `packages/shared/src/catalogos.ts` (archivo **nuevo**; no se toca
+`packages/shared/src/solicitudes.ts`). Todos `.strict()`: un campo desconocido ⇒
+**422 `payload_invalido`**.
+
+### 16.5.2 E49 — `GET /api/admin/catalogos/arbol`
+
+Query: `?incluir_inactivos=true|false` (default `false`).
+
+`200`:
+
+```json
+{
+  "programas": [
+    {
+      "id": 1, "clave": "PRG-2026", "nombre": "Apoyo al Campo Queretano 2026", "activo": true,
+      "subprogramas": [
+        { "id": 1, "clave": "SUB-IP", "nombre": "Impulso a la Productividad", "activo": true, "programa_id": 1 }
+      ]
+    }
+  ],
+  "componentes": [
+    {
+      "id": 4, "clave": "PET", "nombre": "Proyectos Estratégicos Territoriales", "activo": true,
+      "modalidades": [
+        {
+          "id": 1, "clave": "MOD-PEPFO", "nombre": "Proyectos Estratégicos Productivos y para el Fortalecimiento Organizativo",
+          "componente_id": 4, "activo": true,
+          "proyectos": [
+            { "id": 1, "clave": "PEO", "nombre": "…", "prefijo_folio": "PEO", "componente_id": 4, "modalidad_id": 1, "activo": true }
+          ]
+        }
+      ],
+      "proyectos_sin_modalidad": []
+    }
+  ],
+  "proyectos_huerfanos": [],
+  "conteos": {
+    "programas": 1, "subprogramas": 1, "componentes": 4, "modalidades": 1,
+    "proyectos": 1, "tipos_apoyo": 153, "documentos_requeridos": 42
+  }
+}
+```
+
+- `proyectos_sin_modalidad`: proyectos con `componente_id` pero `modalidad_id IS NULL`.
+- `proyectos_huerfanos`: proyectos con `componente_id IS NULL` (caso legítimo, Assumption 45).
+- `conteos` cuenta **solo activos** cuando `incluir_inactivos=false`.
+- La rama `programas`/`subprogramas` y la rama `componentes`/`modalidades`/`proyectos` se muestran
+  **por separado**: en el esquema real (§12.3.1/§14.3) los `componentes` **no** tienen FK a
+  `subprogramas`; la relación programa↔componente solo existe a nivel de una `solicitud`. Esto se
+  documenta en la UI con una nota, y **no se inventa una FK que no está en la BD**.
+
+### 16.5.3 E50 — `GET /api/admin/catalogos/:entidad`
+
+Query: `?incluir_inactivos` (bool, default `false`), `?padre_id` (entero, filtra por la FK padre de
+la entidad), `?q` (texto, busca en `clave`/`nombre`/`requisito`, sin acentos y sin distinguir
+mayúsculas, usando la normalización ya existente de §8.5.1), `?pagina` (default 1),
+`?por_pagina` (default 50, máx 200).
+
+`200`:
+
+```json
+{ "datos": [ { "id": 1, "clave": "PRG-2026", "nombre": "…", "activo": true } ],
+  "total": 1, "pagina": 1, "por_pagina": 50 }
+```
+
+Orden: `clave` ascendente (`orden, requisito` para `documentos_requeridos`).
+Para `documentos_requeridos` cada fila incluye además los campos resueltos legibles
+`apoyo_clave`, `apoyo_excluir_clave`, `proyecto_clave` (o `null`), para que la tabla se lea sin
+resolver ids a mano.
+
+### 16.5.4 E51 — `POST /api/admin/catalogos/:entidad`
+
+Body Zod `.strict()` por entidad. `activo` **no se acepta** (toda alta nace activa).
+
+| Entidad | Body |
+|---|---|
+| `programas` | `{clave, nombre}` |
+| `subprogramas` | `{programa_id, clave, nombre}` |
+| `componentes` | `{clave, nombre}` |
+| `modalidades` | `{clave, nombre, componente_id}` |
+| `proyectos` | `{clave, nombre, prefijo_folio, componente_id?, modalidad_id?}` |
+| `tipos_apoyo` | `{clave, nombre, categoria?, unidad_medida?}` |
+| `documentos_requeridos` | `{requisito, componentes?, tipos_persona?, proyecto_id?, apoyo_id?, apoyo_etiquetas?, apoyo_excluir_id?, apoyo_excluir_etiquetas?, orden?}` |
+
+**Reglas de validación (en este orden, todas antes de tocar la BD salvo la de unicidad):**
+
+1. `clave`: `z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/)` tras `toUpperCase()`.
+2. `nombre` / `requisito`: `z.string().trim().min(3).max(300)`.
+3. `prefijo_folio`: `z.string().trim().toUpperCase().regex(/^[A-Z]{2,5}$/)` — obligatorio en
+   `proyectos`. Un valor como `"peo1"` o `"P"` ⇒ **422 `payload_invalido`**.
+4. `tipos_persona`: cada elemento ∈ `{'fisica','moral','grupo'}`; si no ⇒
+   **422 `tipo_persona_invalido`**.
+5. `componentes` (array de `documentos_requeridos`): cada elemento debe ser la `clave` de un
+   componente **existente**; si no ⇒ **422 `componente_invalido`**.
+6. `orden`: `z.number().int().min(0).max(9999)`, default `0`.
+7. **Padre obligatorio**: si la FK es `NOT NULL` (`subprogramas.programa_id`,
+   `modalidades.componente_id`) y no existe la fila ⇒ **422 `padre_invalido`**
+   (*"El programa indicado no existe."*). Si existe pero `activo = false` ⇒
+   **422 `padre_inactivo`** (*"No se puede crear bajo un componente desactivado."*).
+8. **Padre opcional** (`proyectos.componente_id`, `proyectos.modalidad_id`,
+   `documentos_requeridos.proyecto_id`, `.apoyo_id`, `.apoyo_excluir_id`): si viene con valor, se
+   aplican las mismas dos reglas; si viene `null`/ausente, se guarda `NULL`.
+9. **Coherencia componente↔modalidad** en `proyectos`: si vienen ambos y
+   `modalidades.componente_id !== componente_id` ⇒ **422 `modalidad_no_corresponde_componente`**.
+   Si viene `modalidad_id` sin `componente_id`, el backend **deriva** `componente_id` de la modalidad.
+10. **Unicidad**: se consulta la clave antes del `INSERT`; si ya existe ⇒ **409 `clave_duplicada`**
+    (*"Ya existe un registro con la clave X."*). Además, el `INSERT` va envuelto en un
+    `try/catch` que traduce el error `23505` de Postgres al **mismo 409** — un carrera concurrente
+    **jamás** produce un 500. Para `subprogramas` la unicidad es por par
+    `(programa_id, clave)`: la misma clave bajo **otro** programa se acepta.
+11. `documentos_requeridos` no tiene `clave`: se rechaza con **409 `requisito_duplicado`** si ya
+    existe una regla **activa** con el mismo `requisito` normalizado **y** el mismo
+    `(componentes, tipos_persona, proyecto_id, apoyo_id)`.
+
+`201`:
+
+```json
+{ "entidad": "proyectos",
+  "registro": { "id": 2, "clave": "DEM", "nombre": "…", "prefijo_folio": "DEM",
+                "componente_id": 5, "modalidad_id": 2, "activo": true } }
+```
+
+Se escribe `auditoria_log` con `accion='catalogo_creado'` (o `regla_documento_creada` para
+`documentos_requeridos`) usando el plugin de auditoría existente, **dentro de la misma transacción**.
+
+### 16.5.5 E52 — `PATCH /api/admin/catalogos/:entidad/:id`
+
+Body Zod `.strict()` con **todos los campos opcionales**, mínimo uno presente
+(si el body queda vacío ⇒ **422 `payload_invalido`**).
+
+**Campos rechazados siempre (`inmutables`):**
+
+| Entidad | Inmutables |
+|---|---|
+| todas las que tienen `clave` | `clave` (D48) |
+| `proyectos` | `clave`, **`prefijo_folio`** (D47) |
+| todas | `id`, `activo` (se cambia solo por E53) |
+
+Enviar un inmutable con un valor **distinto** al actual ⇒ **422 `campo_inmutable`**, con mensaje
+específico. Para `prefijo_folio` el mensaje es literal:
+
+> `El prefijo de folio no se puede modificar. Desactiva el proyecto y da de alta uno nuevo.`
+
+Enviar el inmutable con el **mismo** valor actual es un no-op tolerado (200), para que la UI pueda
+mandar el objeto completo sin fallar.
+
+Otros errores: **404 `registro_no_encontrado`** si el `:id` no existe en esa entidad;
+las mismas reglas 1–9 de E51 para los campos que sí vienen.
+
+`200`: `{ "entidad": "…", "registro": {…} }` con la fila ya actualizada.
+Auditoría: `catalogo_actualizado` con `cambios:{campo:{anterior,nuevo}}` **solo** de los campos que
+realmente cambiaron (si nada cambió, no se escribe fila de auditoría).
+
+### 16.5.6 E53 — `POST /api/admin/catalogos/:entidad/:id/estado`
+
+Body: `{"activo": true|false}` (Zod `.strict()`, `activo` obligatorio booleano).
+
+- **Desactivar** (`false`): `UPDATE … SET activo = false WHERE id = :id`.
+  **Ni un solo `UPDATE` toca las tablas hijas** (D46). La respuesta informa qué quedó colgando:
+
+  ```json
+  { "entidad": "componentes", "registro": {"id":5,"clave":"DEM-C","activo":false},
+    "hijos_activos": { "modalidades": 1, "proyectos": 1 },
+    "aviso": "Se desactivó el componente. Sus 1 modalidad y 1 proyecto siguen activos pero ya no serán seleccionables en ventanilla." }
+  ```
+
+  `hijos_activos` se calcula con la lista `hijos` del registro de entidades:
+  `programas → subprogramas`, `componentes → modalidades` y `componentes → proyectos`,
+  `modalidades → proyectos`, `tipos_apoyo → documentos_requeridos` (por `apoyo_id`),
+  `proyectos → documentos_requeridos` (por `proyecto_id`). Las entidades sin hijos devuelven `{}`.
+
+- **Reactivar** (`true`): si la entidad tiene un padre y ese padre está `activo = false` ⇒
+  **409 `padre_inactivo`** (*"Reactiva primero el componente al que pertenece."*).
+  Si no, `UPDATE … SET activo = true`.
+
+- Es **idempotente**: poner `activo=false` sobre una fila ya inactiva devuelve `200` sin escribir
+  auditoría.
+
+Auditoría: `catalogo_estado_cambiado`.
+
+### 16.5.7 E54 — `GET /api/admin/catalogos/referencias`
+
+Alimenta los `<select>` de los formularios. Devuelve **todas** las filas (activas e inactivas, con
+`activo` explícito) para que la UI pueda marcar una opción inactiva como no elegible sin perder el
+valor guardado.
+
+```json
+{
+  "programas":   [{"id":1,"clave":"PRG-2026","nombre":"…","activo":true}],
+  "componentes": [{"id":4,"clave":"PET","nombre":"…","activo":true}],
+  "modalidades": [{"id":1,"clave":"MOD-PEPFO","nombre":"…","componente_id":4,"activo":true}],
+  "proyectos":   [{"id":1,"clave":"PEO","nombre":"…","prefijo_folio":"PEO","componente_id":4,"modalidad_id":1,"activo":true}],
+  "tipos_apoyo": [{"id":153,"clave":"CASAS-EJIDALES","nombre":"Casas Ejidales","unidad_medida":"obra","activo":true}],
+  "tipos_persona": [
+    {"clave":"fisica","nombre":"Persona física"},
+    {"clave":"moral","nombre":"Persona moral sin fines de lucro"},
+    {"clave":"grupo","nombre":"Grupo de productores"}
+  ]
+}
+```
+
+### 16.5.8 Efecto sobre los endpoints existentes
+
+**Ninguno se modifica.** E40 (`GET /api/solicitudes/catalogos`) ya filtra por `activo = true`, así
+que una entidad creada aquí aparece en ventanilla **de inmediato** y una desactivada desaparece,
+sin cambiar una línea de `backend/src/rutas/solicitudes.ts`. Igual para E41: el motor de
+coincidencia ya lee `documentos_requeridos WHERE activo`.
+
+---
+
+## 16.6 Pantallas nuevas
+
+Lenguaje visual del **Build 9** (§15): tokens de `pwa/src/styles/tokens.css`, tema dual, cascarón
+`Cascaron.tsx` con `BarraLateral`/`BarraInferior`. **No se crean estilos nuevos de color, sombra ni
+tipografía**: se reutilizan las clases existentes (`.tarjeta`, `.tabla`, `.campo`, `.mensaje`,
+`.boton`, `.boton.secundario`, `.chip`, `.modal`). Solo se agrega un bloque acotado
+`pwa/src/styles/catalogos.css` con el layout de dos columnas del árbol y la sangría de los nodos,
+usando exclusivamente variables ya definidas (`--espacio-*`, `--color-*`, `--radio-*`).
+
+### 16.6.1 Navegación
+
+`pwa/src/navegacion/menu.ts` — **destino #9**, aditivo (los 8 anteriores conservan `id`, ruta,
+`data-testid`, roles, grupo e ícono exactos):
+
+| # | `id` | Ruta | `data-testid` | Roles | Grupo | Ícono |
+|---|---|---|---|---|---|---|
+| 9 | `catalogos` | `/catalogos` | `nav-catalogos` | admin, editor_datos | Administración | capas |
+
+Reparto en la barra inferior (§15.5.6): `admin` y `editor_datos` ya tienen 4 celdas ocupadas, así
+que **Catálogos va a "Más"** en ambos. Los roles `capturista`, `auditor` y `ventanilla` **no ven la
+entrada**. El ícono `capas` se agrega a `pwa/src/componentes/Iconos.tsx` como SVG inline
+`currentColor`, igual que los 8 existentes.
+
+`pwa/src/rutas.tsx` — 2 rutas nuevas dentro de `<Cascaron>`, con la constante ya existente
+`USUARIOS = ['admin', 'editor_datos']` renombrada conceptualmente a nivel de comentario
+(la constante **no se toca**, se reutiliza tal cual):
+
+```tsx
+<Route path="/catalogos"            element={<RutaProtegida roles={USUARIOS}><Catalogos /></RutaProtegida>} />
+<Route path="/catalogos/documentos" element={<RutaProtegida roles={USUARIOS}><CatalogoDocumentos /></RutaProtegida>} />
+```
+
+### 16.6.2 `/catalogos` — `pwa/src/pantallas/Catalogos.tsx`
+
+Contenedor `[data-testid="pantalla-catalogos"]`. Título `<h1>Catálogos del programa</h1>`.
+Layout de 2 columnas en ≥1024px (árbol 40% / panel 60%), apiladas en móvil.
+
+**Cabecera**
+
+- `[data-testid="toggle-incluir-inactivos"]` — checkbox "Mostrar desactivados"; recarga E49/E50.
+- `[data-testid="link-reglas-documentos"]` — enlace a `/catalogos/documentos`.
+- Nota fija: *"Los componentes cuelgan del programa a nivel de solicitud; el catálogo los administra
+  como dos ramas independientes."*
+- Sin red: `[data-testid="aviso-sin-conexion"]` con *"Esta sección requiere conexión a internet."*
+
+**Columna izquierda — `pwa/src/componentes/ArbolCatalogos.tsx`**
+(`[data-testid="arbol-catalogos"]`)
+
+```
+▸ Programas                                        [+ Nuevo programa]
+  ▸ PRG-2026 · Apoyo al Campo Queretano 2026       [editar] [desactivar]
+      · SUB-IP · Impulso a la Productividad        [editar] [desactivar]
+                                                   [+ Nuevo subprograma]
+▸ Componentes                                      [+ Nuevo componente]
+  ▸ PET · Proyectos Estratégicos Territoriales     [editar] [desactivar]
+      ▸ MOD-PEPFO · Proyectos Estratégicos…        [editar] [desactivar]
+          · PEO · Proyectos Estratégicos…          [editar] [desactivar]
+                                                   [+ Nuevo proyecto]
+                                                   [+ Nueva modalidad]
+  ▸ TR · Tecnificación del Riego                   [editar] [desactivar]
+▸ Conceptos de apoyo (153)                         [+ Nuevo concepto]
+  (lista paginada con buscador, E50 sobre tipos_apoyo)
+```
+
+- `data-testid` por nodo: `nodo-<entidad>-<id>` (ej. `nodo-proyectos-1`).
+- Fila inactiva: clase `.inactivo` + `[data-testid="chip-inactivo"]` con el texto `Desactivado`,
+  y el botón cambia a `[data-testid="btn-reactivar"]`.
+- Botones: `[data-testid="btn-nuevo-<entidad>"]`, `[data-testid="btn-editar-<entidad>-<id>"]`,
+  `[data-testid="btn-desactivar-<entidad>-<id>"]`.
+- Los nodos son expandibles/colapsables (estado local, sin persistir).
+
+**Columna derecha — `pwa/src/componentes/FormCatalogo.tsx`**
+(`[data-testid="form-catalogo"]`)
+
+Un solo componente controlado por `{entidad, modo:'alta'|'edicion', registro}`. Renderiza los campos
+del registro de entidades de §16.5.1:
+
+| `data-testid` | Campo | Notas |
+|---|---|---|
+| `input-clave` | `clave` | En `modo='edicion'`: `readOnly` + `disabled` + `aria-readonly="true"` y leyenda `[data-testid="leyenda-clave-inmutable"]` = *"La clave no se puede modificar."* |
+| `input-nombre` | `nombre` | siempre editable |
+| `input-prefijo-folio` | `prefijo_folio` (solo `proyectos`) | En `modo='alta'`: `<input maxLength={5}>` editable, se muestra en mayúsculas al escribir. En `modo='edicion'`: `readOnly` + `disabled` + `[data-testid="leyenda-prefijo-inmutable"]` = *"El prefijo de folio no se puede modificar. Desactiva el proyecto y da de alta uno nuevo."* |
+| `select-padre-programa` | `programa_id` | solo `subprogramas`; opciones activas |
+| `select-padre-componente` | `componente_id` | `modalidades` (obligatorio), `proyectos` (opcional) |
+| `select-padre-modalidad` | `modalidad_id` | solo `proyectos`; se filtra al componente elegido con la función ya existente `modalidadesDeComponente` de `@sedea/shared` (§14.7) — **no se reimplementa** |
+| `input-categoria`, `input-unidad-medida` | `tipos_apoyo` | opcionales |
+| `btn-guardar-catalogo` | submit | deshabilitado mientras hay petición en vuelo |
+| `btn-cancelar-catalogo` | cierra el panel | |
+| `error-catalogo` | `role="alert"` | muestra `error.mensaje` del backend tal cual |
+| `toast-exito` | `role="status"` | reutiliza la clase `.mensaje.exito` ya existente |
+
+Tras un alta/edición exitosa: se recarga E49, se cierra el formulario y el nodo nuevo queda
+seleccionado y visible.
+
+**Modal de baja — `[data-testid="modal-confirmar-baja"]`**
+
+Se abre al pulsar desactivar. Contiene:
+
+- Texto: *"¿Desactivar «PET · Proyectos Estratégicos Territoriales»?"*
+- `[data-testid="texto-hijos-activos"]`: *"Tiene 1 modalidad y 1 proyecto activos. **No se
+  desactivarán**: seguirán existiendo, pero la rama completa dejará de estar disponible en
+  ventanilla."* (el conteo se obtiene de E49; si no hay hijos, el bloque no se renderiza).
+- `[data-testid="btn-confirmar-baja"]` y `[data-testid="btn-cancelar-baja"]`.
+
+### 16.6.3 `/catalogos/documentos` — `pwa/src/pantallas/CatalogoDocumentos.tsx`
+
+Contenedor `[data-testid="pantalla-catalogo-documentos"]`, título
+`<h1>Reglas de documentación requerida</h1>`.
+
+**Tabla `[data-testid="tabla-reglas-documentos"]`**, filas `[data-testid="fila-regla-documento"]`,
+columnas: `Orden`, `Requisito`, `Componentes`, `Tipos de persona`, `Proyecto`, `Concepto`,
+`Excepción`, `Estado`, acciones. Un array vacío/`NULL` se pinta como el chip `Todos`.
+Filtros: `[data-testid="filtro-componente-regla"]`, `[data-testid="filtro-tipo-persona-regla"]`,
+`[data-testid="input-buscar-regla"]`, `[data-testid="toggle-incluir-inactivos"]`.
+
+**Formulario `pwa/src/componentes/FormReglaDocumento.tsx`**
+(`[data-testid="form-regla-documento"]`) — mismo modelo de §12.3.1, sin inventar campos:
+
+| `data-testid` | Campo | Control |
+|---|---|---|
+| `input-requisito` | `requisito` | texto obligatorio |
+| `check-componente-<clave>` | `componentes[]` | un checkbox por componente activo. **Ninguno marcado = aplica a todos** (se guarda `NULL`), con la leyenda `[data-testid="leyenda-componentes-todos"]` |
+| `check-tipo-persona-<clave>` | `tipos_persona[]` | `fisica`/`moral`/`grupo`; ninguno marcado = todos |
+| `select-proyecto-regla` | `proyecto_id` | opcional, opción vacía = "Cualquier proyecto" |
+| `select-apoyo` | `apoyo_id` | opcional, buscador sobre `tipos_apoyo`, vacío = regla general |
+| `select-apoyo-excluir` | `apoyo_excluir_id` | opcional, "No pedir este documento si el único concepto es…" |
+| `input-etiquetas-apoyo` | `apoyo_etiquetas[]` | texto separado por comas, en mayúsculas |
+| `input-etiquetas-excluir` | `apoyo_excluir_etiquetas[]` | ídem |
+| `input-orden` | `orden` | entero, default 0 |
+| `btn-guardar-regla` | submit | |
+| `error-regla` | `role="alert"` | |
+
+**Vista previa `[data-testid="preview-checklist"]`**: al lado del formulario, un simulador que llama
+al endpoint **existente** E41 (`POST /api/solicitudes/documentos-requeridos`) con el
+componente / tipo de persona / proyecto / concepto elegidos, y muestra la lista resultante. Sirve
+para confirmar que la regla recién creada sí aparece. **No se modifica E41.**
+
+### 16.6.4 Archivos del build
+
+| Archivo | Acción |
+|---|---|
+| `packages/shared/src/catalogos.ts` | **nuevo** — tipos + esquemas Zod de las 7 entidades |
+| `packages/shared/src/index.ts` | re-export del módulo nuevo (única línea añadida) |
+| `backend/src/servicios/catalogosAdmin.ts` | **nuevo** — registro de entidades y validaciones |
+| `backend/src/db/queries/catalogosAdmin.ts` | **nuevo** — consultas del árbol, listados y upserts |
+| `backend/src/rutas/catalogosAdmin.ts` | **nuevo** — E49–E54 |
+| `backend/src/server.ts` | registra el router con prefijo `/api/admin/catalogos` (1 bloque) |
+| `pwa/src/pantallas/Catalogos.tsx` | **nuevo** |
+| `pwa/src/pantallas/CatalogoDocumentos.tsx` | **nuevo** |
+| `pwa/src/componentes/ArbolCatalogos.tsx` | **nuevo** |
+| `pwa/src/componentes/FormCatalogo.tsx` | **nuevo** |
+| `pwa/src/componentes/FormReglaDocumento.tsx` | **nuevo** |
+| `pwa/src/styles/catalogos.css` | **nuevo** — solo layout, solo tokens existentes |
+| `pwa/src/componentes/Iconos.tsx` | + ícono `capas` |
+| `pwa/src/navegacion/menu.ts` | + destino #9 |
+| `pwa/src/rutas.tsx` | + 2 rutas |
+| `db/migrations/*` | **sin cambios** |
+| `db/seeds/*` | **sin cambios** |
+| `docker-compose.yml`, `pwa/nginx.conf.template`, `*/package.json` | **sin cambios** |
+
+Comandos de desarrollo: los ya existentes, sin variables de entorno nuevas.
+`docker compose up -d --build` → `npm run migrar` (no aplica nada nuevo) → `npm run sembrar`.
+
+---
+
+## 16.7 Assumptions del Build 10 (continúa la numeración de §14.11 / §15.13)
+
+- **A16-1.** Prefijo de API `/api/admin/catalogos` para no colisionar con `/api/catalogos` (§ build 1).
+- **A16-2.** Un router genérico con registro de entidades, no 7 routers. Menos código, mismos contratos.
+- **A16-3.** `clave` inmutable en edición (D48). Se documenta en la UI, no solo en el error.
+- **A16-4.** `prefijo_folio` inmutable en edición (D47); editable únicamente en el alta.
+- **A16-5.** Baja lógica sin cascada (D46); la UI informa el conteo de hijos activos.
+- **A16-6.** Reactivar un hijo con el padre inactivo se bloquea con 409 (evita ramas incoherentes).
+- **A16-7.** Programas/subprogramas y componentes/modalidades/proyectos se muestran como **dos
+  ramas** porque el esquema real no tiene FK entre subprograma y componente.
+- **A16-8.** `activo` solo se cambia con E53, nunca con E51/E52. Un único punto de auditoría de bajas.
+- **A16-9.** Sin alcance por Regional en esta pantalla (D52).
+- **A16-10.** Sin `DELETE` ni endpoint de fusión/merge de catálogos.
+- **A16-11.** `documentos_requeridos` no gana campo `clave`; su duplicidad se juzga por
+  `requisito` normalizado + su combinación de filtros.
+- **A16-12.** El simulador de checklist reutiliza E41; no se duplica el motor de coincidencia.
+- **A16-13.** Sin importación masiva de catálogos en este build.
+- **A16-14.** El E2E de aceptación usa el prefijo `DEM` (nunca `CEJ`, para no romper el criterio 351).
+- **A16-15.** El E2E deja desactivado lo que crea, para no alterar el conteo del criterio 347.
+
+---
+
+## 16.8 Rubric de evaluación — Build 10 (criterios 447–503)
+
+Credenciales: `admin` (rol `admin`), `editor1` (rol `editor_datos`), `capturista1`, `auditor1`,
+`ventanilla1`, con las contraseñas de semilla ya usadas por los builds previos.
+
+### Acceso y roles (447–456)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 447 | `GET /api/admin/catalogos/arbol` **sin** header `Authorization` → `401`. | `curl -si …/api/admin/catalogos/arbol` |
+| 448 | Con token de `admin` → `200` y el JSON trae las claves `programas`, `componentes`, `conteos`. | `curl … \| jq 'keys'` |
+| 449 | Con token de `editor_datos` → `200` (mismo payload). | `curl` |
+| 450 | Con token de `capturista` → `403` y `error.codigo == "rol_no_autorizado"`. | `curl \| jq '.error.codigo'` |
+| 451 | Con token de `auditor` → `403` `rol_no_autorizado`. | `curl` |
+| 452 | Con token de `ventanilla` → `403` `rol_no_autorizado`. | `curl` |
+| 453 | `POST /api/admin/catalogos/programas` con token de `ventanilla` → `403`; `SELECT count(*) FROM programas` no cambia. | `curl` + `psql` |
+| 454 | UI: `admin` autenticado ve `[data-testid="nav-catalogos"]` (sidebar o "Más") y al pulsarlo llega a `/catalogos` con `[data-testid="pantalla-catalogos"]` visible. | Playwright |
+| 455 | UI: `editor_datos` ve `nav-catalogos`; `ventanilla`, `capturista` y `auditor` **no** lo ven en ninguna parte del cascarón. | Playwright, 4 sesiones |
+| 456 | UI: `ventanilla` navegando directo a `/catalogos` termina en `/sin-permiso`. | Playwright |
+
+### Restricciones del build (457–461)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 457 | No existe ningún archivo `db/migrations/016_*.sql` y `git diff HEAD -- db/migrations/ db/seeds/` está vacío. | `ls db/migrations` + `git diff` |
+| 458 | `git diff HEAD -- '*package.json' '*package-lock.json'` no muestra cambios en `dependencies`/`devDependencies`. | `git diff` |
+| 459 | `git diff HEAD -- docker-compose.yml pwa/nginx.conf.template pwa/src/sync pwa/src/db` está vacío. | `git diff` |
+| 460 | `grep -n "\.delete(" backend/src/rutas/catalogosAdmin.ts` no devuelve nada, y `DELETE /api/admin/catalogos/programas/1` con token admin → `404`. | `grep` + `curl -X DELETE -si` |
+| 461 | `npm run build` en `packages/shared`, `backend` y `pwa` termina en 0 sin errores de TypeScript. | Log de terminal |
+
+### Lectura: árbol, listados y referencias (462–469)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 462 | E49 devuelve `programas[0].subprogramas` como array y `componentes[]` con `PET` conteniendo `modalidades[0].clave == "MOD-PEPFO"` y dentro `proyectos[0].clave == "PEO"`. | `curl \| jq` |
+| 463 | E49 sin query no incluye filas con `activo=false`; con `?incluir_inactivos=true` sí las incluye y cada una trae `"activo": false`. | `curl` antes/después de desactivar algo |
+| 464 | `GET /api/admin/catalogos/programas` → `200` con el objeto `{datos, total, pagina, por_pagina}` y `datos[0].clave == "PRG-2026"`. | `curl \| jq` |
+| 465 | `GET /api/admin/catalogos/tipos_apoyo?q=casas` → `total >= 1` y algún `datos[].clave == "CASAS-EJIDALES"`. | `curl \| jq` |
+| 466 | `GET /api/admin/catalogos/subprogramas?padre_id=<id de PRG-2026>` devuelve solo filas con ese `programa_id`. | `curl \| jq` |
+| 467 | `GET /api/admin/catalogos/inexistente` → `404` con `error.codigo == "entidad_desconocida"`. | `curl` |
+| 468 | `GET /api/admin/catalogos/documentos_requeridos?por_pagina=200` → `total >= 42`; cada fila trae `componentes`, `tipos_persona` (array o `null`) y las claves resueltas `apoyo_clave`/`proyecto_clave`. | `curl \| jq` |
+| 469 | `GET /api/admin/catalogos/referencias` → `200` con las 6 claves (`programas`, `componentes`, `modalidades`, `proyectos`, `tipos_apoyo`, `tipos_persona`) y `tipos_persona` con exactamente `fisica`, `moral`, `grupo`. | `curl \| jq` |
+
+### Alta y validación (470–481)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 470 | `POST /api/admin/catalogos/programas` `{"clave":"prg-demo","nombre":"Programa Demo 2027"}` → `201` con `registro.clave == "PRG-DEMO"` (normalizada a mayúsculas) y `registro.activo == true`. | `curl` |
+| 471 | Repetir exactamente ese POST → `409` con `error.codigo == "clave_duplicada"`. **No** `500`, y la respuesta no filtra texto de Postgres. | `curl -si \| jq` |
+| 472 | `POST …/subprogramas` con `programa_id: 999999` → `422` `padre_invalido`. | `curl` |
+| 473 | Desactivar `PRG-DEMO` y luego `POST …/subprogramas` con ese `programa_id` → `422` `padre_inactivo`. Reactivarlo después. | `curl` x3 |
+| 474 | `POST …/subprogramas` `{"programa_id":<PRG-DEMO>,"clave":"SUB-IP","nombre":"…"}` → `201` (la clave `SUB-IP` ya existe bajo `PRG-2026`, pero la unicidad es por par). Repetirlo bajo el **mismo** programa → `409` `clave_duplicada`. | `curl` x2 |
+| 475 | `POST …/proyectos` con `prefijo_folio: "peo1"` → `422` `payload_invalido`; con `"P"` → `422`; con `"DEM"` → `201`. | `curl` x3 |
+| 476 | `POST …/proyectos` con `componente_id` de `TR` y `modalidad_id` de `MOD-PEPFO` (que es de `PET`) → `422` `modalidad_no_corresponde_componente`. | `curl` |
+| 477 | `POST …/programas` con un campo no declarado (`{"clave":"X1","nombre":"Y","color":"rojo"}`) → `422` `payload_invalido` (Zod `.strict()`). | `curl` |
+| 478 | `POST …/tipos_apoyo` `{"clave":"DEM-CONCEPTO","nombre":"Concepto demo","categoria":"infraestructura","unidad_medida":"obra"}` → `201`. | `curl` |
+| 479 | `POST …/documentos_requeridos` con `tipos_persona:["persona_fisica"]` → `422` `tipo_persona_invalido`; con `componentes:["ZZZ"]` → `422` `componente_invalido`. | `curl` x2 |
+| 480 | `POST …/documentos_requeridos` `{"requisito":"Acta de asamblea demo","componentes":["DEM-C"],"tipos_persona":["grupo"],"apoyo_id":<DEM-CONCEPTO>,"orden":1}` → `201`. | `curl` |
+| 481 | Tras 470 y 480, `SELECT accion, entidad FROM auditoria_log ORDER BY id DESC LIMIT 5` contiene `catalogo_creado`/`programas` y `regla_documento_creada`/`documentos_requeridos`, con `entidad_id` igual al id devuelto. | `psql` |
+
+### Edición e inmutabilidad (482–489)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 482 | `PATCH …/programas/<PRG-DEMO>` `{"nombre":"Programa Demo 2027 corregido"}` → `200` y `SELECT nombre FROM programas` refleja el cambio. | `curl` + `psql` |
+| 483 | `PATCH …/programas/<PRG-DEMO>` `{"clave":"PRG-OTRO"}` → `422` `campo_inmutable`; la clave en BD sigue `PRG-DEMO`. | `curl` + `psql` |
+| 484 | `PATCH …/proyectos/<PEO>` `{"prefijo_folio":"XXX"}` → `422` `campo_inmutable` con `error.mensaje` = `"El prefijo de folio no se puede modificar. Desactiva el proyecto y da de alta uno nuevo."`; `SELECT prefijo_folio FROM proyectos WHERE clave='PEO'` sigue `PEO`. | `curl` + `psql` |
+| 485 | UI: abrir editar sobre el proyecto `PEO` en `/catalogos` → `[data-testid="input-prefijo-folio"]` está `disabled` **y** `readonly`, con valor `PEO`, y es visible `[data-testid="leyenda-prefijo-inmutable"]`. | Playwright |
+| 486 | UI: pulsar `[data-testid="btn-nuevo-proyectos"]` → el mismo `[data-testid="input-prefijo-folio"]` está **habilitado** y editable. | Playwright |
+| 487 | `PATCH …/proyectos/999999` `{"nombre":"x"}` → `404` `registro_no_encontrado`. | `curl` |
+| 488 | `PATCH …/proyectos/<id demo>` con `{"clave":"DEM","prefijo_folio":"DEM","nombre":"Proyecto demo v2"}` (inmutables con el **mismo** valor) → `200`, nombre actualizado, sin error. | `curl` |
+| 489 | Tras 482, `auditoria_log` tiene una fila `catalogo_actualizado` cuyo `detalle->'cambios'->'nombre'` trae `anterior` y `nuevo` distintos. | `psql` |
+
+### Baja lógica sin cascada (490–496)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 490 | `POST …/componentes/<DEM-C>/estado` `{"activo":false}` → `200`, `registro.activo == false` y `hijos_activos` reporta `modalidades >= 1` y `proyectos >= 1`. | `curl \| jq` |
+| 491 | Inmediatamente después: `SELECT activo FROM modalidades WHERE componente_id=<DEM-C>` devuelve **todos `true`**. La desactivación del padre no tocó a los hijos. | `psql` |
+| 492 | Ídem `SELECT activo FROM proyectos WHERE componente_id=<DEM-C>` → todos `true`. | `psql` |
+| 493 | `GET /api/solicitudes/catalogos` con token admin **no** incluye el componente `DEM-C` en `componentes[]` mientras está desactivado. | `curl \| jq` |
+| 494 | `POST …/componentes/<DEM-C>/estado` `{"activo":true}` → `200`, `registro.activo == true`; repetir la misma llamada → `200` idempotente sin fila nueva de auditoría. | `curl` x2 + `psql` |
+| 495 | Con `DEM-C` desactivado, `POST …/modalidades/<hija>/estado` `{"activo":true}` → `409` `padre_inactivo`. | `curl` |
+| 496 | UI: pulsar desactivar sobre un componente con hijos abre `[data-testid="modal-confirmar-baja"]` con `[data-testid="texto-hijos-activos"]` visible mencionando que **no** se desactivarán; al confirmar, el nodo padre muestra `[data-testid="chip-inactivo"]` y los nodos hijos **no** lo muestran. | Playwright |
+
+### Alta end-to-end de un programa completo, sin SQL (497–503)
+
+Toda esta sección se ejecuta **solo por HTTP/UI**; el criterio 497 falla si el Evaluator necesita
+abrir `psql` para escribir algo.
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 497 | Cadena de 7 altas, todas `201`, en este orden y solo con `POST /api/admin/catalogos/…` autenticado como `admin`: `programas` (`PRG-DEMO`) → `subprogramas` (`SUB-DEMO`, hijo del anterior) → `componentes` (`DEM-C`) → `modalidades` (`MOD-DEMO`, de `DEM-C`) → `proyectos` (`DEM`, `prefijo_folio="DEM"`, de `DEM-C` + `MOD-DEMO`) → `tipos_apoyo` (`DEM-CONCEPTO`) → `documentos_requeridos` (`"Acta de asamblea demo"`, componente `DEM-C`, tipo de persona `grupo`, `apoyo_id = DEM-CONCEPTO`). | Script `curl` de 7 llamadas |
+| 498 | `GET /api/solicitudes/catalogos` (token admin) ya incluye, **sin reiniciar el backend ni re-sembrar**: el programa `PRG-DEMO`, el subprograma `SUB-DEMO`, el componente `DEM-C`, la modalidad `MOD-DEMO` (con `componente_id` correcto), el proyecto `DEM` (con `modalidad_id` correcto) y el concepto `DEM-CONCEPTO`. | `curl \| jq` |
+| 499 | `POST /api/solicitudes/documentos-requeridos` `{"componente_id":<DEM-C>,"tipo_persona":"grupo","proyecto_id":<DEM>,"tipos_apoyo_ids":[<DEM-CONCEPTO>]}` → `200` y la lista contiene `"Acta de asamblea demo"`. | `curl \| jq '.documentos[].requisito'` |
+| 500 | `POST /api/solicitudes` con esa jerarquía completa (`programa_id`, `subprograma_id`, `componente_id`, `modalidad_id`, `proyecto_id` demo, un concepto `DEM-CONCEPTO`) → `201` y `solicitud.folio` cumple `^DEM-[A-Z]{3}-[A-Z]{3}-\d{4}-\d{2}$`. El prefijo del folio salió del catálogo creado por UI/API, no de una migración. | `curl \| jq '.solicitud.folio'` |
+| 501 | UI Playwright: como `admin`, desde `/catalogos`, pulsar `[data-testid="btn-nuevo-programas"]`, llenar `input-clave`=`PRG-UI` e `input-nombre`, guardar → aparece `[data-testid="toast-exito"]` y el nodo `[data-testid^="nodo-programas-"]` con el texto `PRG-UI` es visible en `[data-testid="arbol-catalogos"]` sin recargar la página. | Playwright |
+| 502 | Limpieza obligatoria del E2E: desactivar por API el componente `DEM-C` y el proyecto `DEM`; después `SELECT count(*) FROM componentes WHERE activo` vuelve a devolver `4` y `SELECT count(*) FROM proyectos WHERE activo` vuelve a `1`. | `curl` x2 + `psql` |
+| 503 | Regresión completa: recrear la BD desde cero (`docker compose down -v && docker compose up -d`, `npm run migrar && npm run sembrar`) y volver a pasar los criterios **1–446** sin modificar el enunciado de ninguno. | Re-run del Evaluator |
+
+**Definición de "terminado" (Build 10):** pasan los **57** criterios nuevos (447–503) **y** siguen
+pasando los 446 anteriores. Total acumulado: **503** criterios.

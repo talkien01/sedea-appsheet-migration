@@ -1,0 +1,210 @@
+/* Build 10: estilos de la pantalla de catalogos.
+   Solo layout de dos columnas y sangrias del arbol.
+   Todos los colores, radios y sombras vienen de tokens.css. */
+
+.pantalla-catalogos {
+  padding: var(--espacio-4);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.catalogos-header h1 {
+  margin-bottom: var(--espacio-3);
+}
+
+.catalogos-acciones {
+  display: flex;
+  gap: var(--espacio-3);
+  align-items: center;
+  margin-bottom: var(--espacio-3);
+}
+
+.catalogos-acciones .toggle-campo {
+  display: flex;
+  align-items: center;
+  gap: var(--espacio-2);
+  font-size: 0.9rem;
+}
+
+.catalogos-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--espacio-4);
+}
+
+@media (min-width: 1024px) {
+  .catalogos-layout {
+    grid-template-columns: 40% 60%;
+  }
+}
+
+/* Arbol */
+.arbol-contenedor {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.arbol-rama {
+  margin-bottom: var(--espacio-4);
+}
+
+.arbol-encabezado {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--espacio-2);
+}
+
+.arbol-encabezado h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.arbol-nodo,
+.arbol-hijo,
+.arbol-nieto {
+  margin-left: var(--espacio-2);
+}
+
+.arbol-fila {
+  display: flex;
+  align-items: center;
+  gap: var(--espacio-2);
+  padding: var(--espacio-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.arbol-fila.inactivo {
+  opacity: 0.6;
+}
+
+.arbol-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  color: var(--fg-muted);
+  font-size: 0.8rem;
+}
+
+.arbol-texto {
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+.arbol-sangria {
+  margin-left: var(--espacio-3);
+  color: var(--fg-subtle);
+}
+
+.arbol-sangria-doble {
+  margin-left: calc(var(--espacio-3) * 2);
+  color: var(--fg-subtle);
+}
+
+.arbol-acciones {
+  display: flex;
+  gap: var(--espacio-1);
+}
+
+.arbol-acciones button {
+  font-size: 0.75rem;
+  padding: 2px 6px;
+}
+
+.arbol-hijos {
+  margin-left: var(--espacio-3);
+}
+
+.arbol-nietos {
+  margin-left: var(--espacio-3);
+}
+
+/* Formulario */
+.form-catalogo {
+  padding: var(--espacio-4);
+}
+
+.leyenda {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+  margin-top: var(--espacio-1);
+}
+
+/* Tabla de reglas */
+.tabla-contenedor {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th, td {
+  padding: var(--espacio-2);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  background: var(--bg-sunk);
+  font-weight: 600;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.badge.capturado {
+  background: var(--exito-bg);
+  color: var(--exito);
+}
+
+.badge.pendiente {
+  background: var(--peligro-bg);
+  color: var(--peligro);
+}
+
+/* Check group */
+.check-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espacio-2);
+  padding: var(--espacio-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  margin-top: var(--espacio-2);
+}
+
+.check-group label {
+  display: flex;
+  align-items: center;
+  gap: var(--espacio-2);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+/* Modal */
+.modal-contenido {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Acciones de tabla */
+.acciones {
+  display: flex;
+  gap: var(--espacio-2);
+}
+
+.acciones button {
+  font-size: 0.8rem;
+  padding: 4px 8px;
+}

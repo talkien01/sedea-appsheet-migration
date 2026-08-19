@@ -318,6 +318,45 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(cuerpo)
     });
+  },
+
+  // ------------------------------------------------------------------------
+  // Build 10: Administracion de catalogos jerarquicos (E49-E54).
+  // Solo admin y editor_datos pueden acceder.
+  // ------------------------------------------------------------------------
+  async catalogosArbol(parametros?: URLSearchParams): Promise<any> {
+    const qs = parametros ? `?${parametros.toString()}` : '';
+    return peticion(`/api/admin/catalogos/arbol${qs}`);
+  },
+
+  async catalogosEntidad(entidad: string, parametros?: URLSearchParams): Promise<any> {
+    const qs = parametros ? `?${parametros.toString()}` : '';
+    return peticion(`/api/admin/catalogos/${entidad}${qs}`);
+  },
+
+  async crearCatalogo(entidad: string, datos: Record<string, unknown>): Promise<any> {
+    return peticion(`/api/admin/catalogos/${entidad}`, {
+      method: 'POST',
+      body: JSON.stringify(datos)
+    });
+  },
+
+  async editarCatalogo(entidad: string, id: number, datos: Record<string, unknown>): Promise<any> {
+    return peticion(`/api/admin/catalogos/${entidad}/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(datos)
+    });
+  },
+
+  async cambiarEstadoCatalogo(entidad: string, id: number, activo: boolean): Promise<any> {
+    return peticion(`/api/admin/catalogos/${entidad}/${id}/estado`, {
+      method: 'POST',
+      body: JSON.stringify({ activo })
+    });
+  },
+
+  async catalogosReferencias(): Promise<any> {
+    return peticion('/api/admin/catalogos/referencias');
   }
 };
 

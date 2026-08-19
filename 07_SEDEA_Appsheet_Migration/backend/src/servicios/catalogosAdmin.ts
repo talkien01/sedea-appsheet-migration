@@ -162,20 +162,24 @@ export async function crearEntidad(
     }
   }
 
-  // Coherencia componente-modalidad en proyectos
+  // Coherencia componente-modalidad en proyectos (F-16)
   if (entidad === 'proyectos') {
     const { componente_id, modalidad_id } = datos as { componente_id?: number | null; modalidad_id?: number | null };
-    if (componente_id && modalidad_id) {
+    // Si ambos se proporcionan, validar que correspondan
+    if (componente_id != null && modalidad_id != null) {
       const modalidad = await consultarUna<{ componente_id: number }>(
         'SELECT componente_id FROM modalidades WHERE id = $1',
         [modalidad_id]
       );
-      if (modalidad && modalidad.componente_id !== componente_id) {
+      if (!modalidad) {
+        throw error422('modalidad_invalida', 'La modalidad seleccionada no existe.');
+      }
+      if (modalidad.componente_id !== componente_id) {
         throw error422('modalidad_no_corresponde_componente', 'La modalidad no corresponde al componente seleccionado.');
       }
     }
-    // Derivar componente_id desde modalidad_id si no viene
-    if (!componente_id && modalidad_id) {
+    // Derivar componente_id desde modalidad_id si no viene explícito
+    if ((componente_id == null || componente_id === 0) && modalidad_id != null && modalidad_id !== 0) {
       const modalidad = await consultarUna<{ componente_id: number }>(
         'SELECT componente_id FROM modalidades WHERE id = $1',
         [modalidad_id]

@@ -1,0 +1,188 @@
+/* ==========================================================================
+   Capa 1 - Primitivos del design system (copia literal de
+   _referencia_diseno/tokens.css). Aqui no se decide nada de la app: solo
+   se declaran los valores crudos de marca, neutros, tipografia y escala.
+   ========================================================================== */
+
+:root {
+  /* Marca */
+  --brand-orange: #FF5A1F;
+  --brand-orange-soft: #FF7A47;
+  --brand-orange-deep: #E03E00;
+  --brand-blue: #1E40FF;
+  --brand-blue-soft: #5773FF;
+
+  /* Neutros calidos */
+  --ink-1000: #0A0A0C;
+  --ink-900: #131318;
+  --ink-800: #1C1C24;
+  --ink-700: #2A2A35;
+  --ink-600: #3D3D4A;
+  --ink-500: #6E6E7E;
+  --ink-400: #9A9AA8;
+  --ink-300: #C4C4CC;
+  --ink-200: #E4E4E8;
+  --ink-100: #F2F2F0;
+  --ink-50: #FAFAF7;
+  --ink-0: #FFFFFF;
+
+  /* Tipografia. Las tres familias se cargan en fuentes.css sin CDN; el
+     ultimo escalon de cada pila es siempre una fuente de sistema. */
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+
+  /* Radios */
+  --r-xs: 4px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+  --r-2xl: 32px;
+
+  /* Sombra 3D del modo claro (configurables) */
+  --shadow-int: 0.65;
+  --shadow-spread: 0.5;
+
+  /* Medidas del cascaron (las sobreescribe Cascaron.tsx en linea) */
+  --ancho-lateral: 256px;
+  --alto-franja: 40px;
+  --alto-barra-inferior: 60px;
+}
+
+/* ==========================================================================
+   Capa 2 - Modo oscuro
+   ========================================================================== */
+
+[data-mode="dark"] {
+  /* Los fondos y textos se escriben con su literal (no con var(--ink-*))
+     para que getComputedStyle devuelva el hex exacto. */
+  --bg: #0A0A0C;              /* = var(--ink-1000) */
+  --bg-elev: #131318;         /* = var(--ink-900) */
+  --bg-elev-2: #1C1C24;       /* = var(--ink-800) */
+  --bg-elev-3: #2A2A35;       /* = var(--ink-700) */
+  --fg: #FAFAF7;              /* = var(--ink-50) */
+  --fg-muted: #9A9AA8;        /* = var(--ink-400) */
+  --fg-subtle: #6E6E7E;       /* = var(--ink-500) */
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --accent: var(--brand-orange);
+  --accent-2: var(--brand-blue-soft);
+  --grid-line: rgba(255, 255, 255, 0.04);
+
+  --shadow-card:
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-pop:
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 0 80px rgba(255, 90, 31, 0.12);
+  --shadow-glow: 0 0 60px rgba(255, 90, 31, 0.25);
+  --shadow-text: none;
+
+  /* --- Capa 3: tokens semanticos propios (no existen en la referencia) ---
+     Semaforo GPS, badges de alerta y mensajes. Son colores de SIGNIFICADO,
+     no de marca: no se "naranjizan" (A15-2). Los fondos se resuelven con
+     color-mix contra un fondo opaco para que el contraste medido sobre el
+     valor computado sea real y no dependa de la transparencia. */
+  --exito: #4ADE80;
+  --exito-bg: color-mix(in srgb, #4ADE80 12%, var(--bg-elev));
+  --aviso: #FBBF24;
+  --aviso-bg: color-mix(in srgb, #FBBF24 12%, var(--bg-elev));
+  --peligro: #FCA5A5;
+  --peligro-bg: color-mix(in srgb, #FCA5A5 12%, var(--bg-elev));
+  /* Unico uso del azul de marca en la app. El #5773FF de la referencia da
+     3.8:1 sobre fondo oscuro (falla AA), asi que en dark se usa aclarado. */
+  --info: #A8B8FF;
+  --info-bg: color-mix(in srgb, #A8B8FF 12%, var(--bg-elev));
+
+  --peligro-solido: #7F1D1D;
+  --sobre-peligro: #FEE2E2;
+  /* Texto sobre naranja: NUNCA blanco (3.0:1). Con ink-1000 da 6.2:1. */
+  --sobre-acento: var(--ink-1000);
+  --bg-sunk: #1C1C24;         /* = var(--ink-800) */
+
+  /* --- Capa 4: alias de compatibilidad (DEPRECADOS) ---------------------
+     Conservan el nombre del build 1 pero apuntan a los tokens nuevos, para
+     que ningun selector ni ningun var(--verde, ...) en linea se rompa. */
+  --verde: var(--accent);                 /* DEPRECADO: usar --accent */
+  --verde-claro: var(--brand-orange-soft); /* DEPRECADO: usar --brand-orange-soft */
+  --verde-suave: color-mix(in srgb, var(--accent) 12%, var(--bg-elev)); /* DEPRECADO */
+  --gris-texto: var(--fg);                /* DEPRECADO: usar --fg */
+  --gris-medio: var(--fg-muted);          /* DEPRECADO: usar --fg-muted */
+  --gris-borde: var(--border);            /* DEPRECADO: usar --border */
+  --gris-fondo: var(--bg);                /* DEPRECADO: usar --bg */
+  --blanco: var(--bg-elev);               /* DEPRECADO: critico, en dark no es #fff */
+  --ambar: var(--aviso);                  /* DEPRECADO: usar --aviso */
+  --rojo: var(--peligro);                 /* DEPRECADO: usar --peligro */
+  --radio: var(--r-md);                   /* DEPRECADO: usar --r-* */
+  --sombra: var(--shadow-card);           /* DEPRECADO: usar --shadow-card */
+}
+
+/* ==========================================================================
+   Capa 2 - Modo claro
+   ========================================================================== */
+
+[data-mode="light"] {
+  --bg: #F5F4EE;
+  --bg-elev: #FFFFFF;
+  --bg-elev-2: #FFFFFF;
+  --bg-elev-3: #FFFFFF;
+  --fg: #0A0A0C;              /* = var(--ink-1000) */
+  --fg-muted: #6E6E7E;        /* = var(--ink-500) */
+  --fg-subtle: #9A9AA8;       /* = var(--ink-400) */
+  --border: rgba(10, 10, 12, 0.08);
+  --border-strong: rgba(10, 10, 12, 0.18);
+  --accent: var(--brand-orange);
+  --accent-2: var(--brand-blue);
+  --grid-line: rgba(10, 10, 12, 0.06);
+
+  --shadow-card:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 calc(2px * var(--shadow-int)) calc(3px * var(--shadow-int) * var(--shadow-spread)) rgba(10, 10, 12, calc(0.16 * var(--shadow-int) * (2.4 - var(--shadow-spread)))),
+    0 calc(6px * var(--shadow-int)) calc(10px * var(--shadow-int) * var(--shadow-spread)) rgba(10, 10, 12, calc(0.22 * var(--shadow-int) * (2.4 - var(--shadow-spread)))),
+    0 calc(18px * var(--shadow-int)) calc(28px * var(--shadow-int) * var(--shadow-spread)) rgba(10, 10, 12, calc(0.16 * var(--shadow-int) * (2.4 - var(--shadow-spread))));
+  --shadow-pop:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 calc(4px * var(--shadow-int)) calc(6px * var(--shadow-int) * var(--shadow-spread)) rgba(10, 10, 12, calc(0.22 * var(--shadow-int) * (2.4 - var(--shadow-spread)))),
+    0 calc(14px * var(--shadow-int)) calc(22px * var(--shadow-int) * var(--shadow-spread)) rgba(10, 10, 12, calc(0.28 * var(--shadow-int) * (2.4 - var(--shadow-spread)))),
+    0 calc(36px * var(--shadow-int)) calc(56px * var(--shadow-int) * var(--shadow-spread)) rgba(10, 10, 12, calc(0.20 * var(--shadow-int) * (2.4 - var(--shadow-spread))));
+  --shadow-glow:
+    0 calc(16px * var(--shadow-int)) calc(40px * var(--shadow-int) * var(--shadow-spread)) rgba(255, 90, 31, calc(0.40 * var(--shadow-int) * (2.4 - var(--shadow-spread))));
+  --shadow-text:
+    calc(1px * var(--shadow-int)) calc(2px * var(--shadow-int)) calc(3px * var(--shadow-int) * var(--shadow-spread)) rgba(10, 10, 12, calc(0.18 * var(--shadow-int) * (2.4 - var(--shadow-spread)))),
+    calc(2px * var(--shadow-int)) calc(6px * var(--shadow-int)) calc(10px * var(--shadow-int) * var(--shadow-spread)) rgba(10, 10, 12, calc(0.20 * var(--shadow-int) * (2.4 - var(--shadow-spread))));
+
+  /* --- Capa 3: tokens semanticos ---------------------------------------- */
+  /* El #15803D de la propuesta original queda en 4.4:1 sobre #E6F4EA
+     (falla AA por un pelo). Se oscurece a #116932 -> 6.0:1. */
+  --exito: #116932;
+  --exito-bg: #E6F4EA;
+  --aviso: #92400E;
+  --aviso-bg: #FDF3E2;
+  --peligro: #B91C1C;
+  --peligro-bg: #FBE4E2;
+  --info: var(--brand-blue);
+  --info-bg: #E8ECFF;
+
+  --peligro-solido: #B91C1C;
+  --sobre-peligro: var(--ink-0);
+  --sobre-acento: var(--ink-1000);
+  /* La referencia deja bg-elev/2/3 los tres en blanco; una app de gestion
+     necesita un fondo hundido para th, rail y campos deshabilitados. */
+  --bg-sunk: #ECEBE4;
+
+  /* --- Capa 4: alias de compatibilidad (DEPRECADOS) --------------------- */
+  --verde: var(--accent);                 /* DEPRECADO: usar --accent */
+  --verde-claro: var(--brand-orange-soft); /* DEPRECADO */
+  --verde-suave: color-mix(in srgb, var(--accent) 12%, var(--bg-elev)); /* DEPRECADO */
+  --gris-texto: var(--fg);                /* DEPRECADO */
+  --gris-medio: var(--fg-muted);          /* DEPRECADO */
+  --gris-borde: var(--border);            /* DEPRECADO */
+  --gris-fondo: var(--bg);                /* DEPRECADO */
+  --blanco: var(--bg-elev);               /* DEPRECADO */
+  --ambar: var(--aviso);                  /* DEPRECADO */
+  --rojo: var(--peligro);                 /* DEPRECADO */
+  --radio: var(--r-md);                   /* DEPRECADO */
+  --sombra: var(--shadow-card);           /* DEPRECADO */
+}

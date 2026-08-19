@@ -1,0 +1,35 @@
+/* ==========================================================================
+   Carga tipografica SIN CDN.
+   Cada familia se resuelve en 3 escalones: instalada en el sistema ->
+   servida por la propia app desde /fuentes/ -> fallback de sistema
+   (declarado al final de cada pila en tokens.css).
+   Queda PROHIBIDO cualquier @import o <link> a fonts.googleapis.com,
+   fonts.gstatic.com o equivalente: la app funciona offline.
+   Si el .woff2 no existe, la regla falla en silencio y el navegador cae al
+   siguiente escalon; font-display: swap garantiza que nunca haya texto
+   invisible. Ver pwa/public/fuentes/LEEME.txt.
+   ========================================================================== */
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: local('Space Grotesk'), url('/fuentes/SpaceGrotesk-Variable.woff2') format('woff2');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Inter';
+  src: local('Inter'), url('/fuentes/Inter-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: local('JetBrains Mono'), url('/fuentes/JetBrainsMono-Variable.woff2') format('woff2');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}

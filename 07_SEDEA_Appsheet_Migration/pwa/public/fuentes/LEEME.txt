@@ -1,0 +1,48 @@
+FUENTES AUTOALOJADAS DE LA PWA SEDEA CAMPO
+==========================================
+
+Estos archivos se sirven desde el mismo origen que la app. La PWA NO depende
+de ninguna CDN externa (nada de fonts.googleapis.com ni fonts.gstatic.com):
+debe funcionar sin internet, que es el escenario normal en campo.
+
+Vite copia esta carpeta a dist/ sin procesar, asi que las URL absolutas
+/fuentes/*.woff2 de pwa/src/styles/fuentes.css resuelven tanto en `npm run dev`
+como en el build de produccion servido por nginx.
+
+Archivos
+--------
+
+Inter-Variable.woff2            352 KB  familia de cuerpo (--font-body)
+  Inter Variable, ejes wght 100-900.
+  Origen: https://github.com/rsms/inter (docs/font-files/InterVariable.woff2)
+  Licencia: SIL Open Font License 1.1
+
+SpaceGrotesk-Variable.woff2      22 KB  familia de titulos (--font-display)
+  Space Grotesk Variable, subconjunto latin, eje wght 300-700.
+  Origen: paquete @fontsource-variable/space-grotesk
+          (space-grotesk-latin-wght-normal.woff2)
+  Autor: Florian Karsten - https://github.com/floriankarsten/space-grotesk
+  Licencia: SIL Open Font License 1.1
+
+JetBrainsMono-Variable.woff2     40 KB  familia monoespaciada (--font-mono)
+  JetBrains Mono Variable, subconjunto latin, eje wght 100-800.
+  Origen: paquete @fontsource-variable/jetbrains-mono
+          (jetbrains-mono-latin-wght-normal.woff2)
+  Autor: JetBrains - https://github.com/JetBrains/JetBrainsMono
+  Licencia: SIL Open Font License 1.1
+
+La SIL OFL 1.1 permite explicitamente el alojamiento propio y la
+redistribucion de los archivos junto con la aplicacion (A15-11).
+
+Si alguno de estos archivos falta
+---------------------------------
+
+La app sigue funcionando. Cada @font-face de fuentes.css intenta primero
+local() (la fuente instalada en el sistema) y, si tampoco esta, el navegador
+cae al ultimo escalon de la pila declarada en tokens.css:
+system-ui / sans-serif para display y body, ui-monospace / monospace para
+mono. Ademas todas las reglas llevan font-display: swap, de modo que nunca
+hay texto invisible mientras se decide la fuente.
+
+Para reponerlos basta con volver a descargarlos de los origenes de arriba y
+dejarlos en esta carpeta con exactamente estos nombres.

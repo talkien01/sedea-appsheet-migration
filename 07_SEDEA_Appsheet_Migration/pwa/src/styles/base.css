@@ -1,0 +1,155 @@
+/* ==========================================================================
+   Base: reset minimo, html/body, escala tipografica de aplicacion, foco
+   accesible y utilidades (.mono, .sr-solo, .salto-contenido).
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+html {
+  /* El scroll vertical vive en <main class="contenido">, no en el documento:
+     asi la franja y el sidebar quedan fijos sin position: fixed. */
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  height: 100%;
+  overflow: hidden;
+  /* 15px (no 16) para densificar las tablas de gestion. */
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--fg);
+  background: var(--bg);
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+#root {
+  height: 100%;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--sobre-acento);
+}
+
+a {
+  color: var(--accent);
+}
+
+/* --------------------------- Escala tipografica --------------------------- */
+
+h1,
+h2,
+h3,
+fieldset legend {
+  font-family: var(--font-display);
+  /* El text-shadow del brandbook se anula en toda la app: estorba a la
+     legibilidad de datos densos. */
+  text-shadow: none;
+}
+
+h1 {
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
+}
+
+h2 {
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 10px;
+}
+
+h3 {
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: 0;
+  margin: 0 0 8px;
+}
+
+p {
+  margin: 0 0 10px;
+}
+
+/* Dato / clave: CURP, folios, claves de catalogo, IDs, coordenadas. */
+.mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+}
+
+/* ------------------------------- Foco ------------------------------------ */
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --------------------------- Utilidades a11y ----------------------------- */
+
+/* Oculta visualmente sin sacar del arbol de accesibilidad. Se usa en el rail
+   del sidebar: la etiqueta sigue leyendose y el item sigue siendo clickeable. */
+.sr-solo {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Enlace de salto: primer elemento enfocable del documento. */
+.salto-contenido {
+  position: fixed;
+  top: -100px;
+  left: 8px;
+  z-index: 2000;
+  padding: 10px 16px;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: var(--sobre-acento);
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+
+.salto-contenido:focus,
+.salto-contenido:focus-visible {
+  top: 8px;
+}
+
+/* ------------------------- Movimiento reducido --------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,1192 @@
+/* ==========================================================================
+   Componentes de la app. Todas las clases del build 1 conservan su NOMBRE;
+   solo cambia su declaracion. Nada se elimina sin reemplazo equivalente.
+   ========================================================================== */
+
+/* ------------------------------ Contenido -------------------------------- */
+
+.contenido {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px;
+  width: 100%;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ------------------------------- Tarjeta --------------------------------- */
+
+.tarjeta {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-card);
+}
+
+/* ------------------------------ Formularios ------------------------------ */
+
+label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  margin-bottom: 6px;
+}
+
+input[type='text'],
+input[type='password'],
+input[type='number'],
+input[type='date'],
+input[type='search'],
+input[type='email'],
+input[type='tel'],
+select,
+textarea {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 15px;
+  font-family: var(--font-body);
+  background: var(--bg-elev-2);
+  color: var(--fg);
+}
+
+textarea {
+  min-height: 80px;
+  line-height: 1.5;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--fg-subtle);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: var(--bg-sunk);
+  color: var(--fg-subtle);
+  cursor: not-allowed;
+}
+
+.campo {
+  margin-bottom: 14px;
+}
+
+.campo > span {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  margin-bottom: 6px;
+}
+
+.rejilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 10px 16px 14px;
+  margin: 14px 0;
+  min-width: 0;
+}
+
+fieldset legend {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 0 6px;
+  color: var(--fg);
+}
+
+/* ------------------------------- Botones --------------------------------- */
+
+button,
+.boton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 9px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  /* Texto sobre naranja: ink-1000, nunca blanco (WCAG AA). */
+  color: var(--sobre-acento);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+button:hover:not(:disabled),
+.boton:hover {
+  background: var(--brand-orange-soft);
+}
+
+button:active:not(:disabled) {
+  background: var(--brand-orange-deep);
+}
+
+button:disabled {
+  background: var(--bg-sunk);
+  color: var(--fg-subtle);
+  cursor: not-allowed;
+}
+
+button.secundario,
+.boton.secundario {
+  background: var(--bg-elev-2);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+}
+
+button.secundario:hover:not(:disabled),
+.boton.secundario:hover {
+  background: var(--bg-elev-3);
+  color: var(--fg);
+}
+
+button.peligro {
+  background: var(--peligro-solido);
+  color: var(--sobre-peligro);
+  border-color: transparent;
+}
+
+button.peligro:hover:not(:disabled) {
+  background: var(--peligro-solido);
+  filter: brightness(1.15);
+}
+
+.acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* -------------------------------- Chips ---------------------------------- */
+
+.chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: 99px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev-2);
+  color: var(--fg-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chip.activo {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--sobre-acento);
+}
+
+/* ------------------------------- Listado --------------------------------- */
+
+.lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.lista li {
+  border-bottom: 1px solid var(--border);
+}
+
+.lista a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 8px;
+  text-decoration: none;
+  color: inherit;
+  border-radius: var(--r-sm);
+}
+
+.lista a:hover {
+  background: var(--bg-elev-2);
+}
+
+.lista .datos {
+  flex: 1;
+  min-width: 0;
+}
+
+.lista .nombre {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.lista .detalle {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg-muted);
+}
+
+/* --------------------------------- Badges -------------------------------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev-2);
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.badge.capturado {
+  background: var(--exito-bg);
+  color: var(--exito);
+  border-color: var(--exito);
+}
+
+.badge.pendiente {
+  background: var(--bg-sunk);
+  color: var(--fg-muted);
+  border-color: var(--border-strong);
+}
+
+.badge.alerta-alta {
+  background: var(--peligro-bg);
+  color: var(--peligro);
+  border-color: var(--peligro);
+}
+
+.badge.alerta-media {
+  background: var(--aviso-bg);
+  color: var(--aviso);
+  border-color: var(--aviso);
+}
+
+.badge.alerta-ninguna {
+  background: var(--exito-bg);
+  color: var(--exito);
+  border-color: var(--exito);
+}
+
+td .badge {
+  display: inline-flex;
+  margin: 2px 2px 2px 0;
+}
+
+/* -------------------------------- Tabla ---------------------------------- */
+
+.tabla-contenedor {
+  overflow-x: auto;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+th {
+  background: var(--bg-sunk);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+td {
+  color: var(--fg);
+}
+
+tbody tr:hover {
+  background: var(--bg-elev-2);
+  cursor: pointer;
+}
+
+td img.miniatura {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-sunk);
+}
+
+/* ------------------------------ Semaforo GPS ----------------------------- */
+
+.semaforo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.semaforo.verde {
+  background: var(--exito-bg);
+  color: var(--exito);
+  border-color: var(--exito);
+}
+
+.semaforo.ambar {
+  background: var(--aviso-bg);
+  color: var(--aviso);
+  border-color: var(--aviso);
+}
+
+.semaforo.rojo {
+  background: var(--peligro-bg);
+  color: var(--peligro);
+  border-color: var(--peligro);
+}
+
+/* ------------------------------- Mensajes -------------------------------- */
+
+.mensaje {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.mensaje::before {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.mensaje.error {
+  background: var(--peligro-bg);
+  color: var(--peligro);
+  border-color: var(--peligro);
+}
+
+.mensaje.error::before {
+  content: '!';
+}
+
+.mensaje.info {
+  background: var(--info-bg);
+  color: var(--info);
+  border-color: var(--info);
+}
+
+.mensaje.info::before {
+  content: 'i';
+}
+
+.mensaje.aviso {
+  background: var(--aviso-bg);
+  color: var(--aviso);
+  border-color: var(--aviso);
+}
+
+.mensaje.aviso::before {
+  content: '!';
+}
+
+.mensaje.exito {
+  background: var(--exito-bg);
+  color: var(--exito);
+  border-color: var(--exito);
+  border-radius: var(--r-md);
+  padding: 10px 14px;
+  margin: 10px 0;
+}
+
+.mensaje.exito::before {
+  content: '\2713';
+}
+
+.vacio {
+  padding: 40px 24px;
+  text-align: center;
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  background: var(--bg-elev-3);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  padding: 12px 18px;
+  border-radius: var(--r-md);
+  z-index: 1200;
+  box-shadow: var(--shadow-pop);
+  max-width: 92vw;
+  text-align: center;
+}
+
+/* ------------------------------ Barra progreso --------------------------- */
+
+.progreso {
+  height: 8px;
+  background: var(--bg-sunk);
+  border-radius: var(--r-xs);
+  overflow: hidden;
+  margin: 10px 0;
+}
+
+.progreso > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.25s ease;
+}
+
+/* -------------------------------- Mapa ----------------------------------- */
+
+.mapa {
+  height: 380px;
+  width: 100%;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.mapa-mini {
+  height: 240px;
+}
+
+/* Los controles de Leaflet toman el tema y quedan por debajo de la barra
+   inferior (z-index 950) y de la franja (900). */
+.leaflet-container {
+  background: var(--bg-sunk);
+  font-family: var(--font-body);
+}
+
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 400;
+}
+
+.leaflet-bar a,
+.leaflet-control-attribution {
+  background: var(--bg-elev);
+  color: var(--fg);
+}
+
+.leaflet-bar a {
+  border-bottom-color: var(--border);
+}
+
+/* ------------------------------ Vista previa ----------------------------- */
+
+.previa {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--bg-sunk);
+  display: block;
+  margin-bottom: 10px;
+}
+
+.foto-grande {
+  max-width: 100%;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--bg-sunk);
+}
+
+/* --------------------------- Login / caja centrada ------------------------ */
+
+.login-caja {
+  max-width: 400px;
+  margin: 0 auto;
+  box-shadow: var(--shadow-pop);
+}
+
+/* Fondo decorativo de rejilla: SOLO /login y /sin-permiso (A15-13). */
+.pantalla-rejilla {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.pantalla-rejilla::before {
+  content: '';
+  position: absolute;
+  top: -120px;
+  right: -120px;
+  width: 380px;
+  height: 380px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 90, 31, 0.22), transparent 70%);
+  pointer-events: none;
+}
+
+.pantalla-rejilla > * {
+  position: relative;
+  z-index: 1;
+}
+
+.marca-login {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+/* Boton de entrar de /login: unico lugar donde se permite el halo naranja. */
+.boton-entrar {
+  width: 100%;
+  min-height: 48px;
+  box-shadow: var(--shadow-glow);
+}
+
+/* --------------------------------- Datos --------------------------------- */
+
+.dato {
+  margin-bottom: 8px;
+  font-size: 15px;
+  color: var(--fg);
+}
+
+.dato strong {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.paginacion {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 14px;
+  color: var(--fg-muted);
+}
+
+/* -------------------------------- Filtros -------------------------------- */
+
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin: 12px 0;
+}
+
+.filtros .campo {
+  margin: 0;
+  min-width: 180px;
+}
+
+.campo-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--fg);
+  font-weight: 400;
+}
+
+/* ------------------------------- Metricas -------------------------------- */
+
+.tarjetas-resumen {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.metrica {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 16px;
+  background: var(--bg-elev);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+}
+
+.metrica-valor {
+  font-family: var(--font-display);
+  font-size: 32px;
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+
+.metrica-etiqueta {
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+}
+
+.metrica-detalle {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg-muted);
+}
+
+/* ------------------------- Comparador de duplicados ---------------------- */
+
+.comparador {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.comparador .candidato {
+  flex: 0 0 320px;
+  margin: 0;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.comparador .candidato:hover {
+  box-shadow: var(--shadow-pop);
+}
+
+.comparador .candidato-actual {
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.origen-candidato {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+}
+
+.campos-candidato {
+  margin: 8px 0 0;
+}
+
+.campos-candidato > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--r-xs);
+}
+
+.campos-candidato dt {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.campos-candidato dd {
+  margin: 0;
+  font-size: 14px;
+  text-align: right;
+  word-break: break-word;
+  color: var(--fg);
+}
+
+/* Un valor que no coincide entre candidatos se resalta con fondo AMBAR mas
+   un punto: la informacion no se transmite solo por color. */
+.campos-candidato .campo-difiere {
+  background: var(--aviso-bg);
+  color: var(--aviso);
+}
+
+.campos-candidato .campo-difiere dt::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--aviso);
+  vertical-align: middle;
+}
+
+.campos-candidato .campo-difiere dt,
+.campos-candidato .campo-difiere dd {
+  color: var(--aviso);
+}
+
+/* Campos bloqueados del formulario de correccion. */
+.campos-bloqueados {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  margin: 14px 0;
+  background: var(--bg-sunk);
+}
+
+.campos-bloqueados legend {
+  font-weight: 600;
+  color: var(--fg-muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.campos-bloqueados input {
+  background: var(--bg-sunk);
+  color: var(--fg-subtle);
+}
+
+/* --------------------------- Graficas (Chart.js) ------------------------- */
+
+.lienzo-grafica {
+  position: relative;
+  width: 100%;
+  margin: 14px 0;
+}
+
+/* --------------------------------- Modales ------------------------------- */
+
+.modal-fondo {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 12, 0.6);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 1300;
+  overflow-y: auto;
+}
+
+.modal {
+  width: min(520px, 100%);
+  max-height: 92dvh;
+  overflow-y: auto;
+  margin: 0;
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-pop);
+}
+
+.password-temporal {
+  font-family: var(--font-mono);
+  font-size: 24px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-align: center;
+  user-select: all;
+  background: var(--bg-sunk);
+  border: 1px dashed var(--accent);
+  border-radius: var(--r-md);
+  padding: 16px 10px;
+  margin: 14px 0;
+  word-break: break-all;
+  color: var(--fg);
+}
+
+/* -------------------------- Ventanilla / solicitudes --------------------- */
+
+.casilla {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.casilla input {
+  width: auto;
+  margin: 0;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+}
+
+.lista-casillas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 2px 12px;
+  margin: 4px 0 12px;
+}
+
+/* Checklist de documentos: filas tipo .bb-slide-bullet, sin border-bottom. */
+.lista-documentos {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lista-documentos li {
+  padding: 10px 12px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.declaraciones {
+  background: var(--bg-sunk);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  margin: 14px 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fg);
+}
+
+/* Folio oficial: el dato mas visible de la pantalla. */
+.folio-etiqueta {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  margin-top: 4px;
+}
+
+.folio-grande {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin: 2px 0 14px;
+}
+
+/* Indice lateral pegajoso del formulario largo de solicitud (escritorio). */
+.indice-secciones {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  font-size: 13px;
+}
+
+.indice-secciones a {
+  padding: 6px 8px;
+  border-radius: var(--r-xs);
+  color: var(--fg-muted);
+  text-decoration: none;
+}
+
+.indice-secciones a:hover {
+  background: var(--bg-elev-2);
+  color: var(--fg);
+}
+
+/* --------------------------- Menu de usuario ----------------------------- */
+
+/* Ya no vive en una barra horizontal: es un bloque vertical en el pie del
+   sidebar y dentro de la hoja "Mas". */
+.menu-usuario {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+/* ======================= Tablet: 768px - 1023px ========================== */
+
+@media (max-width: 1023px) {
+  .contenido {
+    padding: 20px;
+  }
+}
+
+/* ============================ Movil: < 768px ============================= */
+
+@media (max-width: 767px) {
+  .contenido {
+    padding: 16px 14px;
+  }
+
+  .tarjeta {
+    padding: 16px;
+    border-radius: var(--r-md);
+  }
+
+  /* iOS Safari hace zoom al enfocar un campo con font-size < 16px. */
+  input[type='text'],
+  input[type='password'],
+  input[type='number'],
+  input[type='date'],
+  input[type='search'],
+  input[type='email'],
+  input[type='tel'],
+  select,
+  textarea {
+    font-size: 16px;
+    min-height: 48px;
+  }
+
+  textarea {
+    min-height: 96px;
+  }
+
+  button,
+  .boton {
+    min-height: 48px;
+    font-size: 15px;
+  }
+
+  /* Objetivo tactil de 44px tambien para casillas y radios (S15.11.1). */
+  input[type='checkbox'],
+  input[type='radio'] {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .chip {
+    min-height: 44px;
+  }
+
+  .acciones {
+    flex-direction: column;
+  }
+
+  .acciones > * {
+    width: 100%;
+  }
+
+  .lista a {
+    min-height: 64px;
+  }
+
+  .lista-casillas {
+    grid-template-columns: 1fr;
+  }
+
+  .filtros {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .filtros .campo {
+    min-width: 0;
+  }
+
+  .filtros .campo-ancho,
+  .filtros > button {
+    grid-column: 1 / -1;
+  }
+
+  .paginacion button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .mapa {
+    height: 260px;
+  }
+
+  .mapa-mini {
+    height: 240px;
+  }
+
+  .comparador .candidato {
+    flex: 0 0 86vw;
+  }
+
+  /* El toast no puede quedar bajo la barra inferior (60px + area segura). */
+  .toast {
+    bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+
+  /* El modal se ancla abajo, tipo hoja. */
+  .modal-fondo {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 88dvh;
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    margin-bottom: 0;
+  }
+
+  /* Tabla -> lista de tarjetas. La informacion, los textos y los
+     data-testid de fila son exactamente los mismos (A15-10); cambia solo
+     la disposicion, y asi ninguna tabla necesita scroll horizontal. */
+  .tabla-contenedor {
+    overflow-x: visible;
+    border: 0;
+  }
+
+  .tabla-contenedor table,
+  .tabla-contenedor thead,
+  .tabla-contenedor tbody,
+  .tabla-contenedor tr,
+  .tabla-contenedor th,
+  .tabla-contenedor td {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .tabla-contenedor thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .tabla-contenedor tbody tr {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-card);
+    margin-bottom: 10px;
+    padding: 6px 12px;
+  }
+
+  .tabla-contenedor td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    white-space: normal;
+    word-break: break-word;
+    text-align: right;
+  }
+
+  .tabla-contenedor tr td:last-child {
+    border-bottom: 0;
+  }
+
+  /* La etiqueta de columna viaja en data-etiqueta para no perder contexto. */
+  .tabla-contenedor td::before {
+    content: attr(data-etiqueta);
+    flex: none;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    text-align: left;
+  }
+
+  .tabla-contenedor td:empty::after {
+    content: '\2014';
+  }
+}
+
+/* ========================= Escritorio: >= 1024px ========================= */
+
+@media (min-width: 1024px) {
+  /* Primera columna pegajosa cuando la tabla desborda horizontalmente. */
+  .tabla-contenedor {
+    position: relative;
+  }
+
+  .indice-secciones {
+    display: flex;
+  }
+}

@@ -35,6 +35,13 @@ export default function Catalogos() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Guardia de rol: solo admin y editor_datos pueden acceder a catálogos (F-09)
+  useEffect(() => {
+    if (perfil && perfil.rol !== 'admin' && perfil.rol !== 'editor_datos') {
+      window.location.href = '/sin-permiso';
+    }
+  }, [perfil]);
+
   const [entidadSeleccionada, setEntidadSeleccionada] = useState<NombreEntidad | null>(null);
   const [registroSeleccionado, setRegistroSeleccionado] = useState<any | null>(null);
   const [modoForm, setModoForm] = useState<'alta' | 'edicion' | null>(null);
@@ -165,7 +172,7 @@ export default function Catalogos() {
 
       {error && (
         <div className="mensaje error" role="alert" data-testid="error-catalogos">
-          {error}
+          {error.includes('rol') ? 'Tu cuenta no cuenta con el rol necesario para administrar catálogos.' : error}
         </div>
       )}
 

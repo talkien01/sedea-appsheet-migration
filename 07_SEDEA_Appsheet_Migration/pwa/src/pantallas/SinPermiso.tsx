@@ -9,7 +9,7 @@ export default function SinPermiso() {
         <IconoCandado tamano={48} style={{ color: 'var(--fg-subtle)' }} />
         <h1>No tienes permiso para ver esta sección.</h1>
         <p>
-          Tu cuenta no cuenta con el rol necesario para consultar el panel de auditoría. Si crees
+          Tu cuenta no cuenta con el rol necesario para acceder a esta sección. Si crees
           que se trata de un error, solicita a la administración que revise tu rol asignado.
         </p>
         <Link className="boton" to="/beneficiarios">

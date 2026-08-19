@@ -149,14 +149,14 @@ export default function DepuracionCatalogos() {
               <tbody>
                 {filas.map((fila) => (
                   <tr key={fila.id} data-testid="fila-staging-catalogo">
-                    <td>{fila.grupo ?? '—'}</td>
-                    <td>{fila.clave ?? '—'}</td>
-                    <td>{fila.valor ?? '—'}</td>
-                    <td>
+                    <td data-etiqueta="Grupo">{fila.grupo ?? '—'}</td>
+                    <td data-etiqueta="Clave" className="mono">{fila.clave ?? '—'}</td>
+                    <td data-etiqueta="Valor">{fila.valor ?? '—'}</td>
+                    <td data-etiqueta="Alertas">
                       <BadgesDeFila fila={fila} flags={FLAGS_CATALOGO} />
                     </td>
-                    <td>{ETIQUETAS_ESTADO[fila.estado_revision as never]}</td>
-                    <td>
+                    <td data-etiqueta="Estado">{ETIQUETAS_ESTADO[fila.estado_revision as never]}</td>
+                    <td data-etiqueta="">
                       <button
                         type="button"
                         data-testid="btn-aprobar-catalogo"

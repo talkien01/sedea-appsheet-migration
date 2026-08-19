@@ -37,7 +37,9 @@ Chart.register(
 Chart.defaults.locale = 'es-MX';
 Chart.defaults.responsive = true;
 Chart.defaults.maintainAspectRatio = false;
-Chart.defaults.font.family =
-  "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+// Misma pila tipografica que la app (--font-body). Las fuentes se sirven
+// desde el propio origen: Chart.js no descarga nada.
+Chart.defaults.font.family = "Inter, system-ui, sans-serif";
+Chart.defaults.font.size = 12;
 
 export { Chart };

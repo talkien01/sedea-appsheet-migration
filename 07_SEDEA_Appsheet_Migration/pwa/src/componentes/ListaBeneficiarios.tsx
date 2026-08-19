@@ -44,10 +44,15 @@ export default function ListaBeneficiarios({ beneficiarios }: Props) {
       {porcion.map((b) => (
         <li key={b.id} data-testid="fila-beneficiario">
           <Link to={`/beneficiarios/${b.id}`}>
+            {/* Avatar-inicial: ancla visual de la fila, sin datos nuevos. */}
+            <span className="avatar-inicial" aria-hidden="true">
+              {(b.nombre_completo ?? '?').trim().charAt(0).toUpperCase()}
+            </span>
             <span className="datos">
               <span className="nombre">{b.nombre_completo}</span>
               <span className="detalle">
-                {b.curp || 'Sin CURP'} · {b.municipio_nombre ?? 'Sin municipio'} ·{' '}
+                <span className="mono">{b.curp || 'Sin CURP'}</span> ·{' '}
+                {b.municipio_nombre ?? 'Sin municipio'} ·{' '}
                 {b.tipo_apoyo_nombre ?? 'Sin apoyo asignado'}
               </span>
             </span>

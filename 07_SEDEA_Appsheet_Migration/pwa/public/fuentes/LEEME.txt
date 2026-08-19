@@ -2,8 +2,8 @@ FUENTES AUTOALOJADAS DE LA PWA SEDEA CAMPO
 ==========================================
 
 Estos archivos se sirven desde el mismo origen que la app. La PWA NO depende
-de ninguna CDN externa (nada de fonts.googleapis.com ni fonts.gstatic.com):
-debe funcionar sin internet, que es el escenario normal en campo.
+de ninguna CDN ni de ningun servicio de fuentes alojado fuera de este
+origen: debe funcionar sin internet, que es el escenario normal en campo.
 
 Vite copia esta carpeta a dist/ sin procesar, asi que las URL absolutas
 /fuentes/*.woff2 de pwa/src/styles/fuentes.css resuelven tanto en `npm run dev`

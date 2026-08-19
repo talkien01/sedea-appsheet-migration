@@ -140,24 +140,24 @@ export default function DetalleSolicitud() {
       {/* ------------------------------------------------------------------ */}
       <style>{`
         .zona-drop {
-          border: 2px dashed var(--gris-borde, #d7dce3);
-          border-radius: 6px;
-          padding: 8px 12px;
+          border: 2px dashed var(--border-strong);
+          border-radius: var(--r-sm);
+          padding: 10px 12px;
           margin-bottom: 6px;
-          color: var(--gris-medio, #5b6472);
+          color: var(--fg-muted);
           font-size: 0.875rem;
           cursor: pointer;
           transition: border-color 0.15s, background 0.15s;
         }
         .zona-drop--activa {
-          border-color: var(--verde, #0b6b3a);
-          background: var(--verde-suave, #e6f2ea);
+          border-color: var(--accent);
+          background: color-mix(in srgb, var(--accent) 12%, var(--bg-elev));
         }
         .banner-nuevo {
-          background: var(--verde-suave, #e6f2ea);
-          border: 1px solid var(--verde, #0b6b3a);
-          color: var(--gris-texto, #1f2430);
-          border-radius: 6px;
+          background: color-mix(in srgb, var(--accent) 12%, var(--bg-elev));
+          border: 1px solid var(--accent);
+          color: var(--fg);
+          border-radius: var(--r-md);
           padding: 10px 16px;
           margin-bottom: 12px;
           cursor: pointer;
@@ -172,6 +172,9 @@ export default function DetalleSolicitud() {
           nav,
           header,
           .barra-superior,
+          .barra-lateral,
+          .barra-inferior,
+          .franja-estado,
           .vacio {
             display: none !important;
           }
@@ -203,6 +206,7 @@ export default function DetalleSolicitud() {
 
       <div className="tarjeta">
         <h1>Solicitud de apoyo</h1>
+        <span className="folio-etiqueta">Folio</span>
         <p className="folio-grande" data-testid="detalle-folio">
           {s.folio}
         </p>
@@ -221,14 +225,18 @@ export default function DetalleSolicitud() {
           </div>
         )}
         {/* B7-E: botón para imprimir la carátula del expediente */}
-        <button
-          type="button"
-          data-testid="btn-imprimir-caratula"
-          onClick={() => window.print()}
-        >
-          Imprimir carátula
-        </button>
-        <Link to="/solicitudes">Volver a solicitudes</Link>
+        <div className="acciones">
+          <button
+            type="button"
+            data-testid="btn-imprimir-caratula"
+            onClick={() => window.print()}
+          >
+            Imprimir carátula
+          </button>
+          <Link className="boton secundario" to="/solicitudes">
+            Volver a solicitudes
+          </Link>
+        </div>
       </div>
 
       <div className="tarjeta">

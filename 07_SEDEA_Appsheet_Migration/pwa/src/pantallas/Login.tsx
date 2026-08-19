@@ -7,6 +7,8 @@ import { ErrorPeticion, NOMBRE_APP } from '../api/cliente';
 import { contarBeneficiarios, sesionVigente } from '../db/repositorios';
 import type { PerfilUsuario } from '@sedea/shared';
 import { useEstadoRed } from '../sync/estadoRed';
+import Marca from '../componentes/Marca';
+import ToggleTema from '../componentes/ToggleTema';
 
 /**
  * Destino tras iniciar sesion segun el rol: cada perfil aterriza en su propia
@@ -75,8 +77,14 @@ export default function Login() {
   };
 
   return (
-    <main className="contenido">
+    <main className="contenido pantalla-rejilla">
+      {/* /login no lleva cascaron: el toggle vive suelto arriba a la derecha. */}
+      <ToggleTema clase="toggle-login" />
+
       <div className="tarjeta login-caja">
+        <div className="marca-login">
+          <Marca grande />
+        </div>
         <h1>{NOMBRE_APP}</h1>
         <p className="dato">
           Evidencia de entrega de apoyos agropecuarios — SEDEA Querétaro
@@ -128,7 +136,7 @@ export default function Login() {
             />
           </div>
 
-          <button type="submit" disabled={enviando}>
+          <button type="submit" className="boton-entrar" disabled={enviando}>
             {enviando ? 'Entrando…' : 'Iniciar sesión'}
           </button>
         </form>

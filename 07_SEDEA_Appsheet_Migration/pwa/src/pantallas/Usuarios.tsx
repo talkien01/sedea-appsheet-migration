@@ -345,11 +345,11 @@ export default function Usuarios() {
             <tbody>
               {filas.map((fila) => (
                 <tr key={fila.id} data-testid="fila-usuario">
-                  <td>{fila.usuario}</td>
-                  <td>{fila.nombre_completo}</td>
-                  <td>{ETIQUETAS_ROL[fila.rol] ?? fila.rol}</td>
-                  <td>{fila.regional ?? '—'}</td>
-                  <td>
+                  <td data-etiqueta="Usuario" className="mono">{fila.usuario}</td>
+                  <td data-etiqueta="Nombre completo">{fila.nombre_completo}</td>
+                  <td data-etiqueta="Rol">{ETIQUETAS_ROL[fila.rol] ?? fila.rol}</td>
+                  <td data-etiqueta="Regional">{fila.regional ?? '—'}</td>
+                  <td data-etiqueta="Estado">
                     <span
                       className={`badge ${fila.activo ? 'capturado' : 'pendiente'}`}
                       data-testid="badge-estado-usuario"
@@ -357,15 +357,15 @@ export default function Usuarios() {
                       {fila.activo ? 'Activo' : 'Inactivo'}
                     </span>
                   </td>
-                  <td>
+                  <td data-etiqueta="Contraseña">
                     {fila.debe_cambiar_password && (
                       <span className="badge alerta-media" data-testid="badge-password-pendiente">
                         Cambio pendiente
                       </span>
                     )}
                   </td>
-                  <td>{fila.capturas}</td>
-                  <td className="acciones">
+                  <td data-etiqueta="Capturas">{fila.capturas}</td>
+                  <td data-etiqueta="Acciones" className="acciones">
                     <button
                       type="button"
                       className="secundario"

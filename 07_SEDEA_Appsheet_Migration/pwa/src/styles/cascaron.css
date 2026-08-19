@@ -508,9 +508,11 @@
 
 /* ============================ Boton flotante ============================= */
 
-/* Accion principal de una pantalla de lista en movil (FAB). */
+/* Accion principal de una pantalla de lista. En tablet y escritorio se
+   comporta como un boton normal en el flujo; en movil (ver mas abajo) pasa a
+   boton flotante por encima de la barra inferior. */
 .fab {
-  display: none;
+  display: inline-flex;
 }
 
 /* ============================ Movil: < 768px ============================= */
@@ -568,12 +570,6 @@
 
   /* En movil la accion principal vive en el FAB, no en el flujo. */
   .accion-principal-escritorio {
-    display: none;
-  }
-}
-
-@media (min-width: 768px) {
-  .fab {
     display: none;
   }
 }

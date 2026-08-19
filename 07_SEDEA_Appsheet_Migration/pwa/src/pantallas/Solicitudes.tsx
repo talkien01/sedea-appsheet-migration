@@ -65,7 +65,12 @@ export default function Solicitudes() {
           Captura en ventanilla de la Solicitud de Apoyo. Al guardarla se genera el folio oficial
           y se da de alta un beneficiario por cada concepto solicitado.
         </p>
-        <Link className="boton" to="/solicitudes/nueva" data-testid="btn-nueva-solicitud">
+        {/* En movil esta accion pasa a FAB flotante sobre la barra inferior. */}
+        <Link
+          className="boton fab"
+          to="/solicitudes/nueva"
+          data-testid="btn-nueva-solicitud"
+        >
           Nueva solicitud
         </Link>
       </div>
@@ -169,15 +174,15 @@ export default function Solicitudes() {
               <tbody>
                 {filas.map((f) => (
                   <tr key={f.id} data-testid="fila-solicitud">
-                    <td>{f.folio}</td>
-                    <td>{new Date(f.recibida_en).toLocaleDateString('es-MX')}</td>
-                    <td>{f.nombre_solicitante}</td>
-                    <td>{f.tipo_persona}</td>
-                    <td>{f.componente}</td>
-                    <td>{f.municipio ?? '—'}</td>
-                    <td>{f.conceptos}</td>
-                    <td>{f.documentos_recibidos}</td>
-                    <td>
+                    <td data-etiqueta="Folio" className="mono">{f.folio}</td>
+                    <td data-etiqueta="Fecha">{new Date(f.recibida_en).toLocaleDateString('es-MX')}</td>
+                    <td data-etiqueta="Solicitante">{f.nombre_solicitante}</td>
+                    <td data-etiqueta="Tipo de persona">{f.tipo_persona}</td>
+                    <td data-etiqueta="Componente">{f.componente}</td>
+                    <td data-etiqueta="Municipio">{f.municipio ?? '—'}</td>
+                    <td data-etiqueta="Conceptos">{f.conceptos}</td>
+                    <td data-etiqueta="Documentos">{f.documentos_recibidos}</td>
+                    <td data-etiqueta="">
                       <Link to={`/solicitudes/${f.id}`}>Ver</Link>
                     </td>
                   </tr>

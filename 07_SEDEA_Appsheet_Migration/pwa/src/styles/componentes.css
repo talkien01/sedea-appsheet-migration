@@ -267,6 +267,23 @@ button.peligro:hover:not(:disabled) {
   color: var(--fg-muted);
 }
 
+/* Ancla visual de la fila: inicial del nombre en un circulo de acento. */
+.avatar-inicial {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-elev));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
 /* --------------------------------- Badges -------------------------------- */
 
 .badge {

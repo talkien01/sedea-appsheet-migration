@@ -15,11 +15,7 @@ import { api } from '../api/cliente';
 import Grafica from '../componentes/Grafica';
 import TarjetaMetrica from '../componentes/TarjetaMetrica';
 import { useEstadoRed } from '../sync/estadoRed';
-
-const VERDE = '#128a4c';
-const GRIS = '#b6bec9';
-const AMBAR = '#c98600';
-const AZUL = '#2b6cb0';
+import { useColoresTema } from '../tema/colores';
 
 /** Recorta una etiqueta larga para que quepa en el eje de la grafica. */
 function recortar(texto: string, maximo = 40): string {
@@ -38,6 +34,10 @@ function etiquetaPeriodo(periodo: string, agrupacion: 'dia' | 'semana'): string 
 export default function Dashboard() {
   const { perfil } = useSesion();
   const enLinea = useEstadoRed();
+  // Los colores de las graficas salen de las variables CSS del modo activo:
+  // al alternar el tema, `colores` cambia, los useMemo se recalculan y
+  // Grafica vuelve a construir la instancia de Chart.js.
+  const colores = useColoresTema();
   const regionalDelUsuario = perfil?.regional_id ?? null;
 
   // Filtros globales.
@@ -126,6 +126,23 @@ export default function Dashboard() {
   // ------------------------------------------------------------------------
   // Configuracion de las 4 graficas
   // ------------------------------------------------------------------------
+
+  /** Ejes, rejilla y leyenda tematizados (se rehacen al cambiar de modo). */
+  const ejes = useMemo(
+    () => ({
+      ticks: { color: colores.tenue },
+      grid: { color: colores.borde },
+      border: { color: colores.borde },
+      title: { color: colores.tenue }
+    }),
+    [colores]
+  );
+
+  const leyenda = useMemo(
+    () => ({ labels: { color: colores.tenue } }),
+    [colores]
+  );
+
   const datosCobertura = useMemo(
     () => ({
       labels: (cobertura?.por_regional ?? []).map((r) => r.regional),
@@ -133,25 +150,28 @@ export default function Dashboard() {
         {
           label: 'Con evidencia',
           data: (cobertura?.por_regional ?? []).map((r) => r.con_captura),
-          backgroundColor: VERDE
+          backgroundColor: colores.acento
         },
         {
           label: 'Pendientes',
           data: (cobertura?.por_regional ?? []).map((r) => r.sin_captura),
-          backgroundColor: GRIS
+          backgroundColor: colores.tenue
         }
       ]
     }),
-    [cobertura]
+    [cobertura, colores]
   );
 
   const opcionesCobertura = useMemo(
     () => ({
       indexAxis: 'y' as const,
-      scales: { x: { stacked: true, beginAtZero: true }, y: { stacked: true } },
-      plugins: { legend: { position: 'bottom' as const } }
+      scales: {
+        x: { stacked: true, beginAtZero: true, ...ejes },
+        y: { stacked: true, ...ejes }
+      },
+      plugins: { legend: { position: 'bottom' as const, ...leyenda } }
     }),
-    []
+    [ejes, leyenda]
   );
 
   const etiquetasApoyos = useMemo(() => {
@@ -165,14 +185,14 @@ export default function Dashboard() {
     if (apoyos?.otros) valores.push(apoyos.otros.capturas);
     return {
       labels: etiquetasApoyos.map((e) => recortar(e)),
-      datasets: [{ label: 'Capturas', data: valores, backgroundColor: VERDE }]
+      datasets: [{ label: 'Capturas', data: valores, backgroundColor: colores.acento }]
     };
-  }, [apoyos, etiquetasApoyos]);
+  }, [apoyos, etiquetasApoyos, colores]);
 
   const opcionesApoyos = useMemo(
     () => ({
       indexAxis: 'y' as const,
-      scales: { x: { beginAtZero: true } },
+      scales: { x: { beginAtZero: true, ...ejes }, y: { ...ejes } },
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -183,7 +203,7 @@ export default function Dashboard() {
         }
       }
     }),
-    [etiquetasApoyos]
+    [etiquetasApoyos, ejes]
   );
 
   const datosAvance = useMemo(
@@ -193,38 +213,44 @@ export default function Dashboard() {
         {
           label: 'Capturas por periodo',
           data: (avance?.data ?? []).map((d) => d.capturas),
-          borderColor: VERDE,
-          backgroundColor: VERDE,
+          borderColor: colores.acento,
+          backgroundColor: colores.acento,
           tension: 0.2
         },
         {
           label: 'Acumulado',
           data: (avance?.data ?? []).map((d) => d.acumulado),
-          borderColor: AZUL,
-          backgroundColor: AZUL,
+          borderColor: colores.info,
+          backgroundColor: colores.info,
           borderDash: [6, 4],
           yAxisID: 'y2',
           tension: 0.2
         }
       ]
     }),
-    [avance, agrupacion]
+    [avance, agrupacion, colores]
   );
 
   const opcionesAvance = useMemo(
     () => ({
       scales: {
-        y: { beginAtZero: true, title: { display: true, text: 'Capturas' } },
+        x: { ...ejes },
+        y: {
+          beginAtZero: true,
+          ...ejes,
+          title: { display: true, text: 'Capturas', color: colores.tenue }
+        },
         y2: {
           position: 'right' as const,
           beginAtZero: true,
+          ...ejes,
           grid: { drawOnChartArea: false },
-          title: { display: true, text: 'Acumulado' }
+          title: { display: true, text: 'Acumulado', color: colores.tenue }
         }
       },
-      plugins: { legend: { position: 'bottom' as const } }
+      plugins: { legend: { position: 'bottom' as const, ...leyenda } }
     }),
-    []
+    [ejes, leyenda, colores]
   );
 
   const datosStaging = useMemo(
@@ -239,16 +265,17 @@ export default function Dashboard() {
             staging?.beneficiarios.descartado ?? 0,
             staging?.beneficiarios.fusionado ?? 0
           ],
-          backgroundColor: [AMBAR, VERDE, GRIS, AZUL]
+          backgroundColor: [colores.aviso, colores.exito, colores.tenue, colores.info],
+          borderColor: colores.borde
         }
       ]
     }),
-    [staging]
+    [staging, colores]
   );
 
   const opcionesStaging = useMemo(
-    () => ({ plugins: { legend: { position: 'bottom' as const } } }),
-    []
+    () => ({ plugins: { legend: { position: 'bottom' as const, ...leyenda } } }),
+    [leyenda]
   );
 
   if (!enLinea) return <p className="vacio">Esta sección requiere conexión a internet.</p>;
@@ -369,12 +396,12 @@ export default function Dashboard() {
                 <tbody>
                   {cobertura.por_municipio.map((m) => (
                     <tr key={m.municipio_id} data-testid="fila-cobertura">
-                      <td>{m.municipio}</td>
-                      <td>{m.regional}</td>
-                      <td>{m.total_beneficiarios}</td>
-                      <td>{m.con_captura}</td>
-                      <td>{m.sin_captura}</td>
-                      <td>{m.porcentaje.toFixed(1)} %</td>
+                      <td data-etiqueta="Municipio">{m.municipio}</td>
+                      <td data-etiqueta="Regional">{m.regional}</td>
+                      <td data-etiqueta="Beneficiarios">{m.total_beneficiarios}</td>
+                      <td data-etiqueta="Con evidencia">{m.con_captura}</td>
+                      <td data-etiqueta="Pendientes">{m.sin_captura}</td>
+                      <td data-etiqueta="%">{m.porcentaje.toFixed(1)} %</td>
                     </tr>
                   ))}
                 </tbody>

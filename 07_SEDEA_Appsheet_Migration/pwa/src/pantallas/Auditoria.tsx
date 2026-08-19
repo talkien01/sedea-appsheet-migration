@@ -276,7 +276,7 @@ export default function Auditoria() {
                     data-testid="fila-auditoria"
                     onClick={() => setCentro({ lat: f.lat, lng: f.lng })}
                   >
-                    <td>
+                    <td data-etiqueta="Foto">
                       {token && (
                         <img
                           className="miniatura"
@@ -285,19 +285,19 @@ export default function Auditoria() {
                         />
                       )}
                     </td>
-                    <td>{f.beneficiario.nombre_completo}</td>
-                    <td>{f.beneficiario.curp || 'Sin CURP'}</td>
-                    <td>{f.beneficiario.regional_nombre}</td>
-                    <td>{f.beneficiario.municipio_nombre}</td>
-                    <td>{f.beneficiario.colonia}</td>
-                    <td>{f.beneficiario.seccion}</td>
-                    <td>
+                    <td data-etiqueta="Beneficiario">{f.beneficiario.nombre_completo}</td>
+                    <td data-etiqueta="CURP" className="mono">{f.beneficiario.curp || 'Sin CURP'}</td>
+                    <td data-etiqueta="Regional">{f.beneficiario.regional_nombre}</td>
+                    <td data-etiqueta="Municipio">{f.beneficiario.municipio_nombre}</td>
+                    <td data-etiqueta="Colonia">{f.beneficiario.colonia}</td>
+                    <td data-etiqueta="Sección">{f.beneficiario.seccion}</td>
+                    <td data-etiqueta="Lat/Lng" className="mono">
                       {f.lat.toFixed(6)}, {f.lng.toFixed(6)}
                     </td>
-                    <td>{Math.round(f.precision_m)}</td>
-                    <td>{formatearFecha(f.capturado_en)}</td>
-                    <td>{f.capturista}</td>
-                    <td>
+                    <td data-etiqueta="Precisión (m)">{Math.round(f.precision_m)}</td>
+                    <td data-etiqueta="Fecha de captura">{formatearFecha(f.capturado_en)}</td>
+                    <td data-etiqueta="Capturista">{f.capturista}</td>
+                    <td data-etiqueta="Expediente">
                       <Link to={`/auditoria/beneficiario/${f.beneficiario.id}`}>Ver</Link>
                     </td>
                   </tr>

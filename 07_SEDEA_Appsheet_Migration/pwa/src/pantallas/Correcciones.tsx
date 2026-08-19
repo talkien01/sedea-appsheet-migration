@@ -83,14 +83,14 @@ export default function Correcciones() {
               <tbody>
                 {filas.map((fila) => (
                   <tr key={fila.id} data-testid="fila-correccion">
-                    <td>{fila.folio}</td>
-                    <td>{fila.curp ?? '—'}</td>
-                    <td>{fila.nombre_completo}</td>
-                    <td>{fila.regional ?? '—'}</td>
-                    <td>{fila.municipio ?? '—'}</td>
-                    <td>{fila.colonia ?? '—'}</td>
-                    <td>{fila.telefono ?? '—'}</td>
-                    <td>
+                    <td data-etiqueta="Folio" className="mono">{fila.folio}</td>
+                    <td data-etiqueta="CURP" className="mono">{fila.curp ?? '—'}</td>
+                    <td data-etiqueta="Nombre">{fila.nombre_completo}</td>
+                    <td data-etiqueta="Regional">{fila.regional ?? '—'}</td>
+                    <td data-etiqueta="Municipio">{fila.municipio ?? '—'}</td>
+                    <td data-etiqueta="Colonia">{fila.colonia ?? '—'}</td>
+                    <td data-etiqueta="Teléfono">{fila.telefono ?? '—'}</td>
+                    <td data-etiqueta="">
                       <Link
                         className="boton secundario"
                         to={`/correcciones/beneficiarios/${fila.id}`}

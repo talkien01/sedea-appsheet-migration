@@ -163,17 +163,17 @@ export default function Depuracion() {
               <tbody>
                 {filas.map((fila) => (
                   <tr key={fila.id} data-testid="fila-staging">
-                    <td>{fila.folio ?? '—'}</td>
-                    <td>{fila.curp ?? '—'}</td>
-                    <td>{fila.nombre_completo ?? '—'}</td>
-                    <td>{fila.regional_nombre ?? fila.regional_texto ?? '—'}</td>
-                    <td>{fila.municipio_nombre ?? fila.municipio_texto ?? '—'}</td>
-                    <td>{fila.tipo_apoyo_nombre ?? fila.tipo_apoyo_texto ?? '—'}</td>
-                    <td>
+                    <td data-etiqueta="Folio" className="mono">{fila.folio ?? '—'}</td>
+                    <td data-etiqueta="CURP" className="mono">{fila.curp ?? '—'}</td>
+                    <td data-etiqueta="Nombre">{fila.nombre_completo ?? '—'}</td>
+                    <td data-etiqueta="Regional">{fila.regional_nombre ?? fila.regional_texto ?? '—'}</td>
+                    <td data-etiqueta="Municipio">{fila.municipio_nombre ?? fila.municipio_texto ?? '—'}</td>
+                    <td data-etiqueta="Concepto de apoyo">{fila.tipo_apoyo_nombre ?? fila.tipo_apoyo_texto ?? '—'}</td>
+                    <td data-etiqueta="Alertas">
                       <BadgesDeFila fila={fila} flags={FLAGS_BENEFICIARIO} />
                     </td>
-                    <td data-testid="estado-fila">{ETIQUETAS_ESTADO[fila.estado_revision as never]}</td>
-                    <td>
+                    <td data-etiqueta="Estado" data-testid="estado-fila">{ETIQUETAS_ESTADO[fila.estado_revision as never]}</td>
+                    <td data-etiqueta="">
                       <Link className="boton secundario" to={`/depuracion/beneficiarios/${fila.id}`}>
                         Revisar
                       </Link>

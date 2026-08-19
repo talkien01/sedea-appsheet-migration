@@ -42,6 +42,50 @@ docker compose up --build
 
 ---
 
+## Interfaz: design system, tema dual y layout responsivo
+
+Desde el build 9 la PWA usa el design system de IntechQRO (naranja `#FF5A1F`
+sobre neutros cálidos, Space Grotesk / Inter / JetBrains Mono) con **dos modos
+completos** y una **arquitectura de aplicación**: barra lateral en escritorio,
+barra inferior en el teléfono.
+
+### Modo claro y modo oscuro
+
+- El botón de tema está en el pie de la barra lateral (escritorio y tablet), en
+  la franja de estado (móvil) y arriba a la derecha en `/login`. Siempre hay
+  **exactamente uno** visible.
+- Al abrir por primera vez la app respeta la preferencia del sistema. En cuanto
+  se pulsa el botón, la elección queda guardada en `localStorage['sedea.tema']`
+  y deja de seguir al sistema.
+- Un script síncrono en `index.html` fija el modo antes del primer pintado, así
+  que recargar no produce ningún fogonazo del tema contrario.
+- La carátula imprimible de una solicitud sigue saliendo **negra sobre blanca**
+  en cualquier modo: es un documento oficial que se firma en papel.
+
+### Navegación según el ancho de pantalla
+
+| Ancho | Navegación |
+|---|---|
+| < 768 px | Barra inferior fija con hasta 4 accesos del rol + hoja "Más" |
+| 768 – 1023 px | Barra lateral en modo rail (solo iconos), expandible como panel |
+| ≥ 1024 px | Barra lateral expandida de 256 px, colapsable a rail de 72 px |
+
+El estado de la barra lateral se recuerda en `localStorage['sedea.lateral']`.
+Las dos barras **nunca coexisten**: se montan y desmontan con `matchMedia`.
+
+En pantallas de teléfono las tablas de gestión (auditoría, depuración,
+correcciones, solicitudes, usuarios) se presentan como lista de tarjetas con la
+misma información, para no obligar a hacer scroll horizontal.
+
+### Tipografía
+
+Las tres familias se sirven desde el propio origen (`pwa/public/fuentes/`,
+licencia SIL OFL 1.1). **No hay ninguna llamada a una CDN de fuentes**: la app
+tiene que arrancar sin internet. Si algún `.woff2` faltara, cae a las fuentes
+del sistema sin romperse; ver `pwa/public/fuentes/LEEME.txt`.
+
+---
+
 ## Desarrollo sin Docker
 
 Requiere Node 20+ y un PostgreSQL con PostGIS accesible.

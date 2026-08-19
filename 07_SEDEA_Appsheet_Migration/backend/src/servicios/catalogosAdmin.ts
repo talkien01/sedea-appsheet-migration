@@ -188,9 +188,21 @@ export async function crearEntidad(
 
   // Validar unicidad de clave
   if (def.campoClave && datos.clave) {
+    let dondeClave = `clave = $1`;
+    const valoresClave: any[] = [datos.clave];
+
+    // Subprogramas: unicidad por (programa_id, clave), no solo clave (F-11)
+    if (entidad === 'subprogramas') {
+      const programaId = (datos as any).programa_id;
+      if (programaId) {
+        dondeClave = `programa_id = $2 AND clave = $1`;
+        valoresClave.push(programaId);
+      }
+    }
+
     const existe = await consultarUna<any>(
-      `SELECT id FROM ${tabla} WHERE clave = $1`,
-      [datos.clave]
+      `SELECT id FROM ${tabla} WHERE ${dondeClave}`,
+      valoresClave
     );
     if (existe) {
       throw error409('clave_duplicada', `Ya existe un registro con la clave ${datos.clave}.`);
@@ -221,16 +233,19 @@ export async function crearEntidad(
   }
 
   // Construir INSERT
-  const columnas = ['clave', 'nombre', 'activo'];
+  // F-12: activo va al final para que el orden de columnas coincida con valores
+  const columnas: string[] = [];
   const valores: unknown[] = [];
   const marcadores: string[] = [];
   let idx = 1;
 
   if (def.campoClave) {
+    columnas.push('clave');
     valores.push(datos.clave);
     marcadores.push(`$${idx++}`);
   }
   if (def.camposTexto.includes('nombre')) {
+    columnas.push('nombre');
     valores.push(datos.nombre);
     marcadores.push(`$${idx++}`);
   }
@@ -315,11 +330,10 @@ export async function crearEntidad(
     }
   }
 
-  // activo siempre es TRUE al alta
-  if (!marcadores.includes('$' + idx)) {
-    valores.push(true);
-    marcadores.push(`$${idx++}`);
-  }
+  // activo siempre es TRUE al alta - va al final para coincidir con el orden de valores
+  columnas.push('activo');
+  valores.push(true);
+  marcadores.push(`$${idx++}`);
 
   const sql = `INSERT INTO ${tabla} (${columnas.join(', ')}) VALUES (${marcadores.join(', ')}) RETURNING id, *`;
 

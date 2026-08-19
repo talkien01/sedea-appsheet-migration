@@ -108,6 +108,17 @@ export function IconoEscudo(props: Props) {
   );
 }
 
+/** Catalogos / capas jerarquicas. */
+export function IconoCapas(props: Props) {
+  return (
+    <Base {...props}>
+      <path d="M12 3l9 5-9 5-9-5 9-5z" />
+      <path d="M3 13l9 5 9-5" />
+      <path d="M3 17l9 5 9-5" />
+    </Base>
+  );
+}
+
 /** Mas opciones (hoja inferior de movil). */
 export function IconoMas(props: Props) {
   return (

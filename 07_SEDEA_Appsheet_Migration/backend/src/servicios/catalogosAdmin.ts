@@ -217,6 +217,32 @@ export async function crearEntidad(
     const apoyoId = datos.apoyo_id ?? null;
     const proyectoId = datos.proyecto_id ?? null;
 
+    // F-13: Validar que al menos uno de apoyo_id o proyecto_id sea null (no ambos)
+    // Si ambos son null o ambos no-null, es un error de validacion
+    if (apoyo_id !== null && proyecto_id !== null) {
+      // Ambos proporcionados: validar coherencia
+      // apoyo_id y proyecto_id no deben coexistir
+      throw error422('requisito_invalido', 'No se puede especificar tanto apoyo_id como proyecto_id.');
+    }
+
+    // F-13: Si componentes o tipos_persona estan presentes, debe haber un filtro (apoyo_id o proyecto_id)
+    if ((datos.componentes || datos.tipos_persona) && apoyoId === null && proyectoId === null) {
+      throw error422('requisito_invalido', 'El filtro requiere especificar apoyo_id o proyecto_id.');
+    }
+
+    // F-13: Validar que los componentes existen si se proporcionan
+    if (datos.componentes && Array.isArray(datos.componentes) && datos.componentes.length > 0) {
+      for (const claveComp of datos.componentes) {
+        const compExiste = await consultarUna<any>(
+          'SELECT id FROM componentes WHERE clave = $1',
+          [claveComp]
+        );
+        if (!compExiste) {
+          throw error422('componente_invalido', `El componente con clave "${claveComp}" no existe.`);
+        }
+      }
+    }
+
     const existe = await consultarUna<any>(
       `SELECT id FROM documentos_requeridos
        WHERE activo = TRUE

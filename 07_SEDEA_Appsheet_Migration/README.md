@@ -384,6 +384,16 @@ El alcance **se aplica en el backend**, no solo en la interfaz:
 - El listado y el detalle filtran **en SQL**: un usuario de ventanilla solo ve
   las solicitudes de su alcance.
 
+> **El alcance restringe el predio, no el domicilio.** El municipio de la
+> sección 2.2 (dónde vive el solicitante) **no** está sujeto al alcance
+> granular: su desplegable ofrece **todos los municipios de la Regional del
+> usuario**. Un productor puede vivir en un municipio y tener el predio en
+> otro, y el capturista tiene que poder registrar ambos. Quien manda sobre el
+> alcance es la *ubicación del apoyo* (4.1), que es lo único que la API valida.
+> La respuesta de `GET /api/solicitudes/catalogos` trae las dos listas por
+> separado: `municipios` (predio, recortada al alcance) y `municipios_domicilio`
+> (domicilio, todos los de la Regional).
+
 ### El folio oficial
 
 Lo genera **siempre el backend**; el usuario nunca lo escribe (en el formulario
@@ -427,6 +437,24 @@ El formulario captura **dos direcciones distintas y nunca se fusionan**:
 El capturista de campo debe ir al predio del proyecto, no a la casa del
 solicitante; por eso el beneficiario creado toma siempre el municipio, la
 localidad y el ejido de la sección 4.1.
+
+El desplegable de municipio tampoco es el mismo en las dos: el de 2.2 lista
+**todos los municipios de la Regional** del usuario y el de 4.1 solo los de su
+alcance asignado (ver *Alcance por municipios y componentes*).
+
+### Todo el texto libre se guarda en MAYÚSCULAS
+
+Los campos de texto libre del formulario se homologan a mayúsculas **mientras
+se escriben**: lo que el capturista ve en pantalla es exactamente lo que se
+guarda. Aplica al nombre del solicitante, razón social, localidad, delegación,
+asentamiento y vialidad del domicilio, CURP, cultivo principal, tipo de ganado,
+especies acuícolas y de pesca, descripción del proyecto, localidad y ejido del
+predio, y observaciones.
+
+Quedan **fuera a propósito**: el correo electrónico (los correos van en
+minúsculas), el teléfono, el código postal, las coordenadas y todo campo
+numérico o de catálogo. El helper vive en
+`pwa/src/componentes/campoMayusculas.ts`.
 
 ### Documentos requeridos
 

@@ -8,7 +8,7 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
   app.get(
     '/solicitudes/:id/folio-entrega.pdf',
     { preHandler: [app.autenticar] },
-    async (peticion: FastifyRequest, respuesta: FastifyReply) => {
+    async (peticion: FastifyRequest<{ Params: { id: string } }>, respuesta: FastifyReply) => {
       const id = Number(peticion.params.id);
       if (!id || isNaN(id)) {
         throw new ErrorApi(400, 'id_invalido', 'ID de solicitud inválido.');

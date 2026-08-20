@@ -16,6 +16,11 @@ export interface AlcanceResuelto {
   componentes: 'todos' | number[];
 }
 
+/** Verifica si un usuario tiene un rol dentro de su lista multi-rol (ej. "capturista+ventanilla"). */
+function tieneRol(usuario: { rol: string }, rolBuscado: string): boolean {
+  return usuario.rol.split('+').includes(rolBuscado);
+}
+
 /** Error 403 con el codigo del contrato de 12.6.3. */
 export function error403Alcance(codigo: string, mensaje: string): ErrorApi {
   return new ErrorApi(403, codigo, mensaje);
@@ -26,7 +31,7 @@ export function error403Alcance(codigo: string, mensaje: string): ErrorApi {
  * que ni siquiera se consultan sus tablas de alcance.
  */
 export async function leerAlcance(usuario: PerfilUsuario): Promise<AlcanceResuelto> {
-  if (usuario.rol === 'admin') {
+  if (tieneRol(usuario, 'admin')) {
     return { municipios: 'todos', componentes: 'todos' };
   }
   return leerAlcancePorId(usuario.id);
@@ -66,7 +71,7 @@ export function ventanillasPermitidas(
   alcance: AlcanceResuelto,
   ventanillas: { id: number; regional_id: number; es_central: boolean }[]
 ): number[] {
-  if (usuario.rol === 'admin') return ventanillas.map((v) => v.id);
+  if (tieneRol(usuario, 'admin')) return ventanillas.map((v) => v.id);
 
   const sinRestriccionMunicipios = alcance.municipios === 'todos';
 

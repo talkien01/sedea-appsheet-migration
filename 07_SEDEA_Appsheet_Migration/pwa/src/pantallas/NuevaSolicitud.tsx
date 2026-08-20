@@ -23,6 +23,7 @@ import TablaConceptos, {
 } from '../componentes/TablaConceptos';
 import ChecklistDocumentos from '../componentes/ChecklistDocumentos';
 import TimerPlazo from '../componentes/TimerPlazo';
+import { ESTILO_MAYUSCULAS, aMayusculas } from '../componentes/campoMayusculas';
 
 const solicitanteInicial: DatosSolicitante = {
   tipo_persona: 'fisica',
@@ -590,7 +591,8 @@ export default function NuevaSolicitud() {
               data-testid="textarea-descripcion-proyecto"
               rows={4}
               value={descripcion}
-              onChange={(e) => setDescripcion(e.target.value)}
+              style={ESTILO_MAYUSCULAS}
+              onChange={(e) => setDescripcion(aMayusculas(e.target.value))}
             />
           </div>
 
@@ -693,7 +695,8 @@ export default function NuevaSolicitud() {
               data-testid="input-ubi-localidad"
               type="text"
               value={ubiLocalidad}
-              onChange={(e) => setUbiLocalidad(e.target.value)}
+              style={ESTILO_MAYUSCULAS}
+              onChange={(e) => setUbiLocalidad(aMayusculas(e.target.value))}
             />
           </div>
 
@@ -704,7 +707,8 @@ export default function NuevaSolicitud() {
               data-testid="input-ubi-ejido"
               type="text"
               value={ubiEjido}
-              onChange={(e) => setUbiEjido(e.target.value)}
+              style={ESTILO_MAYUSCULAS}
+              onChange={(e) => setUbiEjido(aMayusculas(e.target.value))}
             />
           </div>
 
@@ -740,7 +744,8 @@ export default function NuevaSolicitud() {
             data-testid="textarea-observaciones"
             rows={3}
             value={observaciones}
-            onChange={(e) => setObservaciones(e.target.value)}
+            style={ESTILO_MAYUSCULAS}
+            onChange={(e) => setObservaciones(aMayusculas(e.target.value))}
           />
         </div>
       </div>

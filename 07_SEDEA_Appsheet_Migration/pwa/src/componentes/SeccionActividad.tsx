@@ -2,6 +2,7 @@
 // Las 4 actividades son independientes y los subcampos de cada una SOLO se
 // renderizan si su casilla esta marcada (12.8.2).
 import { TIPOS_PRODUCCION_GANADERA } from '@sedea/shared';
+import { ESTILO_MAYUSCULAS, aMayusculas } from './campoMayusculas';
 
 export interface DatosActividad {
   agricola: boolean;
@@ -94,7 +95,8 @@ export default function SeccionActividad({ valores, cambiar }: Props) {
               data-testid="input-agr-cultivo"
               type="text"
               value={valores.agr_cultivo_principal}
-              onChange={(e) => cambiar('agr_cultivo_principal', e.target.value)}
+              style={ESTILO_MAYUSCULAS}
+              onChange={(e) => cambiar('agr_cultivo_principal', aMayusculas(e.target.value))}
             />
           </div>
         </>
@@ -119,7 +121,8 @@ export default function SeccionActividad({ valores, cambiar }: Props) {
               data-testid="input-gan-tipo-ganado"
               type="text"
               value={valores.gan_tipo_ganado}
-              onChange={(e) => cambiar('gan_tipo_ganado', e.target.value)}
+              style={ESTILO_MAYUSCULAS}
+              onChange={(e) => cambiar('gan_tipo_ganado', aMayusculas(e.target.value))}
             />
           </div>
           <div className="campo">
@@ -180,7 +183,8 @@ export default function SeccionActividad({ valores, cambiar }: Props) {
             data-testid="input-acu-especies"
             type="text"
             value={valores.acu_especies}
-            onChange={(e) => cambiar('acu_especies', e.target.value)}
+            style={ESTILO_MAYUSCULAS}
+            onChange={(e) => cambiar('acu_especies', aMayusculas(e.target.value))}
           />
         </div>
       )}
@@ -203,7 +207,8 @@ export default function SeccionActividad({ valores, cambiar }: Props) {
             data-testid="input-pes-especies"
             type="text"
             value={valores.pes_especies}
-            onChange={(e) => cambiar('pes_especies', e.target.value)}
+            style={ESTILO_MAYUSCULAS}
+            onChange={(e) => cambiar('pes_especies', aMayusculas(e.target.value))}
           />
         </div>
       )}

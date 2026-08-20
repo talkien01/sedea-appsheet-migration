@@ -10,6 +10,7 @@ import {
   type MunicipioVentanilla,
   type TipoPersona
 } from '@sedea/shared';
+import { ESTILO_MAYUSCULAS, aMayusculas } from './campoMayusculas';
 
 export interface DatosSolicitante {
   tipo_persona: TipoPersona;
@@ -72,7 +73,8 @@ export default function SeccionSolicitante({ valores, municipios, cambiar }: Pro
                 data-testid="input-razon-social"
                 type="text"
                 value={valores.razon_social}
-                onChange={(e) => cambiar('razon_social', e.target.value)}
+                style={ESTILO_MAYUSCULAS}
+                onChange={(e) => cambiar('razon_social', aMayusculas(e.target.value))}
               />
             </div>
             <div className="campo">
@@ -98,7 +100,8 @@ export default function SeccionSolicitante({ valores, municipios, cambiar }: Pro
             data-testid="input-nombre-solicitante"
             type="text"
             value={valores.nombre_solicitante}
-            onChange={(e) => cambiar('nombre_solicitante', e.target.value)}
+            style={ESTILO_MAYUSCULAS}
+            onChange={(e) => cambiar('nombre_solicitante', aMayusculas(e.target.value))}
           />
         </div>
 
@@ -157,7 +160,8 @@ export default function SeccionSolicitante({ valores, municipios, cambiar }: Pro
             type="text"
             maxLength={18}
             value={valores.curp}
-            onChange={(e) => cambiar('curp', e.target.value.toUpperCase())}
+            style={ESTILO_MAYUSCULAS}
+            onChange={(e) => cambiar('curp', aMayusculas(e.target.value))}
           />
         </div>
       </div>
@@ -192,7 +196,8 @@ export default function SeccionSolicitante({ valores, municipios, cambiar }: Pro
             data-testid="input-dom-localidad"
             type="text"
             value={valores.dom_localidad}
-            onChange={(e) => cambiar('dom_localidad', e.target.value)}
+            style={ESTILO_MAYUSCULAS}
+            onChange={(e) => cambiar('dom_localidad', aMayusculas(e.target.value))}
           />
         </div>
 
@@ -203,7 +208,8 @@ export default function SeccionSolicitante({ valores, municipios, cambiar }: Pro
             data-testid="input-dom-delegacion"
             type="text"
             value={valores.dom_delegacion}
-            onChange={(e) => cambiar('dom_delegacion', e.target.value)}
+            style={ESTILO_MAYUSCULAS}
+            onChange={(e) => cambiar('dom_delegacion', aMayusculas(e.target.value))}
           />
         </div>
 
@@ -243,7 +249,8 @@ export default function SeccionSolicitante({ valores, municipios, cambiar }: Pro
             data-testid="input-dom-asentamiento"
             type="text"
             value={valores.dom_asentamiento}
-            onChange={(e) => cambiar('dom_asentamiento', e.target.value)}
+            style={ESTILO_MAYUSCULAS}
+            onChange={(e) => cambiar('dom_asentamiento', aMayusculas(e.target.value))}
           />
         </div>
 
@@ -271,7 +278,8 @@ export default function SeccionSolicitante({ valores, municipios, cambiar }: Pro
             data-testid="input-dom-vialidad"
             type="text"
             value={valores.dom_vialidad}
-            onChange={(e) => cambiar('dom_vialidad', e.target.value)}
+            style={ESTILO_MAYUSCULAS}
+            onChange={(e) => cambiar('dom_vialidad', aMayusculas(e.target.value))}
           />
         </div>
       </div>

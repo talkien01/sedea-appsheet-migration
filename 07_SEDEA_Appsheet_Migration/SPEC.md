@@ -4826,3 +4826,580 @@ abrir `psql` para escribir algo.
 
 **Definición de "terminado" (Build 10):** pasan los **57** criterios nuevos (447–503) **y** siguen
 pasando los 446 anteriores. Total acumulado: **503** criterios.
+# SPEC — Sección 17 (Build 11)
+
+> **Anexo de `SPEC.md`.** Este archivo contiene, literal y completa, la **sección 17** de `SPEC.md`.
+> Debe concatenarse al final de `SPEC.md` sin modificar ni una línea de las secciones 1–16.
+> Mismo patrón que `SPEC_SECCION_14_JERARQUIA.md`.
+> Continúa la numeración de secciones (§16 = Build 10) y de criterios (último criterio previo: **503**).
+
+---
+
+# 17. EXTENSIÓN — Densidad de interfaz: acciones con ícono y contenedores anchos (Build 11)
+
+## 17.1 Objetivo
+
+Compactar la interfaz de escritorio de la PWA: las acciones de fila de **todas** las tablas y árboles
+pasan de botones de texto grandes a **botones de ícono** con nombre accesible, los botones primarios
+de creación se reducen de altura sin perder su texto, y los contenedores de contenido aprovechan el
+ancho real del viewport en tablet/escritorio para que ninguna columna quede truncada.
+
+**Cero cambios de negocio.** No se toca backend, esquema, endpoints, validaciones, textos legales ni
+lógica de ninguna pantalla. Es un build exclusivamente de CSS + envoltura de presentación.
+
+---
+
+## 17.2 Scope
+
+### SÍ incluye (lista cerrada)
+
+1. Componente nuevo `pwa/src/componentes/BotonIcono.tsx` (§17.4).
+2. Cuatro íconos nuevos en `pwa/src/componentes/Iconos.tsx` (§17.5): `ojo-tachado`, `check`,
+   `basura`, `copiar`.
+3. Clase nueva `.boton-icono` (+ variante `.peligro`) y clase nueva `.celda-texto` en
+   `pwa/src/styles/componentes.css` (§17.6).
+4. Reducción de altura/padding de los botones de texto en `≥768px` (§17.6.2).
+5. Ensanchamiento de `.contenido` y clase `.pantalla-ancha` (§17.7).
+6. Densificación de `th`/`td` y desbloqueo del ajuste de línea en columnas de texto largo (§17.8).
+7. Sustitución de los botones de texto por `BotonIcono` **solo en las filas del inventario cerrado
+   de §17.3**.
+8. Ajuste de `pwa/src/styles/catalogos.css`: `.catalogos-layout { max-width: none }`.
+
+### NO incluye (explícitamente fuera)
+
+- Ningún cambio en `backend/`, `db/`, `packages/shared/`.
+- Ninguna migración, semilla, endpoint, contrato de API ni permiso.
+- Ningún `data-testid` nuevo, renombrado o eliminado (§17.9).
+- Ningún color, sombra, radio, fuente o token nuevo: solo variables ya definidas en `tokens.css`.
+- Ninguna dependencia npm nueva (íconos = SVG inline propios, como en Build 9).
+- Ningún cambio en el layout **móvil** (`<768px`) más allá de garantizar el objetivo táctil de 44 px.
+- Ningún cambio en el bloque `@media print` de `DetalleSolicitud.tsx`.
+- Los enlaces de navegación de fila ("Ver", "Corregir") **no** se convierten a ícono: conservan su
+  texto visible (D11-6).
+
+---
+
+## 17.3 Inventario cerrado de botones afectados
+
+Esta tabla es exhaustiva. El Generator **no** convierte a ícono ningún botón que no esté aquí.
+
+### 17.3.1 Acciones de fila → `BotonIcono` (pierden texto visible, conservan nombre accesible)
+
+| Pantalla / componente | `data-testid` (SIN CAMBIOS) | Texto visible actual | Ícono | `aria-label` = `title` = texto de `.sr-solo` | Tono |
+|---|---|---|---|---|---|
+| `ArbolCatalogos.tsx` | `btn-editar-programas-<id>` | Editar | `lapiz` | `Editar` | neutro |
+| `ArbolCatalogos.tsx` | `btn-desactivar-programas-<id>` | Desactivar | `ojo-tachado` | `Desactivar` | peligro |
+| `ArbolCatalogos.tsx` | `btn-editar-subprogramas-<id>` | Editar | `lapiz` | `Editar` | neutro |
+| `ArbolCatalogos.tsx` | `btn-desactivar-subprogramas-<id>` | Desactivar | `ojo-tachado` | `Desactivar` | peligro |
+| `ArbolCatalogos.tsx` | `btn-editar-componentes-<id>` | Editar | `lapiz` | `Editar` | neutro |
+| `ArbolCatalogos.tsx` | `btn-desactivar-componentes-<id>` | Desactivar | `ojo-tachado` | `Desactivar` | peligro |
+| `ArbolCatalogos.tsx` | `btn-editar-modalidades-<id>` | Editar | `lapiz` | `Editar` | neutro |
+| `ArbolCatalogos.tsx` | `btn-desactivar-modalidades-<id>` | Desactivar | `ojo-tachado` | `Desactivar` | peligro |
+| `ArbolCatalogos.tsx` | `btn-editar-proyectos-<id>` | Editar | `lapiz` | `Editar` | neutro |
+| `ArbolCatalogos.tsx` | `btn-desactivar-proyectos-<id>` | Desactivar | `ojo-tachado` | `Desactivar` | peligro |
+| `ArbolCatalogos.tsx` | `btn-editar-tipos_apoyo-<id>` | Editar | `lapiz` | `Editar` | neutro |
+| `ArbolCatalogos.tsx` | `btn-desactivar-tipos_apoyo-<id>` | Desactivar | `ojo-tachado` | `Desactivar` | peligro |
+| `ArbolCatalogos.tsx` | `btn-reactivar` (fila inactiva) | Reactivar | `check` | `Reactivar` | neutro |
+| `CatalogoDocumentos.tsx` | `btn-editar-regla` | Editar | `lapiz` | `Editar` | neutro |
+| `CatalogoDocumentos.tsx` | `btn-toggle-estado-regla` | Desactivar / Activar | `ojo-tachado` / `check` | `Desactivar` / `Activar` (según `regla.activo`) | peligro / neutro |
+| `Usuarios.tsx` | `btn-editar-usuario` | Editar | `lapiz` | `Editar` | neutro |
+| `Usuarios.tsx` | `btn-reset-password` | Resetear contraseña | `llave` | `Resetear contraseña` | neutro |
+| `Usuarios.tsx` | `btn-toggle-activo` | Desactivar / Activar | `ojo-tachado` / `check` | `Desactivar` / `Activar` (según `fila.activo`) | peligro / neutro |
+| `TablaConceptos.tsx` | `btn-quitar-concepto` | Quitar | `basura` | `Quitar concepto` | peligro |
+| `DepuracionCatalogos.tsx` | `btn-aprobar-catalogo` | Aprobar | `check` | `Aprobar` | neutro |
+| `DepuracionCatalogos.tsx` | `btn-descartar-catalogo` | Descartar | `ojo-tachado` | `Descartar` | peligro |
+| `ModalPasswordTemporal.tsx` | `btn-copiar-password` | Copiar | `copiar` | `Copiar contraseña` | neutro |
+
+**Regla de tono:** el tono solo cambia el color del glifo y del borde en `:hover`. Nunca cambia el
+`data-testid`, el `onClick` ni la habilitación.
+
+### 17.3.2 Botones que conservan texto visible (solo se compactan)
+
+| Pantalla | `data-testid` | Texto visible (INVARIABLE) |
+|---|---|---|
+| `ArbolCatalogos.tsx` | `btn-nuevo-programas` | `+ Nuevo programa` |
+| `ArbolCatalogos.tsx` | `btn-nuevo-subprogramas` | `+ Nuevo subprograma` |
+| `ArbolCatalogos.tsx` | `btn-nuevo-componentes` | `+ Nuevo componente` |
+| `ArbolCatalogos.tsx` | `btn-nuevo-modalidades` | `+ Nueva modalidad` |
+| `ArbolCatalogos.tsx` | `btn-nuevo-proyectos` | `+ Nuevo proyecto` |
+| `ArbolCatalogos.tsx` | `btn-nuevo-tipos_apoyo` | `+ Nuevo concepto` |
+| `CatalogoDocumentos.tsx` | `btn-nueva-regla` | `Nueva regla` |
+| `Usuarios.tsx` | `btn-nuevo-usuario` | `Nuevo usuario` |
+| `Solicitudes.tsx` | `btn-nueva-solicitud` | `Nueva solicitud` |
+| `NuevaSolicitud.tsx` | `btn-agregar-concepto` | `Agregar concepto` |
+| `NuevaSolicitud.tsx` | `btn-guardar-solicitud` | (texto actual) |
+| `FichaBeneficiario.tsx` | `btn-editar-datos` | `Editar datos de contacto/ubicación` |
+| `DepuracionDetalle.tsx` | `btn-aprobar`, `btn-descartar`, `btn-fusionar` | (textos actuales) |
+| `DetalleSolicitud.tsx` | `btn-imprimir-caratula` | (texto actual) |
+| Todos los `btn-guardar-*`, `btn-cancelar-*`, `btn-confirmar-*` | — | (textos actuales) |
+
+Los del glifo `+` mantienen el `+` como texto plano dentro del botón (no es SVG).
+
+`btn-editar-datos` **no** se convierte a ícono: es una acción de cabecera de ficha, y su texto
+visible está comprometido por los criterios 151, 152 y 156.
+
+---
+
+## 17.4 `pwa/src/componentes/BotonIcono.tsx` (nuevo)
+
+Único punto de verdad para las acciones de §17.3.1. Ningún otro archivo escribe la clase
+`.boton-icono` a mano.
+
+```tsx
+import type { ReactNode } from 'react';
+import {
+  IconoLapiz, IconoLlave, IconoOjoTachado, IconoCheck, IconoBasura, IconoCopiar, IconoMas
+} from './Iconos';
+
+export type NombreIconoAccion =
+  | 'lapiz' | 'llave' | 'ojo-tachado' | 'check' | 'basura' | 'copiar' | 'mas';
+
+const MAPA: Record<NombreIconoAccion, (p: { tamano?: number }) => ReactNode> = {
+  'lapiz': IconoLapiz,
+  'llave': IconoLlave,
+  'ojo-tachado': IconoOjoTachado,
+  'check': IconoCheck,
+  'basura': IconoBasura,
+  'copiar': IconoCopiar,
+  'mas': IconoMas
+};
+
+type Props = {
+  icono: NombreIconoAccion;
+  /** Nombre accesible. Es el MISMO string que mostraba el botón de texto anterior. */
+  etiqueta: string;
+  onClick: () => void;
+  testId: string;
+  tono?: 'neutro' | 'peligro';
+  deshabilitado?: boolean;
+};
+
+export function BotonIcono({
+  icono, etiqueta, onClick, testId, tono = 'neutro', deshabilitado = false
+}: Props) {
+  const Glifo = MAPA[icono];
+  return (
+    <button
+      type="button"
+      className={tono === 'peligro' ? 'boton-icono peligro' : 'boton-icono'}
+      data-testid={testId}
+      aria-label={etiqueta}
+      title={etiqueta}
+      disabled={deshabilitado}
+      onClick={onClick}
+    >
+      <Glifo tamano={18} />
+      <span className="sr-solo">{etiqueta}</span>
+    </button>
+  );
+}
+```
+
+Reglas duras:
+
+- **Nunca** se le pasa `className="secundario"`; `.boton-icono` es autosuficiente.
+- El `<svg>` es `aria-hidden="true"` (ya lo es por el `Base` de `Iconos.tsx`).
+- El nombre accesible viene de `aria-label`; el `.sr-solo` existe para que cualquier prueba previa
+  basada en el string siga encontrando el texto en el DOM.
+- `title` idéntico a `aria-label` → tooltip nativo en escritorio, sin librería de tooltips.
+
+---
+
+## 17.5 Íconos nuevos (`pwa/src/componentes/Iconos.tsx`)
+
+Se añaden **4** exports al final del archivo, con el mismo `Base` ya existente (24×24, `fill="none"`,
+`stroke="currentColor"`, `strokeWidth=1.75`, `aria-hidden`). Los 17 íconos actuales no se tocan.
+
+| Export | Uso | Trazado |
+|---|---|---|
+| `IconoOjoTachado` | desactivar / descartar | ojo (`M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z` + círculo r=3) + diagonal `M3 3l18 18` |
+| `IconoCheck` | activar / reactivar / aprobar | `M4 12.5l5 5L20 6.5` |
+| `IconoBasura` | quitar concepto | `M4 7h16` + `M9 7V5h6v2` + `M6 7l1 13h10l1-13` + `M10 11v6` + `M14 11v6` |
+| `IconoCopiar` | copiar contraseña temporal | `M9 9h10v10H9z` + `M5 15V5h10` |
+
+---
+
+## 17.6 CSS — `pwa/src/styles/componentes.css`
+
+Todo lo de esta sección usa **solo** variables ya declaradas en `tokens.css`. Cero literales de color.
+
+### 17.6.1 Bloque nuevo `.boton-icono` (se inserta justo después del bloque `button.peligro`)
+
+```css
+/* --------------------------- Boton de icono ------------------------------ */
+
+button.boton-icono,
+.boton-icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  flex: 0 0 auto;
+  background: var(--bg-elev-2);
+  color: var(--fg-muted);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+button.boton-icono:hover:not(:disabled) {
+  background: var(--bg-elev-3);
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+button.boton-icono.peligro {
+  background: var(--bg-elev-2);
+  color: var(--peligro);
+  border-color: var(--border-strong);
+}
+
+button.boton-icono.peligro:hover:not(:disabled) {
+  background: var(--peligro-bg);
+  color: var(--peligro);
+  border-color: var(--peligro);
+}
+
+button.boton-icono:active:not(:disabled) {
+  background: var(--bg-sunk);
+}
+
+button.boton-icono:disabled {
+  background: var(--bg-sunk);
+  color: var(--fg-subtle);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+```
+
+La especificidad de `button.boton-icono.peligro` (0,2,1) gana a `button.peligro` (0,1,1), así que la
+variante de peligro **no** hereda el relleno rojo sólido de los botones destructivos grandes.
+
+En `@media (max-width: 767px)` (bloque móvil ya existente) se agrega:
+
+```css
+  button.boton-icono,
+  .boton-icono {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+```
+
+### 17.6.2 Compactación de los botones de texto (solo `≥768px`)
+
+Bloque nuevo al final de `componentes.css`:
+
+```css
+@media (min-width: 768px) {
+  button,
+  .boton {
+    min-height: 34px;
+    padding: 6px 14px;
+    font-size: 13px;
+  }
+
+  button.boton-icono {
+    padding: 0;
+    font-size: 0;
+  }
+
+  .boton-entrar {
+    min-height: 44px;
+    font-size: 14px;
+  }
+}
+```
+
+`Login` y `CambiarPassword` conservan su botón de 44 px vía `.boton-entrar`. El bloque móvil actual
+(48 px) queda intacto.
+
+### 17.6.3 Acciones dentro de tabla y árbol
+
+```css
+td.acciones,
+.acciones.en-fila {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 0;
+  white-space: nowrap;
+}
+```
+
+En `ArbolCatalogos.tsx`, el contenedor de acciones de cada nodo usa
+`className="acciones en-fila"` (la clase `acciones` se conserva).
+
+### 17.6.4 Celdas de texto largo
+
+```css
+.celda-texto {
+  white-space: normal;
+  min-width: 24ch;
+  max-width: 46ch;
+  line-height: 1.35;
+}
+```
+
+Se aplica como `className="celda-texto"` (además del `data-etiqueta` que ya tienen) en:
+
+| Pantalla | Columna |
+|---|---|
+| `CatalogoDocumentos.tsx` | `Requisito` |
+| `Usuarios.tsx` | `Nombre completo` |
+| `Depuracion.tsx` | columna de nombre del beneficiario |
+| `Correcciones.tsx` | columna de nombre del beneficiario |
+| `DepuracionCatalogos.tsx` | columna de valor/descripción del catálogo |
+| `Auditoria.tsx` | columna de nombre del beneficiario |
+
+Ninguna otra celda pierde su `white-space: nowrap`.
+
+---
+
+## 17.7 Ancho del contenedor
+
+Reemplaza únicamente la regla `.contenido` y sus dos medias queries existentes:
+
+```css
+.contenido {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px;
+  width: 100%;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+@media (min-width: 1024px) {
+  .contenido { max-width: 1440px; padding: 20px 28px; }
+}
+
+@media (min-width: 1680px) {
+  .contenido { max-width: 1760px; }
+}
+
+/* Pantallas con tabla ancha: sin techo, el limite lo pone el viewport. */
+.contenido:has(.pantalla-ancha) {
+  max-width: none;
+}
+```
+
+Las medias queries `max-width: 1023px` y `max-width: 767px` de `.contenido` que ya existen no se
+modifican.
+
+`className="pantalla-ancha"` se añade al **elemento raíz** (el que ya lleva el
+`data-testid="pantalla-*"` o equivalente) de estas 9 pantallas, sin quitar ninguna clase previa:
+
+`Catalogos.tsx`, `CatalogoDocumentos.tsx`, `Usuarios.tsx`, `Solicitudes.tsx`, `Beneficiarios.tsx`,
+`Auditoria.tsx`, `Depuracion.tsx`, `DepuracionCatalogos.tsx`, `Correcciones.tsx`.
+
+En `pwa/src/styles/catalogos.css`, la línea `max-width: 1400px` de `.catalogos-layout` pasa a
+`max-width: none` (única línea que cambia en ese archivo).
+
+`:has()` es soportado por Chromium ≥105, Firefox ≥121 y Safari ≥15.4; la matriz de navegadores del
+proyecto (Build 9) ya lo cubre. Si el selector no aplicara, la degradación es exactamente el
+comportamiento de Build 10 (1180/1440 px), sin rotura visual.
+
+---
+
+## 17.8 Densidad de tablas
+
+Reemplaza el bloque `th, td` de `componentes.css`:
+
+```css
+th,
+td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+th {
+  background: var(--bg-sunk);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 8px 10px;
+}
+```
+
+`table { font-size: 13px }` no cambia. El bloque móvil `max-width: 767px` que convierte la tabla en
+tarjetas **no se toca**: ahí `padding` y `white-space` siguen gobernados por sus propias reglas.
+
+---
+
+## 17.9 Contrato de `data-testid` y criterios previos afectados
+
+**Invariantes (el Generator los rompe = build fallido):**
+
+1. **Cero** `data-testid` nuevos, renombrados o eliminados en este build.
+2. Cada botón de §17.3.1 conserva su `data-testid`, su handler y su condición de habilitación.
+3. El **nombre accesible** de cada botón de §17.3.1 es idéntico, carácter por carácter, al texto
+   visible que tenía en Build 10 — salvo dos casos documentados abajo.
+4. El string sigue presente en el DOM dentro de `<span class="sr-solo">`, por lo que un selector de
+   texto lo encuentra; lo que ya **no** se cumple es `toBeVisible()` sobre ese texto.
+
+**Cambios de contrato declarados explícitamente:**
+
+| Referencia previa | Qué decía | Qué dice a partir de Build 11 |
+|---|---|---|
+| §10.8.1 (Build 4) | *"Acciones por fila: `btn-editar-usuario` ("Editar"), `btn-reset-password` ("Resetear contraseña"…), `btn-toggle-activo` ("Desactivar"/"Activar")"* | Los tres son `BotonIcono`. Los strings entre paréntesis pasan a ser `aria-label`/`title`/`.sr-solo`, no texto visible. El resto de la fila (confirmaciones, modales, efectos) es idéntico. |
+| §16.6.2 (Build 10) | Árbol con `[editar] [desactivar]` como botones de texto | Los mismos botones, mismos testids, renderizados como `BotonIcono`. |
+| §16.6.3 (Build 10) | Columna "acciones" con `Editar` / `Desactivar`-`Activar` | Ídem. |
+| `TablaConceptos` | `btn-quitar-concepto` mostraba "Quitar" | `aria-label` = `Quitar concepto` (string **distinto** al anterior: se añade el sustantivo para que el nombre accesible sea autoexplicativo fuera de contexto). Ningún criterio previo depende de ese texto. |
+| `ModalPasswordTemporal` | `btn-copiar-password` mostraba "Copiar" | `aria-label` = `Copiar contraseña` (string **distinto**, misma justificación). |
+
+**Criterios previos verificados como NO afectados** (todos seleccionan por `data-testid`, por
+estado o por texto de elementos que no se convierten): 151, 152, 156, 199, 200, 203, 204, 236, 239,
+298, 301, 485, 486, 496, 501. El criterio 503 (regresión 1–446) sigue vigente con las dos
+salvedades textuales de la tabla anterior.
+
+---
+
+## 17.10 Accesibilidad
+
+1. Todo `.boton-icono` tiene `aria-label` **y** `title` no vacíos, más `.sr-solo` con el mismo texto.
+2. Objetivo táctil: 44×44 CSS px en `<768px`; 32×32 con separación de 6 px en `≥768px` (aceptable
+   bajo WCAG 2.2 SC 2.5.8 *Target Size (Minimum)*, que exige 24×24 con espaciado).
+3. Contraste mínimo 4.5:1 del glifo contra su fondo, en ambos modos:
+   - oscuro: `--fg-muted` `#9A9AA8` sobre `--bg-elev-2` → cumple;
+   - claro: `--fg-muted` `#6E6E7E` sobre `--bg-elev-2` → cumple;
+   - peligro claro `#B91C1C` y peligro oscuro `#FCA5A5` sobre sus fondos respectivos → cumplen.
+   Prohibido bajar el glifo a `--fg-subtle` en estado normal (solo en `:disabled`, que está exento).
+4. Se conserva el `:focus-visible` global de Build 9 (`outline: 2px solid var(--accent)`);
+   `.boton-icono` **no** declara `outline: none`.
+5. `title` no sustituye al `aria-label`: ambos coexisten.
+6. Ninguna acción queda identificada **solo** por color (el ícono es distinto entre desactivar y
+   activar: ojo tachado vs. check).
+
+---
+
+## 17.11 Archivos
+
+| Archivo | Acción |
+|---|---|
+| `pwa/src/componentes/BotonIcono.tsx` | **nuevo** |
+| `pwa/src/componentes/Iconos.tsx` | + 4 exports (`IconoOjoTachado`, `IconoCheck`, `IconoBasura`, `IconoCopiar`) |
+| `pwa/src/styles/componentes.css` | + `.boton-icono`, + `.celda-texto`, + `td.acciones`, MODIF `.contenido`, MODIF `th`/`td`, + media `≥768px` |
+| `pwa/src/styles/catalogos.css` | MODIF 1 línea (`.catalogos-layout { max-width: none }`) |
+| `pwa/src/componentes/ArbolCatalogos.tsx` | MODIF: 13 botones → `BotonIcono`; contenedor `acciones en-fila` |
+| `pwa/src/pantallas/CatalogoDocumentos.tsx` | MODIF: 2 botones → `BotonIcono`; `celda-texto`; `pantalla-ancha` |
+| `pwa/src/pantallas/Usuarios.tsx` | MODIF: 3 botones → `BotonIcono`; `celda-texto`; `pantalla-ancha` |
+| `pwa/src/componentes/TablaConceptos.tsx` | MODIF: `btn-quitar-concepto` → `BotonIcono` |
+| `pwa/src/pantallas/DepuracionCatalogos.tsx` | MODIF: 2 botones → `BotonIcono`; `celda-texto`; `pantalla-ancha` |
+| `pwa/src/componentes/ModalPasswordTemporal.tsx` | MODIF: `btn-copiar-password` → `BotonIcono` |
+| `pwa/src/pantallas/Catalogos.tsx` | MODIF: `pantalla-ancha` |
+| `pwa/src/pantallas/Solicitudes.tsx` | MODIF: `pantalla-ancha` |
+| `pwa/src/pantallas/Beneficiarios.tsx` | MODIF: `pantalla-ancha` |
+| `pwa/src/pantallas/Auditoria.tsx` | MODIF: `pantalla-ancha`; `celda-texto` |
+| `pwa/src/pantallas/Depuracion.tsx` | MODIF: `pantalla-ancha`; `celda-texto` |
+| `pwa/src/pantallas/Correcciones.tsx` | MODIF: `pantalla-ancha`; `celda-texto` |
+| `backend/**`, `db/**`, `packages/shared/**`, `*/package.json`, `docker-compose.yml` | **sin cambios** |
+
+**Comandos (sin cambios):**
+
+```
+cd pwa
+npm run dev         # http://localhost:5173
+npm run typecheck   # tsc --noEmit
+npm run build       # vite build -> pwa/dist
+```
+
+Dependencias npm: **cero altas, cero bajas, cero cambios de versión**.
+
+---
+
+## 17.12 Assumptions del Build 11 (continúa la numeración de §16.7)
+
+- **A17-1.** Los botones de acción de fila pierden texto visible pero conservan nombre accesible
+  idéntico; se prefiere `aria-label` + `title` + `.sr-solo` (triple redundancia) antes que romper
+  cualquier selector existente.
+- **A17-2.** 32×32 px en escritorio y 44×44 px en móvil. No se usa un tamaño intermedio en tablet
+  para no multiplicar breakpoints.
+- **A17-3.** Los botones "Nuevo X" conservan texto: un ícono `+` solo sería ambiguo para el personal
+  de ventanilla.
+- **A17-4.** Los enlaces de fila "Ver" y "Corregir" no se iconifican (son navegación, no acción, y
+  hay criterios previos que los pulsan por texto).
+- **A17-5.** El ensanchamiento se hace con `.contenido:has(.pantalla-ancha)` y no con una prop del
+  `Cascaron`, para no tocar el enrutado ni el cascarón de Build 9.
+- **A17-6.** Sin techo de ancho en las pantallas de tabla: en monitores muy anchos se prefiere ver
+  todas las columnas antes que preservar una medida de línea ideal.
+- **A17-7.** `white-space: normal` se aplica por lista blanca de columnas (`.celda-texto`), no de
+  forma global, para no reintroducir tablas de altura irregular.
+- **A17-8.** No se agrega librería de tooltips: `title` nativo es suficiente y no compite con el
+  lector de pantalla porque el nombre accesible ya viene de `aria-label`.
+- **A17-9.** Variante `peligro` de ícono = glifo rojo con fondo neutro (no botón rojo sólido), para
+  no gritar en cada fila de la tabla y mantener el contraste AA.
+- **A17-10.** Este build no toca `NuevaSolicitud.tsx` salvo el `BotonIcono` de `TablaConceptos`:
+  es la pantalla con más criterios vigentes y el riesgo de regresión no compensa.
+
+---
+
+## 17.13 Rubric de evaluación — Build 11 (criterios 504–530)
+
+Salvo indicación contraria, Playwright con `admin` autenticado, viewport de escritorio
+**1440×900** y modo oscuro (el de arranque por defecto).
+
+### Botones de ícono — estructura y semántica (504–511)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 504 | En `/catalogos`, el primer `[data-testid^="btn-editar-programas-"]` contiene exactamente **1** `svg` y su `innerText` es la cadena vacía (`''`) tras `trim()`. | Playwright |
+| 505 | Ese mismo botón tiene `aria-label="Editar"` **y** `title="Editar"`, y `page.getByRole('button', { name: 'Editar' }).first()` lo resuelve. | Playwright |
+| 506 | Ese mismo botón contiene un `span.sr-solo` con texto `Editar`, y ese `span` **no** es visible (`toBeHidden()`), mientras el `button` sí es visible. | Playwright |
+| 507 | En `/catalogos`, todo `button[data-testid^="btn-desactivar-"]` tiene `aria-label="Desactivar"` y la clase `boton-icono peligro`; su `color` computado es distinto del `color` computado de los `btn-editar-*`. | Playwright + `getComputedStyle` |
+| 508 | En `/usuarios`, los tres botones de la primera fila (`btn-editar-usuario`, `btn-reset-password`, `btn-toggle-activo`) tienen `aria-label` no vacío (`Editar`, `Resetear contraseña`, `Desactivar`\|`Activar`) e `innerText` vacío. | Playwright |
+| 509 | En `/usuarios`, pulsar `[data-testid="btn-toggle-activo"]` de la fila de prueba y confirmar deja su `aria-label` en `Activar`; volver a pulsar y confirmar lo deja en `Desactivar`. El `badge-estado-usuario` acompaña el cambio (criterio 204 sigue pasando). | Playwright |
+| 510 | En `/catalogos/documentos`, `btn-editar-regla` y `btn-toggle-estado-regla` de la primera fila tienen `svg` y `aria-label`; ningún `button` de esa tabla tiene `innerText` con las palabras `Editar`, `Desactivar` o `Activar` visibles. | Playwright |
+| 511 | Recorriendo **todos** los `button` de `/catalogos`, `/catalogos/documentos`, `/usuarios`, `/solicitudes` y `/depuracion/catalogos`: **0** botones con nombre accesible vacío (`aria-label`, `innerText` o `title` no vacío en alguno). | `page.$$eval` |
+
+### Dimensiones y densidad (512–518)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 512 | A 1440×900, el `boundingBox()` de `[data-testid^="btn-editar-programas-"]` tiene `width` y `height` entre **30 y 34** px inclusive. | Playwright |
+| 513 | A 390×844 (móvil), ese mismo botón tiene `width ≥ 44` y `height ≥ 44`. | Playwright |
+| 514 | A 1440×900, `[data-testid="btn-nueva-regla"]` es visible, su `innerText` normalizado es `Nueva regla` y su `height` está entre **32 y 38** px. | Playwright |
+| 515 | A 390×844, `[data-testid="btn-nueva-regla"]` tiene `height ≥ 44`. | Playwright |
+| 516 | A 1440×900, en `/usuarios` la celda `td.acciones` de la primera fila tiene `width ≤ 160` px y su `display` computado es `flex`. | Playwright |
+| 517 | A 1440×900, `getComputedStyle` de un `td` de `[data-testid="tabla-usuarios"]` devuelve `padding-top: 6px` y `padding-left: 10px`. | Playwright |
+| 518 | A 1440×900, la altura de una `[data-testid="fila-usuario"]` es ≤ **44** px. | Playwright |
+
+### Ancho del contenedor y columnas sin truncar (519–523)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 519 | A 1920×1080 en `/catalogos/documentos`, `getComputedStyle(document.querySelector('.contenido')).maxWidth === 'none'` y el `clientWidth` del `.contenido` es ≥ **80%** del `innerWidth` de la ventana. | Playwright |
+| 520 | A 1920×1080 en `/sync` (pantalla sin `.pantalla-ancha`), `maxWidth` computado del `.contenido` es `1760px`. | Playwright |
+| 521 | A 1440×900 en `/catalogos/documentos`, la celda de `Requisito` de la primera fila tiene `white-space: normal` computado y `scrollWidth <= clientWidth + 1` (texto no truncado). | Playwright |
+| 522 | A 1440×900 en `/catalogos/documentos`, el `.tabla-contenedor` de `[data-testid="tabla-reglas-documentos"]` cumple `scrollWidth <= clientWidth + 1` (sin scroll horizontal). | Playwright |
+| 523 | En `/catalogos` a 1440×900, `getComputedStyle(document.querySelector('.catalogos-layout')).maxWidth === 'none'`. | Playwright |
+
+### Tema, contraste y focus (524–526)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 524 | Con `data-mode="dark"` y con `data-mode="light"`, el `color` computado del glifo de `[data-testid^="btn-editar-programas-"]` es **distinto** entre ambos modos y en ninguno de los dos coincide con el `background-color` computado del propio botón. | Playwright + toggle de tema |
+| 525 | El contraste calculado (WCAG) entre `color` y `background-color` computados de `.boton-icono` (variante neutra y variante peligro) es **≥ 4.5:1** en ambos modos. | Playwright + función de contraste en `page.evaluate` |
+| 526 | Enfocando `[data-testid="btn-editar-usuario"]` con teclado (`Tab`), `document.activeElement` es ese botón y su `outline-style` computado es `solid` con `outline-width` `2px`. | Playwright |
+
+### No regresión (527–530)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 527 | Los **22** `data-testid` de §17.3.1 siguen existiendo en el DOM de sus pantallas (para los patrones `<entidad>-<id>`, al menos una ocurrencia por entidad presente en el árbol). Ningún testid nuevo aparece en esas filas. | Playwright |
+| 528 | En `/solicitudes` y `/auditoria`, los enlaces de fila con texto `Ver` siguen siendo visibles (`toBeVisible()`) y navegan al detalle correspondiente. | Playwright |
+| 529 | El bloque `.boton-icono` de `pwa/src/styles/componentes.css` no contiene ningún literal de color: `rg -n "#[0-9a-fA-F]{3}|rgb\(|hsl\(" ` sobre ese bloque devuelve **0** coincidencias; todos los colores son `var(--…)` ya definidos en `tokens.css`. | `rg` |
+| 530 | `cd pwa && npm run typecheck && npm run build` terminan con código 0, y los criterios **1–503** siguen pasando con las dos salvedades textuales declaradas en §17.9 (`btn-quitar-concepto`, `btn-copiar-password`). | CLI + re-run del Evaluator |
+
+**Definición de "terminado" (Build 11):** pasan los **27** criterios nuevos (504–530) **y** siguen
+pasando los 503 anteriores. Total acumulado: **530** criterios.

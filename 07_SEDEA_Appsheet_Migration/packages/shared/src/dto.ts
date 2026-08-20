@@ -3,7 +3,8 @@
 // la desalineacion entre la cola de sincronizacion y el endpoint de upsert.
 
 // Build 6: se agrega el rol 'ventanilla' (D34); los 4 anteriores siguen igual.
-export type Rol = 'capturista' | 'auditor' | 'admin' | 'editor_datos' | 'ventanilla';
+// Build 12: multi-rol permitido con "+" (ej. "capturista+ventanilla")
+export type Rol = string;
 
 export interface PerfilUsuario {
   id: number;

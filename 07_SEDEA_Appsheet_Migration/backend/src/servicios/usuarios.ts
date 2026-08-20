@@ -80,9 +80,15 @@ export function validarEdicion(cuerpo: unknown) {
   return parseado.data;
 }
 
+/** Verifica si un rol (puede ser multi-rol como "capturista+ventanilla") contiene un rol específico. */
+function tieneRol(rol: string, rolBuscado: string): boolean {
+  return rol.split('+').includes(rolBuscado);
+}
+
 /**
  * Coherencia rol <-> Regional (D22): la Regional es obligatoria para el
  * capturista e inaplicable para los demas roles. Devuelve el valor definitivo.
+ * Para multi-rol, se considera 'capturista' si la lista contiene 'capturista'.
  */
 export async function resolverRegional(
   rol: string,
@@ -91,7 +97,8 @@ export async function resolverRegional(
 ): Promise<number | null> {
   const valor = regionalId ?? null;
 
-  if (rol === 'capturista') {
+  // Multi-rol: es 'capturista' si contiene ese rol en la lista
+  if (tieneRol(rol, 'capturista')) {
     if (valor === null) {
       throw error422(
         'regional_requerida',
@@ -121,8 +128,10 @@ export function exigirRolAdministrable(
   rolActor: string,
   rolObjetivo: string | null | undefined
 ): void {
-  if (rolActor === 'admin') return;
-  if (rolObjetivo === 'admin') {
+  // Multi-rol: si el actor tiene 'admin' en su lista, puede administrar
+  if (tieneRol(rolActor, 'admin')) return;
+  // Multi-rol: no se puede asignar el rol 'admin' si el actor no es admin
+  if (rolObjetivo && tieneRol(rolObjetivo, 'admin')) {
     throw error403('rol_no_asignable', 'Tu rol no puede administrar cuentas de administrador.');
   }
 }

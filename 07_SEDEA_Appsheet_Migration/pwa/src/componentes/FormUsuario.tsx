@@ -67,7 +67,9 @@ export default function FormUsuario({
 
   const [nombreAcceso, setNombreAcceso] = useState(usuario?.usuario ?? '');
   const [nombreCompleto, setNombreCompleto] = useState(usuario?.nombre_completo ?? '');
-  const [rol, setRol] = useState<string>(usuario?.rol ?? 'capturista');
+  // Soporte multi-rol: si el usuario tiene roles en BD, se muestran todos;
+  // si no, default a capturista. El rol "principal" es el primero de la lista.
+  const [roles, setRoles] = useState<string[]>(usuario?.rol ? [usuario.rol] : ['capturista']);
   const [regionalId, setRegionalId] = useState<string>(
     usuario?.regional_id ? String(usuario.regional_id) : ''
   );
@@ -95,11 +97,20 @@ export default function FormUsuario({
   };
 
   // La Regional solo aplica al capturista (D22).
-  const regionalAplica = rol === 'capturista';
+  const tieneRol = (r: string) => roles.includes(r);
+  const regionalAplica = tieneRol('capturista');
 
-  const cambiarRol = (nuevo: string) => {
-    setRol(nuevo);
-    if (nuevo !== 'capturista') {
+  const toggleRol = (rolItem: string) => {
+    setRoles((prev) => {
+      if (prev.includes(rolItem)) {
+        // No permitir quitar el último rol
+        if (prev.length === 1) return prev;
+        return prev.filter((r) => r !== rolItem);
+      } else {
+        return [...prev, rolItem];
+      }
+    });
+    if (rolItem !== 'capturista') {
       setRegionalId('');
       setErrorRegional(null);
     }
@@ -148,17 +159,20 @@ export default function FormUsuario({
     // Si la validacion de cliente falla no se llama a la API.
     if (!valido) return;
 
+    // El rol principal es el primero de la lista; si hay multi-rol, se guarda
+    // concatenado con '+' (ej. "capturista+ventanilla").
+    const rolPrincipal = roles.join('+');
     alGuardar({
       usuario: acceso,
       nombre_completo: nombre,
-      rol,
+      rol: rolPrincipal,
       regional_id: regionalAplica ? Number(regionalId) : null,
       // En edicion no se manda modo alguno: la contrasena solo se cambia con
       // "Resetear contraseña" (campo_no_editable).
       ...(esAlta ? { modo_password: modoPassword } : {}),
       ...(esAlta && modoPassword === 'manual' ? { password_manual: passwordManual } : {}),
       // El alcance solo viaja para el rol ventanilla; el resto no lo tiene.
-      ...(rol === 'ventanilla' ? { alcance } : {})
+      ...(tieneRol('ventanilla') ? { alcance } : {})
     });
   };
 
@@ -222,15 +236,36 @@ export default function FormUsuario({
           <select
             id="select-rol"
             data-testid="select-rol"
-            value={rol}
-            onChange={(e) => cambiarRol(e.target.value)}
+            value={roles[0] ?? 'capturista'}
+            onChange={(e) => {
+              const nuevoRol = e.target.value;
+              // Si el rol ya está en la lista, no hacer nada (ya está seleccionado)
+              if (!roles.includes(nuevoRol)) {
+                setRoles([...roles, nuevoRol]);
+              }
+            }}
           >
+            <option value="" disabled>Selecciona roles...</option>
             {rolesDisponibles.map((valor) => (
               <option key={valor} value={valor}>
                 {ETIQUETAS_ROL[valor]}
               </option>
             ))}
           </select>
+          {/* Checkboxes para multi-selección de roles */}
+          <div className="lista-check" style={{ marginTop: '8px' }}>
+            {rolesDisponibles.map((rolItem) => (
+              <label key={rolItem} className="casilla" style={{ display: 'block', marginBottom: '4px' }}>
+                <input
+                  type="checkbox"
+                  checked={roles.includes(rolItem)}
+                  onChange={() => toggleRol(rolItem)}
+                  style={{ marginRight: '6px' }}
+                />
+                {ETIQUETAS_ROL[rolItem]}
+              </label>
+            ))}
+          </div>
         </div>
 
         <div className="campo">
@@ -258,7 +293,7 @@ export default function FormUsuario({
         </div>
 
         {/* Alcance: solo para el rol Ventanilla (12.8.4). */}
-        {rol === 'ventanilla' && (
+        {tieneRol('ventanilla') && (
           <BloqueAlcance
             municipios={municipios}
             componentes={componentes}

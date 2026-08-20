@@ -120,7 +120,17 @@ const campoNombre = z
   .transform((v) => v.trim())
   .refine((v) => v.length >= 3 && v.length <= 120, 'El nombre completo debe tener entre 3 y 120 caracteres.');
 
-const campoRol = z.enum(['capturista', 'auditor', 'admin', 'editor_datos', 'ventanilla']);
+/** Valida que el rol sea una combinación válida de roles separados por '+' (ej. "capturista+ventanilla"). */
+const campoRol = z.string().refine(
+  (val) => {
+    if (!val || typeof val !== 'string') return false;
+    const roles = val.split('+');
+    // Cada rol individual debe ser válido
+    const rolesValidos = ['capturista', 'auditor', 'admin', 'editor_datos', 'ventanilla'];
+    return roles.every(r => rolesValidos.includes(r));
+  },
+  { message: 'Rol inválido. Usa roles válidos separados por "+" (ej. "capturista+ventanilla")' }
+);
 
 const campoRegional = z
   .union([z.number().int().positive(), z.null()])

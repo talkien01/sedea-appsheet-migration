@@ -41,7 +41,9 @@ import {
 async function soloAdministradores(peticion: FastifyRequest, _respuesta: FastifyReply) {
   const usuario = peticion.usuario;
   if (!usuario) throw errorNoAutorizado();
-  if (!ROLES_ADMIN_USUARIOS.includes(usuario.rol as 'admin' | 'editor_datos')) {
+  // Multi-rol: se permite si tiene 'admin' O 'editor_datos' en su lista
+  const tieneRol = (r: string) => usuario.rol.split('+').includes(r);
+  if (!tieneRol('admin') && !tieneRol('editor_datos')) {
     throw error403('rol_no_autorizado', 'No tienes permiso para ver esta sección.');
   }
 }
@@ -152,11 +154,14 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
       if (datos.rol) exigirRolAdministrable(actor.rol, datos.rol);
 
       const rolFinal = datos.rol ?? actual.rol;
+      // Multi-rol: se considera 'capturista' si el rol principal (primero) es 'capturista'
+      // o si la lista contiene 'capturista'. Para efectos de Regional, el rol principal manda.
+      const rolPrincipal = rolFinal.split('+')[0];
 
       // Coherencia rol <-> Regional: si el rol deja de ser capturista, la
       // Regional se limpia sola; enviarla explicitamente sigue siendo un error.
       let regionalFinal: number | null;
-      if (rolFinal === 'capturista') {
+      if (rolPrincipal === 'capturista') {
         const propuesta =
           'regional_id' in datos ? (datos.regional_id ?? null) : actual.regional_id;
         regionalFinal = await resolverRegional('capturista', propuesta);

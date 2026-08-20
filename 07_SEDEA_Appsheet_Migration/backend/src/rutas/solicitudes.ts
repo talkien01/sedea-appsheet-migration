@@ -66,11 +66,17 @@ const error403 = (codigo: string, mensaje: string) => new ErrorApi(403, codigo, 
 const error404 = (mensaje: string) => new ErrorApi(404, 'no_encontrado', mensaje);
 const error422 = (codigo: string, mensaje: string) => new ErrorApi(422, codigo, mensaje);
 
+/** Verifica si un usuario tiene un rol dentro de su lista multi-rol (ej. "capturista+ventanilla"). */
+function tieneRol(usuario: { rol: string }, rolBuscado: string): boolean {
+  return usuario.rol.split('+').includes(rolBuscado);
+}
+
 /** Guarda de rol con el codigo del contrato (12.6). */
 async function soloVentanilla(peticion: FastifyRequest, _respuesta: FastifyReply) {
   const usuario = peticion.usuario;
   if (!usuario) throw errorNoAutorizado();
-  if (usuario.rol !== 'ventanilla' && usuario.rol !== 'capturista' && usuario.rol !== 'admin') {
+  // Multi-rol: se permite si tiene 'ventanilla' O 'capturista' O 'admin'
+  if (!tieneRol(usuario, 'ventanilla') && !tieneRol(usuario, 'capturista') && !tieneRol(usuario, 'admin')) {
     throw error403('rol_no_autorizado', 'Tu rol no puede capturar solicitudes de apoyo.');
   }
 }

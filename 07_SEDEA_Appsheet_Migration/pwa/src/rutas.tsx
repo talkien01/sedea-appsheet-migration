@@ -25,6 +25,7 @@ import Usuarios from './pantallas/Usuarios';
 import Solicitudes from './pantallas/Solicitudes';
 import NuevaSolicitud from './pantallas/NuevaSolicitud';
 import DetalleSolicitud from './pantallas/DetalleSolicitud';
+import FolioEntrega from './componentes/FolioEntrega';
 import CambiarPassword from './pantallas/CambiarPassword';
 import SinPermiso from './pantallas/SinPermiso';
 import Catalogos from './pantallas/Catalogos';
@@ -37,7 +38,7 @@ const GESTION = ['admin', 'auditor', 'editor_datos'];
 // Administracion de usuarios: admin y editor de datos (D15).
 const USUARIOS = ['admin', 'editor_datos'];
 // Modulo de ventanilla: rol nuevo `ventanilla` y admin (D34).
-const VENTANILLA = ['ventanilla', 'admin'];
+const VENTANILLA = ['ventanilla', 'capturista', 'admin'];
 
 export default function Rutas() {
   return (
@@ -196,6 +197,14 @@ export default function Rutas() {
           element={
             <RutaProtegida roles={VENTANILLA}>
               <DetalleSolicitud />
+            </RutaProtegida>
+          }
+        />
+        <Route
+          path="/solicitudes/:id/folio"
+          element={
+            <RutaProtegida roles={VENTANILLA}>
+              <FolioEntrega />
             </RutaProtegida>
           }
         />

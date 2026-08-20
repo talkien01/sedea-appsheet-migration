@@ -198,3 +198,46 @@ export function IconoVacio(props: Props) {
     </Base>
   );
 }
+
+/** Desactivar / descartar (ojo tachado). */
+export function IconoOjoTachado(props: Props) {
+  return (
+    <Base {...props}>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M3 3l18 18" />
+    </Base>
+  );
+}
+
+/** Activar / reactivar / aprobar. */
+export function IconoCheck(props: Props) {
+  return (
+    <Base {...props}>
+      <path d="M4 12.5l5 5L20 6.5" />
+    </Base>
+  );
+}
+
+/** Quitar concepto. */
+export function IconoBasura(props: Props) {
+  return (
+    <Base {...props}>
+      <path d="M4 7h16" />
+      <path d="M9 7V5h6v2" />
+      <path d="M6 7l1 13h10l1-13" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </Base>
+  );
+}
+
+/** Copiar contrasena temporal. */
+export function IconoCopiar(props: Props) {
+  return (
+    <Base {...props}>
+      <path d="M9 9h10v10H9z" />
+      <path d="M5 15V5h10" />
+    </Base>
+  );
+}

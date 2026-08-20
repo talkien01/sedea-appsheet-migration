@@ -4,7 +4,7 @@
 
 .pantalla-catalogos {
   padding: var(--espacio-4);
-  max-width: 1400px;
+  max-width: none;
   margin: 0 auto;
 }
 
@@ -30,6 +30,7 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--espacio-4);
+  max-width: none;
 }
 
 @media (min-width: 1024px) {

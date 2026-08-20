@@ -15,6 +15,19 @@
   overflow-x: hidden;
 }
 
+@media (min-width: 1024px) {
+  .contenido { max-width: 1440px; padding: 20px 28px; }
+}
+
+@media (min-width: 1680px) {
+  .contenido { max-width: 1760px; }
+}
+
+/* Pantallas con tabla ancha: sin techo, el limite lo pone el viewport. */
+.contenido:has(.pantalla-ancha) {
+  max-width: none;
+}
+
 /* ------------------------------- Tarjeta --------------------------------- */
 
 .tarjeta {
@@ -185,11 +198,70 @@ button.peligro:hover:not(:disabled) {
   filter: brightness(1.15);
 }
 
+/* --------------------------- Boton de icono ------------------------------ */
+
+button.boton-icono,
+.boton-icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  flex: 0 0 auto;
+  background: var(--bg-elev-2);
+  color: var(--fg-muted);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+button.boton-icono:hover:not(:disabled) {
+  background: var(--bg-elev-3);
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+button.boton-icono.peligro {
+  background: var(--bg-elev-2);
+  color: var(--peligro);
+  border-color: var(--border-strong);
+}
+
+button.boton-icono.peligro:hover:not(:disabled) {
+  background: var(--peligro-bg);
+  color: var(--peligro);
+  border-color: var(--peligro);
+}
+
+button.boton-icono:active:not(:disabled) {
+  background: var(--bg-sunk);
+}
+
+button.boton-icono:disabled {
+  background: var(--bg-sunk);
+  color: var(--fg-subtle);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+
 .acciones {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 14px;
+}
+
+/* Acciones dentro de tabla y arbol: una sola linea, compactas. */
+td.acciones,
+.acciones.en-fila {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 0;
+  white-space: nowrap;
 }
 
 /* -------------------------------- Chips ---------------------------------- */
@@ -353,7 +425,7 @@ table {
 th,
 td {
   text-align: left;
-  padding: 10px 12px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -362,10 +434,19 @@ th {
   background: var(--bg-sunk);
   color: var(--fg);
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  padding: 8px 10px;
+}
+
+/* Celdas de texto largo: se permite el ajuste de linea (SPEC 17.6.4). */
+.celda-texto {
+  white-space: normal;
+  min-width: 24ch;
+  max-width: 46ch;
+  line-height: 1.35;
 }
 
 td {
@@ -1055,6 +1136,14 @@ input[type='radio'] {
     font-size: 15px;
   }
 
+  /* Objetivo tactil de 44px para los botones de icono. */
+  button.boton-icono,
+  .boton-icono {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+
   /* Objetivo tactil de 44px tambien para casillas y radios (S15.11.1). */
   input[type='checkbox'],
   input[type='radio'] {
@@ -1220,5 +1309,26 @@ input[type='radio'] {
 
   .indice-secciones {
     display: flex;
+  }
+}
+
+/* ============ Densidad de escritorio/tablet: >= 768px (Build 11) ========= */
+
+@media (min-width: 768px) {
+  button,
+  .boton {
+    min-height: 34px;
+    padding: 6px 14px;
+    font-size: 13px;
+  }
+
+  button.boton-icono {
+    padding: 0;
+    font-size: 0;
+  }
+
+  .boton-entrar {
+    min-height: 44px;
+    font-size: 14px;
   }
 }

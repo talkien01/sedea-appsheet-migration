@@ -20,6 +20,9 @@ const error404 = (codigo: string, mensaje: string) => new ErrorApi(404, codigo, 
 const error409 = (codigo: string, mensaje: string) => new ErrorApi(409, codigo, mensaje);
 const error422 = (codigo: string, mensaje: string) => new ErrorApi(422, codigo, mensaje);
 
+/** Tipos de persona aceptados en documentos_requeridos (F-13, criterio 479). */
+const TIPOS_PERSONA_VALIDOS = ['fisica', 'moral', 'grupo'];
+
 // =============================================================================
 // REGISTRO DE ENTIDADES (unica fuente de verdad)
 // =============================================================================
@@ -216,19 +219,20 @@ export async function crearEntidad(
   // Validar unicidad de requisito en documentos_requeridos
   if (entidad === 'documentos_requeridos') {
     const requisito = String(datos.requisito).trim();
-    const componentes = datos.componentes ? JSON.stringify(datos.componentes) : null;
-    const tiposPersona = datos.tipos_persona ? JSON.stringify(datos.tipos_persona) : null;
+    // F-13: los arreglos van como arreglos JS; node-pg los serializa a literal
+    // de Postgres ({A,B}). JSON.stringify producia "malformed array literal".
+    const componentes = (datos.componentes as string[] | undefined) ?? null;
+    const tiposPersona = (datos.tipos_persona as string[] | undefined) ?? null;
     const apoyoId = datos.apoyo_id ?? null;
     const proyectoId = datos.proyecto_id ?? null;
 
-    // F-13: Validar que no se especifiquen tanto apoyo_id como proyecto_id simultaneamente
-    if (apoyoId !== null && proyectoId !== null) {
-      throw error422('requisito_invalido', 'No se puede especificar tanto apoyo_id como proyecto_id.');
-    }
-
-    // F-13: Si componentes o tipos_persona estan presentes, debe haber un filtro (apoyo_id o proyecto_id)
-    if ((datos.componentes || datos.tipos_persona) && apoyoId === null && proyectoId === null) {
-      throw error422('requisito_invalido', 'El filtro requiere especificar apoyo_id o proyecto_id.');
+    // F-13: Validar los tipos de persona antes que cualquier otra regla
+    if (tiposPersona && tiposPersona.length > 0) {
+      for (const tp of tiposPersona) {
+        if (!TIPOS_PERSONA_VALIDOS.includes(tp)) {
+          throw error422('tipo_persona_invalido', `El tipo de persona "${tp}" no es valido.`);
+        }
+      }
     }
 
     // F-13: Validar que los componentes existen si se proporcionan
@@ -292,7 +296,8 @@ export async function crearEntidad(
     const valor = (datos as any)[campo];
     if (valor !== undefined && valor !== null) {
       columnas.push(campo);
-      valores.push(JSON.stringify(valor));
+      // F-13: node-pg convierte el arreglo JS al literal de Postgres.
+      valores.push(valor);
       marcadores.push(`$${idx++}`);
     }
   }
@@ -318,43 +323,14 @@ export async function crearEntidad(
     }
   }
 
-  // Campos especificos de documentos_requeridos
-  if (entidad === 'documentos_requeridos') {
-    if (datos.requisito !== undefined) {
-      columnas.push('requisito');
-      valores.push(datos.requisito);
-      marcadores.push(`$${idx++}`);
-    }
-    if (datos.orden !== undefined) {
-      columnas.push('orden');
-      valores.push(datos.orden);
-      marcadores.push(`$${idx++}`);
-    }
-    if (datos.proyecto_id !== undefined) {
-      columnas.push('proyecto_id');
-      valores.push(datos.proyecto_id ?? null);
-      marcadores.push(`$${idx++}`);
-    }
-    if (datos.apoyo_id !== undefined) {
-      columnas.push('apoyo_id');
-      valores.push(datos.apoyo_id ?? null);
-      marcadores.push(`$${idx++}`);
-    }
-    if (datos.apoyo_etiquetas !== undefined) {
-      columnas.push('apoyo_etiquetas');
-      valores.push(datos.apoyo_etiquetas ? JSON.stringify(datos.apoyo_etiquetas) : null);
-      marcadores.push(`$${idx++}`);
-    }
-    if (datos.apoyo_excluir_id !== undefined) {
-      columnas.push('apoyo_excluir_id');
-      valores.push(datos.apoyo_excluir_id ?? null);
-      marcadores.push(`$${idx++}`);
-    }
-    if (datos.apoyo_excluir_etiquetas !== undefined) {
-      columnas.push('apoyo_excluir_etiquetas');
-      valores.push(datos.apoyo_excluir_etiquetas ? JSON.stringify(datos.apoyo_excluir_etiquetas) : null);
-      marcadores.push(`$${idx++}`);
-    }
+  // Campos especificos de documentos_requeridos.
+  // F-13: orden/proyecto_id/apoyo_id/apoyo_excluir_id ya los agrega el bucle de
+  // camposEnteros y los arreglos el de camposArreglo; repetirlos aqui producia
+  // 'column "orden" specified more than once'. Solo falta `requisito`.
+  if (entidad === 'documentos_requeridos' && datos.requisito !== undefined) {
+    columnas.push('requisito');
+    valores.push(String(datos.requisito).trim());
+    marcadores.push(`$${idx++}`);
   }
 
   // activo siempre es TRUE al alta - va al final para coincidir con el orden de valores
@@ -459,9 +435,10 @@ export async function editarEntidad(
   for (const campo of def.camposArreglo) {
     if (datos[campo] !== undefined) {
       actualizaciones.push(`${campo} = $${idx}`);
-      valores.push(datos[campo] !== null ? JSON.stringify(datos[campo]) : null);
+      // F-13: arreglo JS directo; node-pg lo serializa a literal de Postgres.
+      valores.push(datos[campo] ?? null);
       const anteriorStr = actual[campo] ? JSON.stringify(actual[campo]) : null;
-      const nuevoStr = datos[campo] !== null ? JSON.stringify(datos[campo]) : null;
+      const nuevoStr = datos[campo] != null ? JSON.stringify(datos[campo]) : null;
       if (anteriorStr !== nuevoStr) {
         cambios[campo] = { anterior: actual[campo], nuevo: datos[campo] };
       }
@@ -492,19 +469,9 @@ export async function editarEntidad(
     }
   }
 
-  if (entidad === 'documentos_requeridos') {
-    for (const campo of ['requisito', 'orden', 'proyecto_id', 'apoyo_id', 'apoyo_etiquetas', 'apoyo_excluir_id', 'apoyo_excluir_etiquetas']) {
-      if (datos[campo] !== undefined) {
-        actualizaciones.push(`${campo} = $${idx}`);
-        const valor = (campo === 'orden') ? datos[campo] : (datos[campo] !== null && Array.isArray(datos[campo])) ? JSON.stringify(datos[campo]) : (datos[campo] ?? null);
-        valores.push(valor);
-        if (actual[campo] !== (datos[campo] ?? null)) {
-          cambios[campo] = { anterior: actual[campo], nuevo: datos[campo] ?? null };
-        }
-        idx++;
-      }
-    }
-  }
+  // F-13: documentos_requeridos no necesita bloque propio: `requisito` ya lo
+  // cubre camposTexto, los enteros camposEnteros y los arreglos camposArreglo.
+  // El bloque anterior repetia esas columnas y rompia el UPDATE.
 
   if (actualizaciones.length === 0) {
     throw error422('payload_invalido', 'No se envio ningun campo editable.');

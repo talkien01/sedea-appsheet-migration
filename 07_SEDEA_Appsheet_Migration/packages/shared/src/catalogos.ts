@@ -134,7 +134,8 @@ export const esquemaTipoApoyoEdicion = z.object({
 export const esquemaDocumentoRequeridoAlta = z.object({
   requisito: z.string().trim().min(3).max(300),
   componentes: z.array(z.string()).optional(),
-  tipos_persona: z.array(z.enum(['fisica', 'moral', 'grupo'])).optional(),
+  // F-13: validado en el servicio para devolver tipo_persona_invalido (479).
+  tipos_persona: z.array(z.string()).optional(),
   proyecto_id: z.number().int().positive().nullable().optional(),
   apoyo_id: z.number().int().positive().nullable().optional(),
   apoyo_etiquetas: z.array(z.string()).optional(),
@@ -146,7 +147,8 @@ export const esquemaDocumentoRequeridoAlta = z.object({
 export const esquemaDocumentoRequeridoEdicion = z.object({
   requisito: z.string().trim().min(3).max(300).optional(),
   componentes: z.array(z.string()).optional(),
-  tipos_persona: z.array(z.enum(['fisica', 'moral', 'grupo'])).optional(),
+  // F-13: validado en el servicio para devolver tipo_persona_invalido (479).
+  tipos_persona: z.array(z.string()).optional(),
   proyecto_id: z.number().int().positive().nullable().optional(),
   apoyo_id: z.number().int().positive().nullable().optional(),
   apoyo_etiquetas: z.array(z.string()).optional(),

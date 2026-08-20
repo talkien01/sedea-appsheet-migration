@@ -87,20 +87,35 @@ export function ventanillasPermitidas(
  * Fragmento SQL de aislamiento para las consultas de solicitudes (E43/E44).
  * Devuelve la condicion y los parametros a concatenar; para "todos" devuelve
  * una condicion siempre verdadera.
+ *
+ * `regionalId` es la Regional forzada del usuario (regionalForzada()). Si se
+ * da, el filtro de municipio se amplia con "o es de esa Regional", igual que
+ * hace municipioCapturable() para el alta y exigirAlcanceSobre() para el
+ * detalle: el listado no puede ser mas estricto que esas dos operaciones o el
+ * usuario captura solicitudes que luego no ve en su propia bandeja.
  */
 export function condicionAlcanceSql(
   alcance: AlcanceResuelto,
-  indiceInicial: number
+  indiceInicial: number,
+  regionalId?: number | null
 ): { sql: string; valores: unknown[] } {
   const partes: string[] = [];
   const valores: unknown[] = [];
   let indice = indiceInicial;
 
   if (alcance.municipios !== 'todos') {
-    // Un alcance vacio de verdad (lista sin ids) no deja ver nada.
-    partes.push(`s.ubi_municipio_id = ANY($${indice}::bigint[])`);
-    valores.push(alcance.municipios);
-    indice++;
+    if (regionalId !== null && regionalId !== undefined) {
+      partes.push(
+        `(s.ubi_municipio_id = ANY($${indice}::bigint[]) OR s.ubi_municipio_id IN (SELECT id FROM municipios WHERE regional_id = $${indice + 1}))`
+      );
+      valores.push(alcance.municipios, regionalId);
+      indice += 2;
+    } else {
+      // Un alcance vacio de verdad (lista sin ids) no deja ver nada.
+      partes.push(`s.ubi_municipio_id = ANY($${indice}::bigint[])`);
+      valores.push(alcance.municipios);
+      indice++;
+    }
   }
   if (alcance.componentes !== 'todos') {
     partes.push(`s.componente_id = ANY($${indice}::bigint[])`);

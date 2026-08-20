@@ -59,6 +59,8 @@ export function registrarManejadoresSesion(nuevos: ManejadoresSesion): void {
   manejadores = nuevos;
 }
 
+export { peticion };
+
 async function peticion<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
   const token = await tokenActual();
   const cabeceras = new Headers(opciones.headers);

@@ -24,6 +24,7 @@ import {
 } from '@sedea/shared';
 import { config } from '../config.js';
 import { ErrorApi, errorNoAutorizado } from '../plugins/errores.js';
+import { regionalForzada } from '../plugins/rbac.js';
 import { enTransaccion, bitacoraEnTransaccion } from '../servicios/promocion.js';
 import {
   dentroDeAlcance,
@@ -165,6 +166,15 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
     );
     const ventanillas = catalogos.ventanillas.filter((v) => permitidas.includes(Number(v.id)));
 
+    // El domicilio del solicitante (2.2) NO esta sujeto al alcance granular:
+    // ese restringe la UBICACION del predio (4.1), que es lo que valida E42.
+    // El capturista debe poder registrar el domicilio en cualquier municipio
+    // de SU Regional, no solo en los municipios de su alcance.
+    const regionalUsuario = regionalForzada(usuario);
+    const municipios_domicilio = regionalUsuario
+      ? catalogos.municipios.filter((m: any) => Number(m.regional_id) === regionalUsuario)
+      : catalogos.municipios;
+
     // Filtra modalidades: solo las de componentes dentro del alcance. Usa el
     // mismo helper que componentes/municipios, que ya trata 'todos' como
     // "sin restriccion" (un alcance 'todos' ve TODAS las modalidades).
@@ -180,6 +190,7 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       proyectos: catalogos.proyectos,
       ventanillas,
       municipios,
+      municipios_domicilio,
       tipos_apoyo: catalogos.tiposApoyo,
       tipos_persona: TIPOS_PERSONA.map((clave) => ({
         clave,

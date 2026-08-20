@@ -568,7 +568,7 @@ export default function NuevaSolicitud() {
         <h2>Paso 2 — Datos del solicitante</h2>
         <SeccionSolicitante
           valores={solicitante}
-          municipios={catalogos?.municipios ?? []}
+          municipios={catalogos?.municipios_domicilio ?? catalogos?.municipios ?? []}
           cambiar={cambiarSolicitante}
         />
       </div>

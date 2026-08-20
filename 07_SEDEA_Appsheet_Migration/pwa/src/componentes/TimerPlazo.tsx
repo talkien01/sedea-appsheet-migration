@@ -1,7 +1,7 @@
 // Timer de plazo para ingreso de solicitudes (Build 12).
 // Muestra días restantes para el cierre del plazo.
 import { useEffect, useState } from 'react';
-import { api } from '../api/cliente';
+import { peticion } from '../api/cliente';
 
 interface PlazoRespuesta {
   activo: boolean;
@@ -13,7 +13,7 @@ export default function TimerPlazo() {
   const [plazo, setPlazo] = useState<PlazoRespuesta | null>(null);
 
   useEffect(() => {
-    api.get('/api/configuracion/plazo-solicitudes')
+    peticion<PlazoRespuesta>('/configuracion/plazo-solicitudes')
       .then(data => setPlazo(data))
       .catch(() => setPlazo({ activo: false }));
   }, []);

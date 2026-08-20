@@ -748,6 +748,7 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
 
     const { data, total } = await listarSolicitudes({
       alcance,
+      regional_id: regionalForzada(usuario),
       q: q.q || null,
       componente_id: q.componente_id ? Number(q.componente_id) : null,
       municipio_id: q.municipio_id ? Number(q.municipio_id) : null,

@@ -105,6 +105,7 @@ export async function tiposApoyoActivos(ids: number[]) {
 /** Listado paginado con el aislamiento por alcance aplicado en SQL (E43). */
 export async function listarSolicitudes(params: {
   alcance: AlcanceResuelto;
+  regional_id: number | null;
   q: string | null;
   componente_id: number | null;
   municipio_id: number | null;
@@ -118,7 +119,7 @@ export async function listarSolicitudes(params: {
   const valores: unknown[] = [];
   let i = 1;
 
-  const alcance = condicionAlcanceSql(params.alcance, i);
+  const alcance = condicionAlcanceSql(params.alcance, i, params.regional_id);
   condiciones.push(alcance.sql);
   valores.push(...alcance.valores);
   i += alcance.valores.length;

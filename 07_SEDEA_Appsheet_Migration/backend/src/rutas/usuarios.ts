@@ -154,14 +154,13 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
       if (datos.rol) exigirRolAdministrable(actor.rol, datos.rol);
 
       const rolFinal = datos.rol ?? actual.rol;
-      // Multi-rol: se considera 'capturista' si el rol principal (primero) es 'capturista'
-      // o si la lista contiene 'capturista'. Para efectos de Regional, el rol principal manda.
-      const rolPrincipal = rolFinal.split('+')[0];
+      // Multi-rol: se considera que requiere Regional si contiene 'capturista' en la lista
+      const tieneRolCapturista = rolFinal.split('+').includes('capturista');
 
       // Coherencia rol <-> Regional: si el rol deja de ser capturista, la
       // Regional se limpia sola; enviarla explicitamente sigue siendo un error.
       let regionalFinal: number | null;
-      if (rolPrincipal === 'capturista') {
+      if (tieneRolCapturista) {
         const propuesta =
           'regional_id' in datos ? (datos.regional_id ?? null) : actual.regional_id;
         regionalFinal = await resolverRegional('capturista', propuesta);

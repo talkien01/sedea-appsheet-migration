@@ -67,9 +67,10 @@ export default function FormUsuario({
 
   const [nombreAcceso, setNombreAcceso] = useState(usuario?.usuario ?? '');
   const [nombreCompleto, setNombreCompleto] = useState(usuario?.nombre_completo ?? '');
-  // Soporte multi-rol: si el usuario tiene roles en BD, se muestran todos;
-  // si no, default a capturista. El rol "principal" es el primero de la lista.
-  const [roles, setRoles] = useState<string[]>(usuario?.rol ? [usuario.rol] : ['capturista']);
+  // Soporte multi-rol: separar por '+' si viene de BD (ej. "capturista+ventanilla")
+  const [roles, setRoles] = useState<string[]>(
+    usuario?.rol ? usuario.rol.split('+') : ['capturista']
+  );
   const [regionalId, setRegionalId] = useState<string>(
     usuario?.regional_id ? String(usuario.regional_id) : ''
   );

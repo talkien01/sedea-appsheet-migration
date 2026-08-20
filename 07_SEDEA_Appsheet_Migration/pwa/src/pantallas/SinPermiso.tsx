@@ -4,7 +4,7 @@ import { IconoCandado } from '../componentes/Iconos';
 
 export default function SinPermiso() {
   return (
-    <div className="pantalla-rejilla">
+    <div className="pantalla-rejilla" data-testid="pantalla-sin-permiso">
       <div className="tarjeta login-caja" style={{ textAlign: 'center' }}>
         <IconoCandado tamano={48} style={{ color: 'var(--fg-subtle)' }} />
         <h1>No tienes permiso para ver esta sección.</h1>

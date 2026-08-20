@@ -2,7 +2,6 @@
 import type { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useSesion } from '../App';
-import SinPermiso from '../pantallas/SinPermiso';
 
 interface Props {
   children: ReactNode;
@@ -32,8 +31,10 @@ export default function RutaProtegida({ children, roles, permiteCambioPendiente 
   }
 
   // El backend tambien devuelve 403; esta comprobacion es solo de experiencia de uso.
+  // F-19: se redirige a /sin-permiso (no se pinta en sitio) para que la URL refleje
+  // el rechazo cuando se navega directo a una ruta restringida.
   if (roles && !roles.includes(perfil.rol)) {
-    return <SinPermiso />;
+    return <Navigate to="/sin-permiso" replace />;
   }
 
   return <>{children}</>;

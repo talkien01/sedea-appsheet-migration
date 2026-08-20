@@ -113,8 +113,29 @@ export async function listarEntidad(opts: {
   const offset = (pagina - 1) * porPagina;
 
   valores.push(porPagina, offset);
+
+  // F-20 (criterio 468): documentos_requeridos entrega ademas las claves
+  // resueltas de sus FKs (apoyo_clave, apoyo_excluir_clave, proyecto_clave),
+  // porque en la UI y en el rubric se leen por clave, no por id.
+  const seleccion =
+    opts.entidad === 'documentos_requeridos'
+      ? `t.*,
+         ap.clave  AS apoyo_clave,
+         apx.clave AS apoyo_excluir_clave,
+         pr.clave  AS proyecto_clave`
+      : 't.*';
+  const joins =
+    opts.entidad === 'documentos_requeridos'
+      ? `LEFT JOIN tipos_apoyo ap  ON ap.id  = t.apoyo_id
+         LEFT JOIN tipos_apoyo apx ON apx.id = t.apoyo_excluir_id
+         LEFT JOIN proyectos   pr  ON pr.id  = t.proyecto_id`
+      : '';
+  const dondeAlias = donde.replace(/\b(activo|requisito|clave|nombre)\b/g, 't.$1');
+  const ordenAlias = ordenSql.replace(/\b(orden|requisito|clave)\b/g, 't.$1');
+
   const data = await consultar<any>(
-    `SELECT * FROM ${tabla} ${donde} ORDER BY ${ordenSql} LIMIT $${i} OFFSET $${i + 1}`,
+    `SELECT ${seleccion} FROM ${tabla} t ${joins} ${dondeAlias}
+     ORDER BY ${ordenAlias} LIMIT $${i} OFFSET $${i + 1}`,
     valores
   );
 

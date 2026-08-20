@@ -326,37 +326,37 @@ export const api = {
   // ------------------------------------------------------------------------
   async catalogosArbol(parametros?: URLSearchParams): Promise<any> {
     const qs = parametros ? `?${parametros.toString()}` : '';
-    return peticion(`/api/admin/catalogos/arbol${qs}`);
+    return peticion(`/admin/catalogos/arbol${qs}`);
   },
 
   async catalogosEntidad(entidad: string, parametros?: URLSearchParams): Promise<any> {
     const qs = parametros ? `?${parametros.toString()}` : '';
-    return peticion(`/api/admin/catalogos/${entidad}${qs}`);
+    return peticion(`/admin/catalogos/${entidad}${qs}`);
   },
 
   async crearCatalogo(entidad: string, datos: Record<string, unknown>): Promise<any> {
-    return peticion(`/api/admin/catalogos/${entidad}`, {
+    return peticion(`/admin/catalogos/${entidad}`, {
       method: 'POST',
       body: JSON.stringify(datos)
     });
   },
 
   async editarCatalogo(entidad: string, id: number, datos: Record<string, unknown>): Promise<any> {
-    return peticion(`/api/admin/catalogos/${entidad}/${id}`, {
+    return peticion(`/admin/catalogos/${entidad}/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(datos)
     });
   },
 
   async cambiarEstadoCatalogo(entidad: string, id: number, activo: boolean): Promise<any> {
-    return peticion(`/api/admin/catalogos/${entidad}/${id}/estado`, {
+    return peticion(`/admin/catalogos/${entidad}/${id}/estado`, {
       method: 'POST',
       body: JSON.stringify({ activo })
     });
   },
 
   async catalogosReferencias(): Promise<any> {
-    return peticion('/api/admin/catalogos/referencias');
+    return peticion('/admin/catalogos/referencias');
   }
 };
 

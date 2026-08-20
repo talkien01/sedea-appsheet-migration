@@ -9,7 +9,6 @@ interface Props {
   referencias: any | null;
   guardando: boolean;
   errorApi: string | null;
-  exito: string | null;
   alGuardar: (datos: Record<string, unknown>) => void;
   alCancelar: () => void;
 }
@@ -21,7 +20,6 @@ export default function FormCatalogo({
   referencias,
   guardando,
   errorApi,
-  exito,
   alGuardar,
   alCancelar
 }: Props) {
@@ -78,12 +76,6 @@ export default function FormCatalogo({
       {errorApi && (
         <div className="mensaje error" role="alert" data-testid="error-catalogo">
           {errorApi}
-        </div>
-      )}
-
-      {exito && (
-        <div className="mensaje exito" role="status" data-testid="toast-exito">
-          {exito}
         </div>
       )}
 

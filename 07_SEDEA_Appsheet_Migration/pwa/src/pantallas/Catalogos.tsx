@@ -25,6 +25,40 @@ interface Referencias {
   tipos_persona: any[];
 }
 
+/**
+ * F-23: cuenta los hijos activos de un nodo del arbol para avisarle al usuario
+ * que la baja logica no baja en cascada (D46).
+ */
+function contarHijosActivos(
+  arbol: ArbolDatos | null,
+  entidad: NombreEntidad,
+  id: number
+): number {
+  if (!arbol) return 0;
+  const activos = (lista: any[] | undefined) => (lista ?? []).filter((x) => x.activo);
+
+  if (entidad === 'programas') {
+    const prog = arbol.programas.find((p) => p.id === id);
+    return activos(prog?.subprogramas).length;
+  }
+
+  if (entidad === 'componentes') {
+    const comp = arbol.componentes.find((c) => c.id === id);
+    const modalidades = activos(comp?.modalidades);
+    const proyectos = modalidades.reduce((n, m) => n + activos(m.proyectos).length, 0);
+    return modalidades.length + proyectos;
+  }
+
+  if (entidad === 'modalidades') {
+    for (const comp of arbol.componentes) {
+      const mod = (comp.modalidades ?? []).find((m: any) => m.id === id);
+      if (mod) return activos(mod.proyectos).length;
+    }
+  }
+
+  return 0;
+}
+
 export default function Catalogos() {
   const { perfil } = useSesion();
   const enLinea = useEstadoRed();
@@ -48,6 +82,10 @@ export default function Catalogos() {
   const [guardando, setGuardando] = useState(false);
   const [errorForm, setErrorForm] = useState<string | null>(null);
   const [exito, setExito] = useState<string | null>(null);
+  // F-23: baja pendiente de confirmar (entidad + id + conteo de hijos activos).
+  const [baja, setBaja] = useState<{ entidad: NombreEntidad; id: number; hijos: number } | null>(
+    null
+  );
 
   const cargarArbol = useCallback(async () => {
     setCargando(true);
@@ -109,16 +147,22 @@ export default function Catalogos() {
     setErrorForm(null);
     setExito(null);
     try {
+      let mensaje: string;
       if (modoForm === 'alta') {
         await (api as any).crearCatalogo(entidadSeleccionada!, datos);
-        setExito('Registro creado correctamente.');
+        mensaje = 'Registro creado correctamente.';
       } else {
         await (api as any).editarCatalogo(entidadSeleccionada!, registroSeleccionado.id, datos);
-        setExito('Registro actualizado correctamente.');
+        mensaje = 'Registro actualizado correctamente.';
       }
       await cargarArbol();
       await cargarReferencias();
-      cerrarForm();
+      // F-24: el toast vive en la pantalla, no en el formulario, para que siga
+      // visible despues de cerrar el form. cerrarForm() limpiaria `exito`, asi
+      // que aqui solo se cierra el formulario y luego se anuncia el exito.
+      setModoForm(null);
+      setErrorForm(null);
+      setExito(mensaje);
     } catch (fallo) {
       setErrorForm((fallo as Error).message);
     } finally {
@@ -126,13 +170,30 @@ export default function Catalogos() {
     }
   };
 
-  const cambiarEstado = async (entidad: NombreEntidad, id: number, activo: boolean) => {
+  const aplicarEstado = async (entidad: NombreEntidad, id: number, activo: boolean) => {
     try {
       await (api as any).cambiarEstadoCatalogo(entidad, id, activo);
       await cargarArbol();
     } catch (fallo) {
       setError((fallo as Error).message);
     }
+  };
+
+  // F-23 (criterio 496): desactivar es baja logica SIN cascada, asi que antes de
+  // ejecutarla se confirma y se informa cuantos hijos activos quedaran vivos.
+  const cambiarEstado = (entidad: NombreEntidad, id: number, activo: boolean) => {
+    if (activo) {
+      void aplicarEstado(entidad, id, true);
+      return;
+    }
+    setBaja({ entidad, id, hijos: contarHijosActivos(arbol, entidad, id) });
+  };
+
+  const confirmarBaja = async () => {
+    if (!baja) return;
+    const { entidad, id } = baja;
+    setBaja(null);
+    await aplicarEstado(entidad, id, false);
   };
 
   if (!enLinea) {
@@ -170,9 +231,46 @@ export default function Catalogos() {
         </p>
       </header>
 
+      {exito && (
+        <div className="mensaje exito" role="status" data-testid="toast-exito">
+          {exito}
+        </div>
+      )}
+
       {error && (
         <div className="mensaje error" role="alert" data-testid="error-catalogos">
           {error.includes('rol') ? 'Tu cuenta no cuenta con el rol necesario para administrar catálogos.' : error}
+        </div>
+      )}
+
+      {baja && (
+        <div className="modal-fondo" role="dialog" aria-modal="true" data-testid="modal-confirmar-baja">
+          <div className="tarjeta modal">
+            <h2>Desactivar registro</h2>
+            <p>
+              El registro quedará desactivado y dejará de ofrecerse en solicitudes nuevas. Las
+              solicitudes ya capturadas no se modifican.
+            </p>
+            {baja.hijos > 0 && (
+              <p className="mensaje aviso" data-testid="texto-hijos-activos">
+                Este nodo tiene {baja.hijos} hijo(s) activo(s). No se desactivarán: la baja no
+                aplica en cascada y seguirán activos hasta que los desactives uno por uno.
+              </p>
+            )}
+            <div className="campo acciones">
+              <button
+                type="button"
+                className="secundario"
+                data-testid="btn-cancelar-baja"
+                onClick={() => setBaja(null)}
+              >
+                Cancelar
+              </button>
+              <button type="button" data-testid="btn-confirmar-baja" onClick={() => void confirmarBaja()}>
+                Desactivar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -197,7 +295,6 @@ export default function Catalogos() {
               referencias={referencias}
               guardando={guardando}
               errorApi={errorForm}
-              exito={exito}
               alGuardar={guardar}
               alCancelar={cerrarForm}
             />

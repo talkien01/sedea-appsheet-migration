@@ -33,8 +33,13 @@ export default function RutaProtegida({ children, roles, permiteCambioPendiente 
   // El backend tambien devuelve 403; esta comprobacion es solo de experiencia de uso.
   // F-19: se redirige a /sin-permiso (no se pinta en sitio) para que la URL refleje
   // el rechazo cuando se navega directo a una ruta restringida.
-  if (roles && !roles.includes(perfil.rol)) {
-    return <Navigate to="/sin-permiso" replace />;
+  // Multi-rol: se permite si el usuario tiene AL MENOS uno de los roles requeridos.
+  if (roles) {
+    const rolesUsuario = perfil.rol.split('+');
+    const tieneAlguno = roles.some(r => rolesUsuario.includes(r));
+    if (!tieneAlguno) {
+      return <Navigate to="/sin-permiso" replace />;
+    }
   }
 
   return <>{children}</>;

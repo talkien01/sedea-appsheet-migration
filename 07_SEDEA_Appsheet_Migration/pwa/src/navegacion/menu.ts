@@ -116,10 +116,16 @@ export const DESTINOS: Destino[] = [
 /** Orden de los encabezados de grupo en la barra lateral. */
 export const GRUPOS: Grupo[] = ['Campo', 'Gestión', 'Ventanilla', 'Administración'];
 
-/** Destinos visibles para un rol, en el orden del catalogo. */
+/** Verifica si un multi-rol (ej. "capturista+ventanilla") tiene al menos uno de los roles requeridos. */
+function tieneAlgunRol(multiRol: string, rolesRequeridos: string[]): boolean {
+  const rolesUsuario = multiRol.split('+');
+  return rolesRequeridos.some(r => rolesUsuario.includes(r));
+}
+
+/** Destinos visibles para un rol, en el orden del catalogo. Soporta multi-rol. */
 export function destinosDeRol(rol: string | null | undefined): Destino[] {
   if (!rol) return [];
-  return DESTINOS.filter((d) => d.roles.includes(rol));
+  return DESTINOS.filter((d) => tieneAlgunRol(rol, d.roles));
 }
 
 /** Agrupa los destinos del rol; los grupos vacios no se devuelven. */

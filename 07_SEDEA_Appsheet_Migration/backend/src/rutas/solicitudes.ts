@@ -20,6 +20,7 @@ import {
   esquemaDocumentosRequeridos,
   normalizarTelefono,
   type EntradaCrearSolicitud,
+  type PerfilUsuario,
   type TipoPersona
 } from '@sedea/shared';
 import { config } from '../config.js';
@@ -123,14 +124,38 @@ function traducirFalloZod(error: ZodError): ErrorApi {
   return error422('payload_invalido', 'Datos inválidos.');
 }
 
+/**
+ * El municipio del predio (§4.1) se captura sobre toda la Regional del usuario,
+ * no solo sobre su alcance granular (`usuario_municipios`). Por eso un
+ * municipio es valido si esta en el alcance granular O es de la Regional del
+ * usuario. El alcance granular sigue mandando en filtros y vistas de consulta.
+ */
+function municipioCapturable(
+  usuario: PerfilUsuario,
+  alcance: AlcanceResuelto,
+  municipio: { id: number | string; regional_id: number | string | null }
+): boolean {
+  if (dentroDeAlcance(alcance.municipios, Number(municipio.id))) return true;
+  const regionalUsuario = regionalForzada(usuario);
+  return regionalUsuario !== null && Number(municipio.regional_id) === regionalUsuario;
+}
+
 /** Comprueba el alcance del usuario sobre una solicitud ya guardada. */
 function exigirAlcanceSobre(
+  usuario: PerfilUsuario,
   alcance: AlcanceResuelto,
-  solicitud: { ubi_municipio_id: number | string; componente_id: number | string }
+  solicitud: {
+    ubi_municipio_id: number | string;
+    ubi_municipio_regional_id?: number | string | null;
+    componente_id: number | string;
+  }
 ): void {
-  const municipio = Number(solicitud.ubi_municipio_id);
+  const municipio = {
+    id: solicitud.ubi_municipio_id,
+    regional_id: solicitud.ubi_municipio_regional_id ?? null
+  };
   const componente = Number(solicitud.componente_id);
-  if (!dentroDeAlcance(alcance.municipios, municipio) ||
+  if (!municipioCapturable(usuario, alcance, municipio) ||
       !dentroDeAlcance(alcance.componentes, componente)) {
     throw error403('fuera_de_alcance', 'Esta solicitud está fuera de tu alcance asignado.');
   }
@@ -166,12 +191,12 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
     );
     const ventanillas = catalogos.ventanillas.filter((v) => permitidas.includes(Number(v.id)));
 
-    // El domicilio del solicitante (2.2) NO esta sujeto al alcance granular:
-    // ese restringe la UBICACION del predio (4.1), que es lo que valida E42.
-    // El capturista debe poder registrar el domicilio en cualquier municipio
-    // de SU Regional, no solo en los municipios de su alcance.
+    // La CAPTURA de Nueva Solicitud (domicilio 2.2 y ubicacion del predio 4.1)
+    // NO esta sujeta al alcance granular: el capturista debe poder registrar en
+    // cualquier municipio de SU Regional. El alcance granular sigue recortando
+    // `municipios`, que alimenta filtros y vistas de consulta.
     const regionalUsuario = regionalForzada(usuario);
-    const municipios_domicilio = regionalUsuario
+    const municipios_captura = regionalUsuario
       ? catalogos.municipios.filter((m: any) => Number(m.regional_id) === regionalUsuario)
       : catalogos.municipios;
 
@@ -190,7 +215,7 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       proyectos: catalogos.proyectos,
       ventanillas,
       municipios,
-      municipios_domicilio,
+      municipios_captura,
       tipos_apoyo: catalogos.tiposApoyo,
       tipos_persona: TIPOS_PERSONA.map((clave) => ({
         clave,
@@ -368,8 +393,11 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
     // --- Alcance (D36). El admin nunca recibe 403 por alcance --------------
     const alcance = await leerAlcance(usuario);
     if (usuario.rol !== 'admin') {
-      if (!dentroDeAlcance(alcance.municipios, Number(municipioUbicacion.id))) {
-        throw error403('municipio_fuera_de_alcance', 'No tienes asignado este municipio.');
+      if (!municipioCapturable(usuario, alcance, municipioUbicacion)) {
+        throw error403(
+          'municipio_fuera_de_alcance',
+          'El municipio del predio no pertenece a tu Dirección Regional.'
+        );
       }
       if (!dentroDeAlcance(alcance.componentes, Number(componente.id))) {
         throw error403('componente_fuera_de_alcance', 'No tienes asignado este componente.');
@@ -754,7 +782,7 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       if (!solicitud) throw error404('La solicitud no existe.');
 
       if (usuario.rol !== 'admin') {
-        exigirAlcanceSobre(await leerAlcance(usuario), solicitud);
+        exigirAlcanceSobre(usuario, await leerAlcance(usuario), solicitud);
       }
 
       return respuesta.status(200).send({
@@ -788,7 +816,7 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       const solicitud = await obtenerSolicitud(id);
       if (!solicitud) throw error404('La solicitud no existe.');
       if (usuario.rol !== 'admin') {
-        exigirAlcanceSobre(await leerAlcance(usuario), solicitud);
+        exigirAlcanceSobre(usuario, await leerAlcance(usuario), solicitud);
       }
 
       const documento = await documentoDeSolicitud(id, docId);
@@ -847,7 +875,7 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       const solicitud = await obtenerSolicitud(id);
       if (!solicitud) throw error404('La solicitud no existe.');
       if (usuario.rol !== 'admin') {
-        exigirAlcanceSobre(await leerAlcance(usuario), solicitud);
+        exigirAlcanceSobre(usuario, await leerAlcance(usuario), solicitud);
       }
       const documento = await documentoDeSolicitud(id, docId);
       if (!documento) throw error404('El documento no pertenece a esta solicitud.');

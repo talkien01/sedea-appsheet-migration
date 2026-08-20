@@ -143,7 +143,8 @@ export default function NuevaSolicitud() {
         if (datos.proyectos.length === 1) setProyectoId(String(datos.proyectos[0].id));
         if (datos.componentes.length === 1) setComponenteId(String(datos.componentes[0].id));
         if (datos.ventanillas.length === 1) setVentanillaId(String(datos.ventanillas[0].id));
-        if (datos.municipios.length === 1) setUbiMunicipioId(String(datos.municipios[0].id));
+        const municipiosPredio = datos.municipios_captura ?? datos.municipios;
+        if (municipiosPredio.length === 1) setUbiMunicipioId(String(municipiosPredio[0].id));
       } catch {
         setError('No se pudieron cargar los catálogos.');
       }
@@ -569,7 +570,7 @@ export default function NuevaSolicitud() {
         <h2>Paso 2 — Datos del solicitante</h2>
         <SeccionSolicitante
           valores={solicitante}
-          municipios={catalogos?.municipios_domicilio ?? catalogos?.municipios ?? []}
+          municipios={catalogos?.municipios_captura ?? catalogos?.municipios ?? []}
           cambiar={cambiarSolicitante}
         />
       </div>
@@ -680,7 +681,7 @@ export default function NuevaSolicitud() {
               onChange={(e) => setUbiMunicipioId(e.target.value)}
             >
               <option value="">Selecciona un municipio</option>
-              {(catalogos?.municipios ?? []).map((m) => (
+              {(catalogos?.municipios_captura ?? catalogos?.municipios ?? []).map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.nombre}
                 </option>

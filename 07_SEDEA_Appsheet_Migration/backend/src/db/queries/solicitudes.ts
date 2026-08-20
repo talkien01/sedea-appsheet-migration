@@ -82,8 +82,13 @@ export async function catalogosDelAlta(datos: {
 
 /** Municipio activo con sus siglas de folio. */
 export async function municipioActivo(id: number) {
-  return consultarUna<{ id: number; nombre: string; siglas_folio: string | null }>(
-    'SELECT id, nombre, siglas_folio FROM municipios WHERE id = $1 AND activo',
+  return consultarUna<{
+    id: number;
+    nombre: string;
+    siglas_folio: string | null;
+    regional_id: number;
+  }>(
+    'SELECT id, nombre, siglas_folio, regional_id FROM municipios WHERE id = $1 AND activo',
     [id]
   );
 }
@@ -207,6 +212,7 @@ export async function obtenerSolicitud(id: number) {
             v.clave AS ventanilla, v.nombre AS ventanilla_nombre,
             pr.nombre AS programa_nombre, sp.nombre AS subprograma_nombre,
             mu.nombre AS ubi_municipio, md.nombre AS dom_municipio,
+            mu.regional_id AS ubi_municipio_regional_id,
             u.usuario AS capturado_por_usuario,
             m.clave AS modalidad, m.nombre AS modalidad_nombre
        FROM solicitudes s

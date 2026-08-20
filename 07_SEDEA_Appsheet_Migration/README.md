@@ -377,22 +377,26 @@ aparece el bloque de alcance con las casillas de municipios y componentes.
 
 El alcance **se aplica en el backend**, no solo en la interfaz:
 
-- Al guardar una solicitud, el municipio de la *ubicación del apoyo*, el
-  componente y la ventanilla deben estar dentro del alcance; si no, la API
-  responde **403** (`municipio_fuera_de_alcance`, `componente_fuera_de_alcance`,
+- Al guardar una solicitud, el componente y la ventanilla deben estar dentro del
+  alcance y el municipio de la *ubicación del apoyo* debe pertenecer a la
+  Regional del usuario; si no, la API responde **403**
+  (`municipio_fuera_de_alcance`, `componente_fuera_de_alcance`,
   `ventanilla_fuera_de_alcance`).
-- El listado y el detalle filtran **en SQL**: un usuario de ventanilla solo ve
-  las solicitudes de su alcance.
+- El listado filtra **en SQL**: un usuario de ventanilla solo ve las solicitudes
+  de su alcance granular.
 
-> **El alcance restringe el predio, no el domicilio.** El municipio de la
-> sección 2.2 (dónde vive el solicitante) **no** está sujeto al alcance
-> granular: su desplegable ofrece **todos los municipios de la Regional del
-> usuario**. Un productor puede vivir en un municipio y tener el predio en
-> otro, y el capturista tiene que poder registrar ambos. Quien manda sobre el
-> alcance es la *ubicación del apoyo* (4.1), que es lo único que la API valida.
-> La respuesta de `GET /api/solicitudes/catalogos` trae las dos listas por
-> separado: `municipios` (predio, recortada al alcance) y `municipios_domicilio`
-> (domicilio, todos los de la Regional).
+> **El alcance granular no restringe la captura de municipios.** Los dos
+> desplegables de municipio de *Nueva solicitud* —el domicilio del solicitante
+> (2.2) y la ubicación del predio o proyecto (4.1)— ofrecen **todos los
+> municipios de la Regional del usuario**, no solo los de su alcance granular
+> (`usuario_municipios`). Un capturista de una ventanilla atiende a productores
+> de toda su Regional, y tanto el domicilio como el predio pueden caer en
+> cualquiera de sus municipios. La API valida en el alta que el municipio del
+> predio sea de la Regional del usuario: un municipio de otra Regional sigue
+> devolviendo 403. La respuesta de `GET /api/solicitudes/catalogos` trae las dos
+> listas por separado: `municipios_captura` (los de la Regional, para el
+> formulario de alta) y `municipios` (recortada al alcance granular, para los
+> filtros y las vistas de consulta).
 
 ### El folio oficial
 

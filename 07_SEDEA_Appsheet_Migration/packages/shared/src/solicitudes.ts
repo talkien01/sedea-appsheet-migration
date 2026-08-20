@@ -276,11 +276,13 @@ export interface CatalogosVentanilla {
   ventanillas: VentanillaOpcion[];
   municipios: MunicipioVentanilla[];
   /**
-   * Municipios para el DOMICILIO del solicitante (§2.2). El domicilio no esta
-   * sujeto al alcance granular (ese controla la UBICACION del predio, §4.1):
-   * son todos los municipios de la Regional del usuario.
+   * Municipios para la CAPTURA de Nueva Solicitud: domicilio del solicitante
+   * (§2.2) y ubicacion del predio o proyecto (§4.1). La captura no esta sujeta
+   * al alcance granular (`usuario_municipios`): son todos los municipios de la
+   * Regional del usuario. El alcance granular sigue recortando `municipios`,
+   * que alimenta los filtros y las vistas de consulta.
    */
-  municipios_domicilio: MunicipioVentanilla[];
+  municipios_captura: MunicipioVentanilla[];
   tipos_apoyo: { id: number; clave: string; nombre: string; unidad_medida: string | null }[];
   tipos_persona: { clave: TipoPersona; nombre: string }[];
   alcance: AlcanceUsuario;

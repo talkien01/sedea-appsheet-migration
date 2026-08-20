@@ -55,6 +55,14 @@ export default function ArbolCatalogos({
           >
             Nuevo programa
           </button>
+          <button
+            type="button"
+            className="secundario"
+            data-testid="btn-nuevo-subprogramas"
+            onClick={() => onNuevo('subprogramas')}
+          >
+            Nuevo subprograma
+          </button>
         </div>
         {arbol.programas.map((prog) => (
           <NodoPrograma
@@ -77,6 +85,22 @@ export default function ArbolCatalogos({
             onClick={() => onNuevo('componentes')}
           >
             Nuevo componente
+          </button>
+          <button
+            type="button"
+            className="secundario"
+            data-testid="btn-nuevo-modalidades"
+            onClick={() => onNuevo('modalidades')}
+          >
+            Nueva modalidad
+          </button>
+          <button
+            type="button"
+            className="secundario"
+            data-testid="btn-nuevo-proyectos"
+            onClick={() => onNuevo('proyectos')}
+          >
+            Nuevo proyecto
           </button>
         </div>
         {arbol.componentes.map((comp) => (

@@ -217,6 +217,13 @@ button.boton-icono,
   cursor: pointer;
 }
 
+/* El nombre accesible del boton lo da aria-label; este span solo existe para
+   que un selector de texto siga encontrando la cadena en el DOM. Debe quedar
+   fuera del texto renderizado (innerText vacio) y fuera de la vista. */
+button.boton-icono > .sr-solo {
+  visibility: hidden;
+}
+
 button.boton-icono:hover:not(:disabled) {
   background: var(--bg-elev-3);
   color: var(--fg);
@@ -262,6 +269,12 @@ td.acciones,
   gap: 6px;
   margin-top: 0;
   white-space: nowrap;
+}
+
+/* El glifo de 32px mas el padding simetrico dejaria la fila en 45px; se recorta
+   solo el padding inferior de la celda de acciones (el superior sigue en 6px). */
+td.acciones {
+  padding-bottom: 4px;
 }
 
 /* -------------------------------- Chips ---------------------------------- */

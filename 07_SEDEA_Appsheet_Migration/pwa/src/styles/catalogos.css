@@ -139,19 +139,22 @@
   overflow-x: auto;
 }
 
-table {
+/* Build 11: estas reglas estaban SIN acotar y pisaban th/td de toda la app
+   (con var(--espacio-2), token inexistente => padding 0). Se acotan a la
+   pantalla de catalogos; la densidad global la gobierna componentes.css. */
+.pantalla-catalogos table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
 }
 
-th, td {
-  padding: var(--espacio-2);
+.pantalla-catalogos th,
+.pantalla-catalogos td {
   text-align: left;
   border-bottom: 1px solid var(--border);
 }
 
-th {
+.pantalla-catalogos th {
   background: var(--bg-sunk);
   font-weight: 600;
 }

@@ -70,7 +70,7 @@ const error422 = (codigo: string, mensaje: string) => new ErrorApi(422, codigo, 
 async function soloVentanilla(peticion: FastifyRequest, _respuesta: FastifyReply) {
   const usuario = peticion.usuario;
   if (!usuario) throw errorNoAutorizado();
-  if (usuario.rol !== 'ventanilla' && usuario.rol !== 'admin') {
+  if (usuario.rol !== 'ventanilla' && usuario.rol !== 'capturista' && usuario.rol !== 'admin') {
     throw error403('rol_no_autorizado', 'Tu rol no puede capturar solicitudes de apoyo.');
   }
 }

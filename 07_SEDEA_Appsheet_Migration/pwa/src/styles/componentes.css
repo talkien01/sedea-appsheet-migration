@@ -575,6 +575,31 @@ td img.miniatura {
   content: '\2713';
 }
 
+/* Timer de plazo (Build 12) */
+.timer-plazo {
+  background: #FEF3C7;
+  border: 1px solid #F59E0B;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #92400E;
+}
+
+.timer-plazo.vencido {
+  background: #FEE2E2;
+  border-color: #EF4444;
+  color: #991B1B;
+}
+
+.timer-plazo .icono {
+  font-size: 18px;
+}
+
 .vacio {
   padding: 40px 24px;
   text-align: center;

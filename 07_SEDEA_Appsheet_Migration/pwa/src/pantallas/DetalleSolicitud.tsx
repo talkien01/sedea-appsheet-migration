@@ -226,6 +226,9 @@ export default function DetalleSolicitud() {
         )}
         {/* B7-E: botón para imprimir la carátula del expediente */}
         <div className="acciones">
+          <Link className="boton" to={`/solicitudes/${id}/folio`}>
+            📄 Imprimir Folio de Entrega
+          </Link>
           <button
             type="button"
             data-testid="btn-imprimir-caratula"

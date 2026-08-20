@@ -28,6 +28,8 @@ import rutasSolicitudes from './rutas/solicitudes.js';
 import rutasAlcance from './rutas/alcance.js';
 // Build 10: administracion de catalogos jerarquicos.
 import rutasCatalogosAdmin from './rutas/catalogosAdmin.js';
+import rutasConfiguracion from './rutas/configuracion.js';
+import rutasFolioEntrega from './rutas/folio-entrega.js';
 
 async function construirApp() {
   const app = Fastify({
@@ -106,6 +108,10 @@ async function construirApp() {
   await app.register(rutasAlcance);
   // Build 10: administracion de catalogos (E49-E54).
   await app.register(rutasCatalogosAdmin, { prefix: '/api/admin/catalogos' });
+  // Build 12: configuracion de plazos.
+  await app.register(rutasConfiguracion);
+  // Build 12: folio de entrega con QR.
+  await app.register(rutasFolioEntrega);
 
   return app;
 }

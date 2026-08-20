@@ -89,7 +89,7 @@ export const DESTINOS: Destino[] = [
     ruta: '/solicitudes',
     etiqueta: 'Solicitudes',
     testId: 'nav-solicitudes',
-    roles: ['ventanilla', 'admin'],
+    roles: ['ventanilla', 'capturista', 'admin'],
     grupo: 'Ventanilla',
     Icono: IconoDocumento
   },

@@ -22,6 +22,7 @@ import TablaConceptos, {
   type FilaConcepto
 } from '../componentes/TablaConceptos';
 import ChecklistDocumentos from '../componentes/ChecklistDocumentos';
+import TimerPlazo from '../componentes/TimerPlazo';
 
 const solicitanteInicial: DatosSolicitante = {
   tipo_persona: 'fisica',
@@ -390,6 +391,7 @@ export default function NuevaSolicitud() {
         <p className="dato">
           Captura el formulario tal como viene en papel. El folio se genera al guardar.
         </p>
+        <TimerPlazo />
         {error && (
           <div className="mensaje error" role="alert" data-testid="error-solicitud">
             {error}

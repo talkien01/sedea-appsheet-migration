@@ -4,6 +4,7 @@
 // usuario puede sobrescribirlo; una vez editado a mano, esa fila deja de
 // autocalcularse (Assumption 48: el papel admite aportaciones de terceros).
 import type { CatalogosVentanilla } from '@sedea/shared';
+import { BotonIcono } from './BotonIcono';
 
 export interface FilaConcepto {
   tipo_apoyo_id: string;
@@ -145,15 +146,14 @@ export default function TablaConceptos({ filas, tiposApoyo, cambiar, agregar, qu
                   />
                 </td>
                 <td>
-                  <button
-                    type="button"
-                    className="secundario"
-                    data-testid="btn-quitar-concepto"
-                    disabled={filas.length <= 1}
+                  <BotonIcono
+                    icono="basura"
+                    etiqueta="Quitar concepto"
+                    tono="peligro"
+                    testId="btn-quitar-concepto"
+                    deshabilitado={filas.length <= 1}
                     onClick={() => quitar(indice)}
-                  >
-                    Quitar
-                  </button>
+                  />
                 </td>
               </tr>
             ))}

@@ -1,6 +1,7 @@
 // Componente de arbol jerarquico para la pantalla de catalogos.
 // [data-testid="arbol-catalogos"]
 import type { NombreEntidad } from '@sedea/shared';
+import { BotonIcono } from './BotonIcono';
 
 interface ArbolDatos {
   programas: any[];
@@ -165,23 +166,20 @@ function NodoPrograma({
             Desactivado
           </span>
         )}
-        <div className="arbol-acciones">
-          <button
-            type="button"
-            className="secundario"
-            data-testid={`btn-editar-programas-${programa.id}`}
+        <div className="arbol-acciones acciones en-fila">
+          <BotonIcono
+            icono="lapiz"
+            etiqueta="Editar"
+            testId={`btn-editar-programas-${programa.id}`}
             onClick={() => onEditar('programas', programa)}
-          >
-            editar
-          </button>
-          <button
-            type="button"
-            className="secundario"
-            data-testid={programa.activo ? `btn-desactivar-programas-${programa.id}` : `btn-reactivar-programas-${programa.id}`}
+          />
+          <BotonIcono
+            icono={programa.activo ? 'ojo-tachado' : 'check'}
+            etiqueta={programa.activo ? 'Desactivar' : 'Reactivar'}
+            tono={programa.activo ? 'peligro' : 'neutro'}
+            testId={programa.activo ? `btn-desactivar-programas-${programa.id}` : `btn-reactivar-programas-${programa.id}`}
             onClick={() => onCambiarEstado('programas', programa.id, !programa.activo)}
-          >
-            {programa.activo ? 'desactivar' : 'reactivar'}
-          </button>
+          />
         </div>
       </div>
       {expandido && programa.subprogramas && programa.subprogramas.length > 0 && (
@@ -226,23 +224,20 @@ function NodoSubprograma({
             Desactivado
           </span>
         )}
-        <div className="arbol-acciones">
-          <button
-            type="button"
-            className="secundario"
-            data-testid={`btn-editar-subprogramas-${subprograma.id}`}
+        <div className="arbol-acciones acciones en-fila">
+          <BotonIcono
+            icono="lapiz"
+            etiqueta="Editar"
+            testId={`btn-editar-subprogramas-${subprograma.id}`}
             onClick={() => onEditar('subprogramas', subprograma)}
-          >
-            editar
-          </button>
-          <button
-            type="button"
-            className="secundario"
-            data-testid={subprograma.activo ? `btn-desactivar-subprogramas-${subprograma.id}` : `btn-reactivar-subprogramas-${subprograma.id}`}
+          />
+          <BotonIcono
+            icono={subprograma.activo ? 'ojo-tachado' : 'check'}
+            etiqueta={subprograma.activo ? 'Desactivar' : 'Reactivar'}
+            tono={subprograma.activo ? 'peligro' : 'neutro'}
+            testId={subprograma.activo ? `btn-desactivar-subprogramas-${subprograma.id}` : `btn-reactivar-subprogramas-${subprograma.id}`}
             onClick={() => onCambiarEstado('subprogramas', subprograma.id, !subprograma.activo)}
-          >
-            {subprograma.activo ? 'desactivar' : 'reactivar'}
-          </button>
+          />
         </div>
       </div>
     </div>
@@ -283,23 +278,20 @@ function NodoComponente({
             Desactivado
           </span>
         )}
-        <div className="arbol-acciones">
-          <button
-            type="button"
-            className="secundario"
-            data-testid={`btn-editar-componentes-${componente.id}`}
+        <div className="arbol-acciones acciones en-fila">
+          <BotonIcono
+            icono="lapiz"
+            etiqueta="Editar"
+            testId={`btn-editar-componentes-${componente.id}`}
             onClick={() => onEditar('componentes', componente)}
-          >
-            editar
-          </button>
-          <button
-            type="button"
-            className="secundario"
-            data-testid={componente.activo ? `btn-desactivar-componentes-${componente.id}` : `btn-reactivar-componentes-${componente.id}`}
+          />
+          <BotonIcono
+            icono={componente.activo ? 'ojo-tachado' : 'check'}
+            etiqueta={componente.activo ? 'Desactivar' : 'Reactivar'}
+            tono={componente.activo ? 'peligro' : 'neutro'}
+            testId={componente.activo ? `btn-desactivar-componentes-${componente.id}` : `btn-reactivar-componentes-${componente.id}`}
             onClick={() => onCambiarEstado('componentes', componente.id, !componente.activo)}
-          >
-            {componente.activo ? 'desactivar' : 'reactivar'}
-          </button>
+          />
         </div>
       </div>
       {expandido && componente.modalidades && componente.modalidades.length > 0 && (
@@ -353,23 +345,20 @@ function NodoModalidad({
             Desactivado
           </span>
         )}
-        <div className="arbol-acciones">
-          <button
-            type="button"
-            className="secundario"
-            data-testid={`btn-editar-modalidades-${modalidad.id}`}
+        <div className="arbol-acciones acciones en-fila">
+          <BotonIcono
+            icono="lapiz"
+            etiqueta="Editar"
+            testId={`btn-editar-modalidades-${modalidad.id}`}
             onClick={() => onEditar('modalidades', modalidad)}
-          >
-            editar
-          </button>
-          <button
-            type="button"
-            className="secundario"
-            data-testid={modalidad.activo ? `btn-desactivar-modalidades-${modalidad.id}` : `btn-reactivar-modalidades-${modalidad.id}`}
+          />
+          <BotonIcono
+            icono={modalidad.activo ? 'ojo-tachado' : 'check'}
+            etiqueta={modalidad.activo ? 'Desactivar' : 'Reactivar'}
+            tono={modalidad.activo ? 'peligro' : 'neutro'}
+            testId={modalidad.activo ? `btn-desactivar-modalidades-${modalidad.id}` : `btn-reactivar-modalidades-${modalidad.id}`}
             onClick={() => onCambiarEstado('modalidades', modalidad.id, !modalidad.activo)}
-          >
-            {modalidad.activo ? 'desactivar' : 'reactivar'}
-          </button>
+          />
         </div>
       </div>
       {expandido && modalidad.proyectos && modalidad.proyectos.length > 0 && (
@@ -414,23 +403,20 @@ function NodoProyecto({
             Desactivado
           </span>
         )}
-        <div className="arbol-acciones">
-          <button
-            type="button"
-            className="secundario"
-            data-testid={`btn-editar-proyectos-${proyecto.id}`}
+        <div className="arbol-acciones acciones en-fila">
+          <BotonIcono
+            icono="lapiz"
+            etiqueta="Editar"
+            testId={`btn-editar-proyectos-${proyecto.id}`}
             onClick={() => onEditar('proyectos', proyecto)}
-          >
-            editar
-          </button>
-          <button
-            type="button"
-            className="secundario"
-            data-testid={proyecto.activo ? `btn-desactivar-proyectos-${proyecto.id}` : `btn-reactivar-proyectos-${proyecto.id}`}
+          />
+          <BotonIcono
+            icono={proyecto.activo ? 'ojo-tachado' : 'check'}
+            etiqueta={proyecto.activo ? 'Desactivar' : 'Reactivar'}
+            tono={proyecto.activo ? 'peligro' : 'neutro'}
+            testId={proyecto.activo ? `btn-desactivar-proyectos-${proyecto.id}` : `btn-reactivar-proyectos-${proyecto.id}`}
             onClick={() => onCambiarEstado('proyectos', proyecto.id, !proyecto.activo)}
-          >
-            {proyecto.activo ? 'desactivar' : 'reactivar'}
-          </button>
+          />
         </div>
       </div>
     </div>

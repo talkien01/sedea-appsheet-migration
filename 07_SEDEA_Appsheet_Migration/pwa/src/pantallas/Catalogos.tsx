@@ -208,7 +208,7 @@ export default function Catalogos() {
   }
 
   return (
-    <div className="pantalla-catalogos" data-testid="pantalla-catalogos">
+    <div className="pantalla-catalogos pantalla-ancha" data-testid="pantalla-catalogos">
       <header className="catalogos-header">
         <h1>Catálogos del programa</h1>
         <div className="catalogos-acciones">

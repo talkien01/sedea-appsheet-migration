@@ -3,6 +3,7 @@
 // localStorage ni en IndexedDB y no hay forma de volver a consultarlo.
 import { useState } from 'react';
 import type { ModoPassword } from '@sedea/shared';
+import { BotonIcono } from './BotonIcono';
 
 interface Props {
   password: string;
@@ -53,9 +54,12 @@ export default function ModalPasswordTemporal({ password, usuario, modo, alCerra
         </p>
 
         <div className="acciones">
-          <button type="button" data-testid="btn-copiar-password" onClick={() => void copiar()}>
-            Copiar
-          </button>
+          <BotonIcono
+            icono="copiar"
+            etiqueta="Copiar contraseña"
+            testId="btn-copiar-password"
+            onClick={() => void copiar()}
+          />
           <button
             type="button"
             className="secundario"

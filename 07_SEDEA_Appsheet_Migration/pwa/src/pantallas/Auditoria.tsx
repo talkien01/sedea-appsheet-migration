@@ -132,7 +132,7 @@ export default function Auditoria() {
 
   return (
     <>
-      <div className="tarjeta">
+      <div className="tarjeta pantalla-ancha">
         <h1>Panel de auditoría</h1>
 
         {error && (
@@ -285,7 +285,7 @@ export default function Auditoria() {
                         />
                       )}
                     </td>
-                    <td data-etiqueta="Beneficiario">{f.beneficiario.nombre_completo}</td>
+                    <td data-etiqueta="Beneficiario" className="celda-texto">{f.beneficiario.nombre_completo}</td>
                     <td data-etiqueta="CURP" className="mono">{f.beneficiario.curp || 'Sin CURP'}</td>
                     <td data-etiqueta="Regional">{f.beneficiario.regional_nombre}</td>
                     <td data-etiqueta="Municipio">{f.beneficiario.municipio_nombre}</td>

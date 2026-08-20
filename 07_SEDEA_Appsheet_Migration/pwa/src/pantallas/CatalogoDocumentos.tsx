@@ -7,6 +7,7 @@ import { api, ErrorPeticion } from '../api/cliente';
 import { useEstadoRed } from '../sync/estadoRed';
 import FormReglaDocumento from '../componentes/FormReglaDocumento';
 import { apiSolicitudes } from '../api/solicitudes';
+import { BotonIcono } from '../componentes/BotonIcono';
 
 interface ReglaDocumento {
   id: number;
@@ -147,7 +148,7 @@ export default function CatalogoDocumentos() {
 
   if (!enLinea) {
     return (
-      <div className="tarjeta" data-testid="pantalla-catalogo-documentos">
+      <div className="tarjeta pantalla-ancha" data-testid="pantalla-catalogo-documentos">
         <h1>Reglas de documentación requerida</h1>
         <p className="vacio">Esta sección requiere conexión a internet.</p>
       </div>
@@ -155,7 +156,7 @@ export default function CatalogoDocumentos() {
   }
 
   return (
-    <div className="tarjeta" data-testid="pantalla-catalogo-documentos">
+    <div className="tarjeta pantalla-ancha" data-testid="pantalla-catalogo-documentos">
       <h1>Reglas de documentación requerida</h1>
 
       <div className="filtros">
@@ -238,7 +239,7 @@ export default function CatalogoDocumentos() {
               {reglasFiltradas.map((regla) => (
                 <tr key={regla.id} data-testid="fila-regla-documento">
                   <td data-etiqueta="Orden">{regla.orden}</td>
-                  <td data-etiqueta="Requisito">{regla.requisito}</td>
+                  <td data-etiqueta="Requisito" className="celda-texto">{regla.requisito}</td>
                   <td data-etiqueta="Componentes">
                     {regla.componentes ? regla.componentes.join(', ') : 'Todos'}
                   </td>
@@ -260,22 +261,19 @@ export default function CatalogoDocumentos() {
                     )}
                   </td>
                   <td data-etiqueta="Acciones" className="acciones">
-                    <button
-                      type="button"
-                      className="secundario"
-                      data-testid="btn-editar-regla"
+                    <BotonIcono
+                      icono="lapiz"
+                      etiqueta="Editar"
+                      testId="btn-editar-regla"
                       onClick={() => abrirEdicion(regla)}
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      className="secundario"
-                      data-testid="btn-toggle-estado-regla"
+                    />
+                    <BotonIcono
+                      icono={regla.activo ? 'ojo-tachado' : 'check'}
+                      etiqueta={regla.activo ? 'Desactivar' : 'Activar'}
+                      tono={regla.activo ? 'peligro' : 'neutro'}
+                      testId="btn-toggle-estado-regla"
                       onClick={() => cambiarEstado(regla.id, !regla.activo)}
-                    >
-                      {regla.activo ? 'Desactivar' : 'Activar'}
-                    </button>
+                    />
                   </td>
                 </tr>
               ))}

@@ -52,7 +52,7 @@ export default function Depuracion() {
 
   return (
     <>
-      <div className="tarjeta">
+      <div className="tarjeta pantalla-ancha">
         <h1>Depuración de datos — Padrón</h1>
         <p className="dato">
           Ninguna fila llega al padrón de campo sin que la apruebes aquí. Un beneficiario puede
@@ -165,7 +165,7 @@ export default function Depuracion() {
                   <tr key={fila.id} data-testid="fila-staging">
                     <td data-etiqueta="Folio" className="mono">{fila.folio ?? '—'}</td>
                     <td data-etiqueta="CURP" className="mono">{fila.curp ?? '—'}</td>
-                    <td data-etiqueta="Nombre">{fila.nombre_completo ?? '—'}</td>
+                    <td data-etiqueta="Nombre" className="celda-texto">{fila.nombre_completo ?? '—'}</td>
                     <td data-etiqueta="Regional">{fila.regional_nombre ?? fila.regional_texto ?? '—'}</td>
                     <td data-etiqueta="Municipio">{fila.municipio_nombre ?? fila.municipio_texto ?? '—'}</td>
                     <td data-etiqueta="Concepto de apoyo">{fila.tipo_apoyo_nombre ?? fila.tipo_apoyo_texto ?? '—'}</td>

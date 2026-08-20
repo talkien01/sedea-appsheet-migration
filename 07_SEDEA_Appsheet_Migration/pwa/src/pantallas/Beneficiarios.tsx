@@ -82,7 +82,7 @@ export default function Beneficiarios() {
 
   return (
     <>
-      <div className="tarjeta">
+      <div className="tarjeta pantalla-ancha">
         <h1>Padrón de beneficiarios</h1>
         <p className="dato">
           {filas.length} de {totalLocal} beneficiarios en este dispositivo.

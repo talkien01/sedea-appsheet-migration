@@ -17,6 +17,7 @@ import type { ValoresAlcance } from '../componentes/BloqueAlcance';
 import { apiSolicitudes } from '../api/solicitudes';
 import ModalPasswordTemporal from '../componentes/ModalPasswordTemporal';
 import ModalResetPassword from '../componentes/ModalResetPassword';
+import { BotonIcono } from '../componentes/BotonIcono';
 
 interface RegionalOpcion {
   id: number;
@@ -255,7 +256,7 @@ export default function Usuarios() {
   }
 
   return (
-    <div className="tarjeta">
+    <div className="tarjeta pantalla-ancha">
       <h1>Administración de usuarios</h1>
 
       <div className="mensaje aviso" role="status">
@@ -346,7 +347,7 @@ export default function Usuarios() {
               {filas.map((fila) => (
                 <tr key={fila.id} data-testid="fila-usuario">
                   <td data-etiqueta="Usuario" className="mono">{fila.usuario}</td>
-                  <td data-etiqueta="Nombre completo">{fila.nombre_completo}</td>
+                  <td data-etiqueta="Nombre completo" className="celda-texto">{fila.nombre_completo}</td>
                   <td data-etiqueta="Rol">{ETIQUETAS_ROL[fila.rol] ?? fila.rol}</td>
                   <td data-etiqueta="Regional">{fila.regional ?? '—'}</td>
                   <td data-etiqueta="Estado">
@@ -366,30 +367,25 @@ export default function Usuarios() {
                   </td>
                   <td data-etiqueta="Capturas">{fila.capturas}</td>
                   <td data-etiqueta="Acciones" className="acciones">
-                    <button
-                      type="button"
-                      className="secundario"
-                      data-testid="btn-editar-usuario"
+                    <BotonIcono
+                      icono="lapiz"
+                      etiqueta="Editar"
+                      testId="btn-editar-usuario"
                       onClick={() => abrirEdicion(fila)}
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      className="secundario"
-                      data-testid="btn-reset-password"
+                    />
+                    <BotonIcono
+                      icono="llave"
+                      etiqueta="Resetear contraseña"
+                      testId="btn-reset-password"
                       onClick={() => abrirReset(fila)}
-                    >
-                      Resetear contraseña
-                    </button>
-                    <button
-                      type="button"
-                      className="secundario"
-                      data-testid="btn-toggle-activo"
+                    />
+                    <BotonIcono
+                      icono={fila.activo ? 'ojo-tachado' : 'check'}
+                      etiqueta={fila.activo ? 'Desactivar' : 'Activar'}
+                      tono={fila.activo ? 'peligro' : 'neutro'}
+                      testId="btn-toggle-activo"
                       onClick={() => void alternarActivo(fila)}
-                    >
-                      {fila.activo ? 'Desactivar' : 'Activar'}
-                    </button>
+                    />
                   </td>
                 </tr>
               ))}

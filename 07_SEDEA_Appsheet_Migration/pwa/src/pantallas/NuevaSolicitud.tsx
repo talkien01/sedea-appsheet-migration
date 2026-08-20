@@ -151,7 +151,7 @@ export default function NuevaSolicitud() {
   // --- Al cambiar Componente: reset modalidadId, preseleccionar si hay 1.
   useEffect(() => {
     if (!catalogos) return;
-    const modsDelComponente = (catalogos.modalidades ?? []).filter(
+    const modsDelComponente = (catalogos?.modalidades ?? []).filter(
       (m) => String(m.componente_id) === componenteId
     );
     if (modsDelComponente.length === 1) {
@@ -468,12 +468,12 @@ export default function NuevaSolicitud() {
                   onChange={() => {
                     setComponenteId(String(c.id));
                     // Al cambiar componente, el proyecto se limpia si ya no aplica.
-                    const modsDelComponente = (catalogos.modalidades ?? []).filter(
+                    const modsDelComponente = (catalogos?.modalidades ?? []).filter(
                       (m) => m.componente_id === c.id
                     );
                     if (modsDelComponente.length === 0) {
                       // Sin modalidades: validar que el proyecto siga aplicando.
-                      const proyectoAunValido = (catalogos.proyectos ?? []).some(
+                      const proyectoAunValido = (catalogos?.proyectos ?? []).some(
                         (p) => String(p.id) === proyectoId && p.componente_id === c.id
                       );
                       if (!proyectoAunValido) setProyectoId('');
@@ -499,14 +499,14 @@ export default function NuevaSolicitud() {
                   setModalidadId(e.target.value);
                   // Al cambiar modalidad, limpiar proyecto si ya no aplica.
                   const modId = Number(e.target.value);
-                  const proyectoAunValido = (catalogos.proyectos ?? []).some(
+                  const proyectoAunValido = (catalogos?.proyectos ?? []).some(
                     (p) => String(p.id) === proyectoId && p.modalidad_id === modId
                   );
                   if (!proyectoAunValido) setProyectoId('');
                 }}
               >
                 <option value="">Selecciona una modalidad</option>
-                {(catalogos.modalidades ?? [])
+                {(catalogos?.modalidades ?? [])
                   .filter((m) => String(m.componente_id) === componenteId)
                   .map((m) => (
                     <option key={m.id} value={String(m.id)}>

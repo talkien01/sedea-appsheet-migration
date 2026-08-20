@@ -6,6 +6,7 @@ import { ETIQUETAS_ESTADO, ETIQUETAS_FLAG, FLAGS_CATALOGO } from '@sedea/shared'
 import { api, ErrorPeticion } from '../api/cliente';
 import { BadgesDeFila } from '../componentes/BadgeAlerta';
 import { useEstadoRed } from '../sync/estadoRed';
+import { BotonIcono } from '../componentes/BotonIcono';
 
 const ESTADOS = ['pendiente', 'aprobado', 'descartado', 'todos'] as const;
 
@@ -61,7 +62,7 @@ export default function DepuracionCatalogos() {
 
   return (
     <>
-      <div className="tarjeta">
+      <div className="tarjeta pantalla-ancha">
         <h1>Depuración de datos — Catálogos</h1>
         <p className="dato">
           Una clave duplicada se resuelve aprobando una fila y descartando la otra.
@@ -151,39 +152,37 @@ export default function DepuracionCatalogos() {
                   <tr key={fila.id} data-testid="fila-staging-catalogo">
                     <td data-etiqueta="Grupo">{fila.grupo ?? '—'}</td>
                     <td data-etiqueta="Clave" className="mono">{fila.clave ?? '—'}</td>
-                    <td data-etiqueta="Valor">{fila.valor ?? '—'}</td>
+                    <td data-etiqueta="Valor" className="celda-texto">{fila.valor ?? '—'}</td>
                     <td data-etiqueta="Alertas">
                       <BadgesDeFila fila={fila} flags={FLAGS_CATALOGO} />
                     </td>
                     <td data-etiqueta="Estado">{ETIQUETAS_ESTADO[fila.estado_revision as never]}</td>
                     <td data-etiqueta="">
-                      <button
-                        type="button"
-                        data-testid="btn-aprobar-catalogo"
-                        disabled={fila.estado_revision !== 'pendiente'}
+                      <BotonIcono
+                        icono="check"
+                        etiqueta="Aprobar"
+                        testId="btn-aprobar-catalogo"
+                        deshabilitado={fila.estado_revision !== 'pendiente'}
                         onClick={() =>
                           void accionar(
                             () => api.stagingCatalogoAprobar(fila.id),
                             'Entrada de catálogo aprobada.'
                           )
                         }
-                      >
-                        Aprobar
-                      </button>{' '}
-                      <button
-                        type="button"
-                        className="secundario"
-                        data-testid="btn-descartar-catalogo"
-                        disabled={fila.estado_revision !== 'pendiente'}
+                      />{' '}
+                      <BotonIcono
+                        icono="ojo-tachado"
+                        etiqueta="Descartar"
+                        tono="peligro"
+                        testId="btn-descartar-catalogo"
+                        deshabilitado={fila.estado_revision !== 'pendiente'}
                         onClick={() =>
                           void accionar(
                             () => api.stagingCatalogoDescartar(fila.id),
                             'Entrada de catálogo descartada.'
                           )
                         }
-                      >
-                        Descartar
-                      </button>
+                      />
                     </td>
                   </tr>
                 ))}

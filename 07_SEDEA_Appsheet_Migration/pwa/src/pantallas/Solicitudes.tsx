@@ -59,7 +59,7 @@ export default function Solicitudes() {
 
   return (
     <>
-      <div className="tarjeta">
+      <div className="tarjeta pantalla-ancha">
         <h1>Solicitudes de apoyo</h1>
         <p className="dato">
           Captura en ventanilla de la Solicitud de Apoyo. Al guardarla se genera el folio oficial

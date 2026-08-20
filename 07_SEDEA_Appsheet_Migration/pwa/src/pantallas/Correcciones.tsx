@@ -38,7 +38,7 @@ export default function Correcciones() {
 
   return (
     <>
-      <div className="tarjeta">
+      <div className="tarjeta pantalla-ancha">
         <h1>Corrección de datos — Beneficiarios en producción</h1>
         <div className="mensaje aviso" role="status">
           Aquí se corrigen datos de contacto y ubicación de beneficiarios ya promovidos. CURP y
@@ -85,7 +85,7 @@ export default function Correcciones() {
                   <tr key={fila.id} data-testid="fila-correccion">
                     <td data-etiqueta="Folio" className="mono">{fila.folio}</td>
                     <td data-etiqueta="CURP" className="mono">{fila.curp ?? '—'}</td>
-                    <td data-etiqueta="Nombre">{fila.nombre_completo}</td>
+                    <td data-etiqueta="Nombre" className="celda-texto">{fila.nombre_completo}</td>
                     <td data-etiqueta="Regional">{fila.regional ?? '—'}</td>
                     <td data-etiqueta="Municipio">{fila.municipio ?? '—'}</td>
                     <td data-etiqueta="Colonia">{fila.colonia ?? '—'}</td>

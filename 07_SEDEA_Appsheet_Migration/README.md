@@ -77,6 +77,29 @@ En pantallas de teléfono las tablas de gestión (auditoría, depuración,
 correcciones, solicitudes, usuarios) se presentan como lista de tarjetas con la
 misma información, para no obligar a hacer scroll horizontal.
 
+### Densidad de la interfaz (build 11)
+
+En escritorio y tablet (`≥ 768 px`) la interfaz es compacta:
+
+- Las **acciones de fila** de tablas y árboles (editar, desactivar/activar,
+  reactivar, resetear contraseña, quitar concepto, aprobar/descartar, copiar
+  contraseña) son **botones de ícono de 32×32 px**. No muestran texto, pero
+  conservan su nombre accesible en `aria-label` + `title` + un `<span class="sr-solo">`,
+  así que el lector de pantalla y el tooltip nativo siguen diciendo lo mismo que
+  antes. En móvil (`< 768 px`) crecen a **44×44 px** para el objetivo táctil.
+  Todos viven en `pwa/src/componentes/BotonIcono.tsx`, único dueño de la clase
+  `.boton-icono`.
+- La variante **peligro** es glifo rojo sobre fondo neutro (no botón rojo sólido),
+  con contraste WCAG AA en ambos modos. Desactivar y activar además se distinguen
+  por el ícono (ojo tachado vs. palomita), nunca solo por color.
+- Los botones **"Nuevo X"** conservan su texto: un `+` a secas sería ambiguo en
+  ventanilla. Solo bajan de 40 a 34 px de alto.
+- Las filas de tabla pasan a `6px 10px` de padding y las pantallas de gestión
+  (`.pantalla-ancha`) usan todo el ancho del viewport, sin techo de 1180/1440 px,
+  para que ninguna columna quede truncada.
+- Las columnas de texto largo (requisito, nombre completo, valor de catálogo)
+  llevan `.celda-texto` y sí ajustan línea; el resto sigue en una sola línea.
+
 ### Tipografía
 
 Las tres familias se sirven desde el propio origen (`pwa/public/fuentes/`,

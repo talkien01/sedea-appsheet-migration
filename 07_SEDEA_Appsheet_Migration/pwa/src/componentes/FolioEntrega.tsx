@@ -1,7 +1,8 @@
 // Vista previa e impresión de Folio de Entrega con QR (Build 12).
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { api } from '../api/cliente';
+import { peticion } from '../api/cliente';
+import { apiSolicitudes } from '../api/solicitudes';
 
 interface DatosFolio {
   folio: string;
@@ -24,21 +25,21 @@ export default function FolioEntrega() {
   useEffect(() => {
     if (!id) return;
     // Obtener datos de la solicitud
-    api.get(`/api/solicitudes/${id}`)
+    apiSolicitudes.detalle(Number(id))
       .then(solicitud => {
         setDatos({
-          folio: solicitud.folio,
-          beneficiario_nombre: solicitud.beneficiario_nombre,
-          beneficiario_curp: solicitud.beneficiario_curp,
-          programa_nombre: solicitud.programa_nombre,
-          proyecto_nombre: solicitud.proyecto_nombre,
-          concepto_nombre: solicitud.concepto_nombre,
-          monto: solicitud.monto,
-          regional_nombre: solicitud.regional_nombre
+          folio: solicitud.solicitud.folio,
+          beneficiario_nombre: solicitud.solicitud.beneficiario_nombre,
+          beneficiario_curp: solicitud.solicitud.beneficiario_curp,
+          programa_nombre: solicitud.solicitud.programa_nombre,
+          proyecto_nombre: solicitud.solicitud.proyecto_nombre,
+          concepto_nombre: solicitud.conceptos[0]?.tipo_apoyo ?? '',
+          monto: solicitud.conceptos[0]?.monto_estatal ?? 0,
+          regional_nombre: solicitud.solicitud.regional_nombre
         });
         // Generar QR con el folio
         return import('qrcode').then(QRCode =>
-          QRCode.default.toDataURL(solicitud.folio, { width: 200 })
+          QRCode.default.toDataURL(solicitud.solicitud.folio, { width: 200 })
         );
       })
       .then(setQrDataUrl)

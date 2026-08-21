@@ -5637,25 +5637,33 @@ escritorio **1440×900**. "El proyecto P" = el primer `[data-testid^="nodo-proye
 
 **Definición de "terminado" (Build 12):** pasan los **20** criterios nuevos (531–550) **y** siguen
 pasando los 530 anteriores. Total acumulado: **550** criterios.
-# SPEC — Sección 19 (Build 13): Pre-dictaminación con IA
+# SPEC — Sección 19 (Build 13): Pre-dictaminación con IA — **REVISIÓN 2**
 
-> **Cómo se integra este archivo:** esta es la sección **§19** de `SPEC.md`, escrita aparte por
-> tamaño del archivo base. Se **anexa tal cual al final de `SPEC.md`**, después de §18.7, sin tocar
-> ninguna sección previa. Continúa la numeración de criterios desde el **550** de §18.7 y la de
-> endpoints desde el **E54** de §16.5.
+> **Cómo se integra este archivo:** este archivo **sustituye por completo** la sección **§19** ya
+> anexada a `SPEC.md` (desde la línea `## 19.1 Objetivo` hasta el final del archivo). Mismo número de
+> sección, mismo rango de criterios **551–600**, mismo objetivo general. No toca ninguna sección
+> previa. Los criterios 1–550 siguen siendo obligatorios.
 >
-> Esta sección **extiende** el SPEC. No sustituye ni reinterpreta nada de las secciones 1–18.
-> Los criterios 1–550 siguen siendo obligatorios.
+> **Qué cambió respecto de la revisión 1 (decisión de producto posterior):** se **elimina del scope**
+> el prerrequisito de "expediente único en PDF" (tabla `solicitud_expedientes`, endpoint de subida del
+> expediente completo, endpoint de descarga y visor de PDF único). El sistema **ya tiene** subida de
+> archivo **por documento individual** (`solicitud_documentos.archivo_url`, endpoint **E46**,
+> construido en builds previos y **fuera del alcance de este build**). La IA pre-dictamina leyendo
+> **archivo por archivo**: cada archivo ya sabe a qué `documento_requerido` corresponde, así que no hay
+> que adivinar los límites entre documentos dentro de un PDF único. Es más simple y más preciso.
+>
+> **Consecuencia de numeración:** los endpoints del expediente único (antes E55 y E59) desaparecen.
+> Los endpoints de este build son ahora **E55–E59** (antes E56–E61). No existe E60 ni E61.
 
 ---
 
 ## 19.1 Objetivo
 
 Construir el módulo de **pre-dictaminación**: un rol nuevo `dictaminador`, una cola de revisión
-priorizada y un agente de IA con visión que emite un **pre-dictamen** (positivo/negativo) sobre el
-expediente escaneado de cada solicitud, para que el humano revise **primero los negativos**. La IA
-nunca dictamina sola: todo pre-dictamen, positivo o negativo, requiere confirmación explícita de un
-usuario con rol `dictaminador` (o `admin`).
+priorizada y un agente de IA con visión que emite un **pre-dictamen** (positivo/negativo) sobre los
+**documentos ya adjuntados** a cada solicitud, para que el humano revise **primero los negativos**.
+La IA nunca dictamina sola: todo pre-dictamen, positivo o negativo, requiere confirmación explícita
+de un usuario con rol `dictaminador` (o `admin`).
 
 ---
 
@@ -5663,46 +5671,55 @@ usuario con rol `dictaminador` (o `admin`).
 
 Antes de diseñar se auditó el repositorio. Esto es lo que **realmente existe hoy** y lo que **no**:
 
-| Pieza | Estado real | Evidencia en el código |
-|---|---|---|
-| Tabla `solicitudes` con `curp` (TEXT, nullable) | **Existe** | `db/migrations/013_solicitudes.sql` línea 30 |
-| Tabla `solicitud_documentos` (checklist materializado por solicitud: `documento_requerido_id`, `requisito`, `recibido`, `archivo_url`, `archivo_hash`, `archivo_nombre`, `observaciones`) | **Existe** | `013_solicitudes.sql` líneas 123–138 |
-| Catálogo `documentos_requeridos` + motor de reglas | **Existe** | `backend/src/servicios/documentos.ts` (`calcularDocumentosRequeridos`, `reglaAplica`), E41 en `backend/src/rutas/solicitudes.ts` |
-| Adjuntos de documentos | **Existe, pero es UN ARCHIVO POR DOCUMENTO** (E46, `POST /api/solicitudes/:id/documentos/:docId/archivo`), guardado en `/media/solicitudes/AAAA/MM/<uuid>.<ext>` | `backend/src/rutas/solicitudes.ts` líneas 860–953; `backend/src/servicios/almacenamiento.ts` (`guardarAdjuntoSolicitud`, `TIPOS_ADJUNTO_SOLICITUD`) |
-| **Expediente único: un solo PDF por solicitud** | **NO existe.** No hay tabla, ni columna, ni endpoint, ni pantalla de escaneo/drag&drop. La memoria del proyecto lo describe como diseño acordado, pero el código no lo implementa. | Sin coincidencias de `expediente` en `backend/src/` salvo la *carátula de expediente* impresa (`pwa/src/pantallas/DetalleSolicitud.tsx` líneas 271 y 500) y `pwa/src/pantallas/Expediente.tsx`, que es el expediente **histórico de un beneficiario de campo**, no el escaneo de una solicitud |
-| Módulo de dictamen humano (bandeja, veredicto, nota, decisión del Secretario) | **NO existe.** Cero código, cero tabla, cero ruta. | Sin coincidencias de `dictamen` en `backend/src/` ni en `pwa/src/pantallas/` |
-| Rol `dictaminador` | **NO existe.** Los roles son `capturista`, `auditor`, `editor_datos`, `ventanilla`, `admin`. | `packages/shared/src/usuarios.ts` línea 12 (`ROLES_USUARIO`) |
-| Multi-rol (`"capturista+ventanilla"`) | **Existe y funciona** en backend y PWA. | `db/migrations/017_multi_rol.sql` (quita el CHECK de `usuarios.rol`), `backend/src/plugins/rbac.ts` (`tieneRol`, `requiereRol`), `packages/shared/src/usuarios.ts` (`campoRol`), `pwa/src/componentes/RutaProtegida.tsx` líneas 37–43, `pwa/src/navegacion/menu.ts` (`tieneAlgunRol`) |
-| Cliente de Anthropic / cualquier SDK de IA | **NO existe.** `backend/package.json` no declara ninguna dependencia de IA. | `backend/package.json` |
-| Última migración aplicada | **017** | `db/migrations/` |
+| Pieza | Estado real | Evidencia en el código | ¿Se construye en Build 13? |
+|---|---|---|---|
+| Tabla `solicitudes` con `curp` (TEXT, nullable) | **Existe** | `db/migrations/013_solicitudes.sql` línea 30 | No — se reutiliza |
+| Tabla `solicitud_documentos` (checklist materializado por solicitud: `id`, `documento_requerido_id`, `requisito`, `recibido`, `archivo_url`, `archivo_hash`, `archivo_nombre`, `observaciones`) | **Existe** | `013_solicitudes.sql` líneas 123–138 | No — se reutiliza |
+| Catálogo `documentos_requeridos` + motor de reglas | **Existe** | `backend/src/servicios/documentos.ts` (`calcularDocumentosRequeridos`, `reglaAplica`), E41 en `backend/src/rutas/solicitudes.ts` | No — se reutiliza |
+| **Subida de archivo por documento individual** (E46, `POST /api/solicitudes/:id/documentos/:docId/archivo`), guardado en `/media/solicitudes/AAAA/MM/<uuid>.<ext>`, acepta `image/jpeg`, `image/png`, `image/webp`, `application/pdf` | **Existe y funciona** | `backend/src/rutas/solicitudes.ts` líneas 860–953; `backend/src/servicios/almacenamiento.ts` (`guardarAdjuntoSolicitud`, `TIPOS_ADJUNTO_SOLICITUD`, `rutaAbsolutaDesdeUrl`) | **No — esta es la entrada de la IA y ya está construida** |
+| Servido de `/media/**` autenticado (hook `onRequest` que exige token por header o `?token=`) + `@fastify/static` | **Existe** | `backend/src/server.ts` líneas 78–91 | No — se reutiliza |
+| Bloque de adjuntos por documento en la pantalla de solicitud | **Existe** | `pwa/src/pantallas/DetalleSolicitud.tsx` (checklist con adjuntar por requisito) | No — se reutiliza sin tocar |
+| **Almacenamiento nuevo (expediente único en PDF, `solicitud_expedientes`)** | **No existe y NO se construye.** Descartado del scope por decisión de producto: la subida por documento ya cubre la necesidad. | — | **No — fuera de alcance** |
+| Módulo de dictamen humano (bandeja, veredicto, nota, decisión del Secretario) | **NO existe.** Cero código, cero tabla, cero ruta. | Sin coincidencias de `dictamen` en `backend/src/` ni en `pwa/src/pantallas/` | **Sí** |
+| Rol `dictaminador` | **NO existe.** Los roles son `capturista`, `auditor`, `editor_datos`, `ventanilla`, `admin`. | `packages/shared/src/usuarios.ts` línea 12 (`ROLES_USUARIO`) | **Sí** |
+| Multi-rol (`"capturista+ventanilla"`) | **Existe y funciona** en backend y PWA. | `db/migrations/017_multi_rol.sql`, `backend/src/plugins/rbac.ts` (`tieneRol`, `requiereRol`), `packages/shared/src/usuarios.ts` (`campoRol`), `pwa/src/componentes/RutaProtegida.tsx` líneas 37–43, `pwa/src/navegacion/menu.ts` (`tieneAlgunRol`) | No — se reutiliza |
+| Cliente de Anthropic / cualquier SDK de IA | **NO existe.** `backend/package.json` no declara ninguna dependencia de IA. | `backend/package.json` | **Sí** |
+| Última migración aplicada | **017** | `db/migrations/` | Se agrega la **018** |
 
 ### Conclusión de la auditoría — reparto de trabajo de esta extensión
 
-- **Se reutiliza tal cual (no se toca):** `solicitudes`, `solicitud_documentos`, `documentos_requeridos`,
-  `calcularDocumentosRequeridos()`, el almacenamiento local (`guardarAdjuntoSolicitud`,
-  `rutaAbsolutaDesdeUrl`), `requiereRol`/`tieneRol`, `RutaProtegida`, `menu.ts`, la bitácora de auditoría.
-- **Se construye como PRERREQUISITO dentro de esta misma extensión (§19.4):** el expediente único en
-  PDF por solicitud (tabla `solicitud_expedientes`, endpoints de subida/consulta/descarga y el
-  bloque de subida en `DetalleSolicitud`). Sin esto, la IA no tiene qué leer.
-- **Se construye nuevo (§19.5–§19.9):** rol `dictaminador`, tabla `predictamenes_ia`, tabla
-  `dictamenes`, servicio de IA con visión, endpoints E55–E61, pantallas `/dictamen` y `/dictamen/:id`.
-- **Explícitamente FUERA de alcance:** OCR propio, validación de contenido distinta de presencia,
-  legibilidad y CURP; flujo de firma del Secretario; notificación al solicitante; disparo automático.
+- **Se reutiliza tal cual (no se toca ni una línea):** `solicitudes`, `solicitud_documentos`,
+  `documentos_requeridos`, `calcularDocumentosRequeridos()`, **E46 y todo el almacenamiento de
+  adjuntos** (`guardarAdjuntoSolicitud`, `rutaAbsolutaDesdeUrl`, el servido autenticado de `/media`),
+  `requiereRol`/`tieneRol`, `RutaProtegida`, `menu.ts`, la bitácora de auditoría y
+  `DetalleSolicitud.tsx`.
+- **No hay prerrequisito de almacenamiento.** Build 13 **no construye ninguna pieza nueva de subida
+  de archivos**: la entrada de la IA son los archivos que E46 ya guarda por documento.
+- **Se construye nuevo (§19.4–§19.8):** rol `dictaminador`, tabla `predictamenes_ia`, tabla
+  `dictamenes`, servicio de IA con visión, endpoints **E55–E59**, pantallas `/dictamen` y
+  `/dictamen/:id`.
+- **Explícitamente FUERA de alcance:** el expediente único en PDF por solicitud (descartado); OCR
+  propio; validación de contenido distinta de presencia, legibilidad y CURP; flujo de firma del
+  Secretario; notificación al solicitante; disparo automático.
 
 ---
 
 ## 19.3 Decisiones de producto (ya acordadas — implementar tal cual, no preguntar)
 
-1. **D19-1.** El expediente es **un único PDF por solicitud**. Los adjuntos por documento de E46 se
-   conservan y siguen funcionando, pero **no** son la entrada de la IA. La IA lee solo el PDF único.
+1. **D19-1.** **La entrada de la IA son los adjuntos por documento de E46.** Para cada solicitud, la
+   IA recorre las filas de `solicitud_documentos` de esa solicitud y evalúa **el archivo de cada una**
+   (`archivo_url`). Cada archivo ya está etiquetado con su `documento_requerido_id`, así que la IA
+   **no** tiene que segmentar ni adivinar a qué requisito pertenece cada imagen o PDF.
+   **No existe ningún concepto de "expediente único"** en este build.
 2. **D19-2.** El rol `dictaminador` es **no exclusivo**: se combina con `+` con cualquier otro rol
    (`ventanilla+dictaminador`, `capturista+dictaminador`, etc.), usando el esquema multi-rol existente.
-3. **D19-3.** Alcance de la Fase 1 del pre-dictamen, por cada `documento_requerido` aplicable a la
-   solicitud: (a) ¿está **presente** en el PDF?, (b) ¿es **legible** (no borroso, no cortado, no en
-   blanco)? Y además, en la identificación oficial y en cualquier documento donde la CURP sea visible:
-   (c) **extraer la CURP** y compararla contra `solicitudes.curp`. Nada más se valida.
+3. **D19-3.** Alcance de la Fase 1 del pre-dictamen, por cada fila de `solicitud_documentos` de la
+   solicitud: (a) ¿hay **archivo adjunto** y su contenido corresponde al requisito, es decir está
+   **presente**?, (b) ¿es **legible** (no borroso, no cortado, no en blanco)? Y además, en la
+   identificación oficial y en cualquier documento donde la CURP sea visible: (c) **extraer la CURP**
+   y compararla contra `solicitudes.curp`. Nada más se valida.
 4. **D19-4.** **Disparo manual/en lote.** Un `dictaminador` selecciona solicitudes en la bandeja y
-   pulsa "Pre-dictaminar". Nunca se dispara solo al subir el expediente.
+   pulsa "Pre-dictaminar". Nunca se dispara solo al adjuntar un documento.
 5. **D19-5.** **Estado global del pre-dictamen:** `negativo` si CUALQUIER documento requerido resulta
    `presente=false` o `legible=false`, o si CUALQUIER `curp_coincide` es `false`. `positivo` solo si
    todos están presentes, legibles y ninguna CURP contradice la capturada.
@@ -5710,85 +5727,49 @@ Antes de diseñar se auditó el repositorio. Esto es lo que **realmente existe h
    marca en el detalle y lo resuelve el humano.
 6. **D19-6.** **Regenerar inserta una fila nueva** (histórico append-only). El "último pre-dictamen"
    es el de mayor `generado_en` (desempate por `id` mayor). Se descartó el upsert porque perdería la
-   trazabilidad de qué vio la IA antes de que el ciudadano corrigiera su expediente.
+   trazabilidad de qué vio la IA antes de que el ciudadano corrigiera sus documentos.
 7. **D19-7.** **Orden de la bandeja** (fijo, no configurable):
    `1) negativo → 2) error → 3) sin pre-dictamen → 4) positivo`, y dentro de cada grupo por
    `solicitudes.recibida_en` **ascendente** (la más vieja primero). Las solicitudes ya dictaminadas
-   por un humano (§19.5, `dictamenes`) salen al final o se ocultan según el filtro `estado`.
+   por un humano (§19.4.2, `dictamenes`) salen al final o se ocultan según el filtro `estado`.
 8. **D19-8.** **Nunca hay auto-aprobación.** El veredicto final vive en la tabla `dictamenes` y solo
-   lo escribe un humano vía E60. No existe ningún camino de código que copie `predictamenes_ia.estado`
+   lo escribe un humano vía E58. No existe ningún camino de código que copie `predictamenes_ia.estado`
    a `dictamenes.resultado` sin una petición autenticada de un usuario con rol `dictaminador`/`admin`.
 9. **D19-9.** Selección múltiple con **checkbox por fila + checkbox "seleccionar todo" + un solo botón
    de lote**. No hay botón "pre-dictaminar" por fila: un único camino, menos superficie que probar.
    Límite duro de **20 solicitudes por lote**.
-10. **D19-10.** El detalle de dictamen muestra, por documento requerido, lo que dijo la IA y un
-    control de tres estados para el humano (`ok` / `falta` / `ilegible`) más una nota libre. El humano
-    puede contradecir a la IA sin restricción.
+10. **D19-10.** El detalle de dictamen muestra, por documento requerido, **el enlace al archivo ya
+    subido** (o el aviso de que no hay archivo), lo que dijo la IA y un control de tres estados para el
+    humano (`ok` / `falta` / `ilegible`) más una nota libre. El humano puede contradecir a la IA sin
+    restricción.
+11. **D19-11.** **Una llamada al modelo por documento con archivo.** No hay una llamada global por
+    solicitud ni una segunda pasada de OCR. La extracción de la CURP **no** es una llamada aparte:
+    viaja dentro de la misma llamada del **archivo específico donde la CURP es visible** (típicamente
+    la identificación oficial y el documento CURP). Los documentos **sin archivo adjunto** no generan
+    llamada: se resuelven en el servidor como `presente=false, legible=false`.
 
 ---
 
-## 19.4 Prerrequisito construido aquí: expediente único en PDF
-
-### 19.4.1 Tabla `solicitud_expedientes`
-
-Una fila por **versión** del expediente; la vigente es la de mayor `id` con `vigente = TRUE`.
-
-```sql
-CREATE TABLE IF NOT EXISTS solicitud_expedientes (
-  id            BIGSERIAL PRIMARY KEY,
-  solicitud_id  BIGINT NOT NULL REFERENCES solicitudes(id) ON DELETE CASCADE,
-  archivo_url   TEXT NOT NULL,          -- /media/expedientes/AAAA/MM/<uuid>.pdf
-  archivo_hash  TEXT NOT NULL,          -- sha256 del PDF
-  archivo_nombre TEXT,                  -- nombre original, max 200 chars
-  bytes         INTEGER NOT NULL,
-  paginas       INTEGER,                -- nullable: conteo best-effort, null si no se pudo leer
-  vigente       BOOLEAN NOT NULL DEFAULT TRUE,
-  subido_por    BIGINT REFERENCES usuarios(id),
-  subido_en     TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_solexp_solicitud ON solicitud_expedientes (solicitud_id, vigente);
-```
-
-Al subir una versión nueva: `UPDATE solicitud_expedientes SET vigente=FALSE WHERE solicitud_id=$1`
-y luego el `INSERT`. El archivo anterior **se conserva en disco** (misma política que E46).
-
-### 19.4.2 Almacenamiento
-
-Función nueva `guardarExpedienteSolicitud(buffer, uuid)` en
-`backend/src/servicios/almacenamiento.ts`, gemela de `guardarAdjuntoSolicitud` pero con subcarpeta
-`expedientes/AAAA/MM/` y extensión fija `.pdf`. **Solo `application/pdf`**; cualquier otro mimetype
-→ 422 `tipo_archivo_no_permitido`.
-
-### 19.4.3 Límite de tamaño
-
-`MAX_UPLOAD_MB` (8 MB por defecto) es corto para un expediente completo. Se agrega
-`MAX_EXPEDIENTE_MB` (default **25**) a `backend/src/config.ts` → `config.maxExpedienteBytes`.
-Exceso → **413** `archivo_muy_grande`. El registro del plugin `@fastify/multipart` debe admitir el
-mayor de los dos límites; el límite fino se valida por ruta.
-
-### 19.4.4 Conteo de páginas
-
-Best-effort **sin dependencia nueva**: contar coincidencias de `/Type\s*/Page[^s]` sobre el buffer en
-latin1. Si el PDF está comprimido con object streams y el conteo da 0, se guarda `paginas = NULL`.
-`paginas` es informativo; ninguna regla de negocio depende de él.
-
----
-
-## 19.5 Modelo de datos — `db/migrations/018_predictamen_ia.sql`
+## 19.4 Modelo de datos — `db/migrations/018_predictamen_ia.sql`
 
 Migración **aditiva e idempotente** (todo con `IF NOT EXISTS`). No altera ninguna tabla previa salvo
-por índices nuevos.
+por índices nuevos. **No crea ninguna tabla de expediente ni ninguna columna en `solicitudes` o
+`solicitud_documentos`.**
 
-### 19.5.1 `predictamenes_ia`
+### 19.4.1 `predictamenes_ia`
+
+Una fila por **ejecución** del pre-dictamen sobre una solicitud. Referencia la solicitud, y el detalle
+referencia cada documento individual por su `solicitud_documento_id`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS predictamenes_ia (
   id            BIGSERIAL PRIMARY KEY,
   solicitud_id  BIGINT NOT NULL REFERENCES solicitudes(id) ON DELETE CASCADE,
-  expediente_id BIGINT REFERENCES solicitud_expedientes(id),
+  documentos_evaluados INTEGER NOT NULL DEFAULT 0,  -- filas de solicitud_documentos consideradas
+  documentos_con_archivo INTEGER NOT NULL DEFAULT 0,-- de esas, cuántas tenían archivo_url
   estado        TEXT NOT NULL CHECK (estado IN ('positivo','negativo','error')),
   detalle       JSONB NOT NULL DEFAULT '[]'::jsonb,
-  resumen       TEXT,                   -- 1 frase en español, generada por la IA
+  resumen       TEXT,                   -- 1 frase en español, compuesta por el backend
   error_mensaje TEXT,                   -- solo cuando estado='error'
   modelo_usado  TEXT NOT NULL,
   latencia_ms   INTEGER,
@@ -5798,47 +5779,55 @@ CREATE TABLE IF NOT EXISTS predictamenes_ia (
 CREATE INDEX IF NOT EXISTS idx_predictamen_solicitud ON predictamenes_ia (solicitud_id, generado_en DESC);
 ```
 
-`estado='error'` cubre el caso "no hubo expediente / la IA falló": **no** es un pre-dictamen negativo
-(no dice nada del ciudadano) y por eso tiene su propio valor y su propio lugar en el orden (D19-7).
+`estado='error'` cubre el caso "la solicitud no tiene checklist materializado / la IA no está
+configurada / todas las llamadas fallaron": **no** es un pre-dictamen negativo (no dice nada del
+ciudadano) y por eso tiene su propio valor y su propio lugar en el orden (D19-7).
 
-**Forma exacta de `detalle`** — array, un objeto por documento requerido aplicable:
+> **Nota explícita:** no existe columna `expediente_id` ni referencia a ninguna tabla de expediente.
+> El vínculo con los archivos es `detalle[].solicitud_documento_id → solicitud_documentos.id`.
+
+**Forma exacta de `detalle`** — array, un objeto por **fila de `solicitud_documentos`** de la solicitud:
 
 ```json
 [
   {
+    "solicitud_documento_id": 341,
     "documento_requerido_id": 4,
     "requisito": "CURP",
+    "archivo_url": "/media/solicitudes/2026/08/9f1c....pdf",
     "presente": true,
     "legible": true,
     "curp_coincide": true,
     "curp_leida": "PEGJ850101HQTRRN08",
-    "pagina": 3,
     "observacion": "Legible, coincide con la capturada."
   },
   {
+    "solicitud_documento_id": 344,
     "documento_requerido_id": 7,
     "requisito": "Comprobante de domicilio (vigencia no mayor a 3 meses)",
+    "archivo_url": null,
     "presente": false,
     "legible": false,
     "curp_coincide": null,
     "curp_leida": null,
-    "pagina": null,
-    "observacion": "No se encontró en el expediente."
+    "observacion": "No se adjuntó ningún archivo para este documento."
   }
 ]
 ```
 
 Reglas de forma (el backend las normaliza antes de guardar, aunque el modelo se desvíe):
-- `presente` y `legible`: **boolean obligatorio**. Si `presente=false`, `legible` se fuerza a `false`.
+- `solicitud_documento_id` y `documento_requerido_id`: enteros obligatorios, tomados **del servidor**
+  (nunca del modelo); el modelo solo devuelve el veredicto del archivo que se le mandó.
+- `archivo_url`: string o `null`. Copiado tal cual de `solicitud_documentos.archivo_url`.
+- `presente` y `legible`: **boolean obligatorio**. Si `archivo_url` es `null` o `presente=false`,
+  `legible` se fuerza a `false`.
 - `curp_coincide`: `true` | `false` | `null`. `null` = el documento no muestra CURP o no se pudo leer.
 - `curp_leida`: string de 18 caracteres en mayúsculas, o `null`.
-- `pagina`: entero ≥ 1 o `null`.
 - `observacion`: string ≤ 300 caracteres.
-- El array contiene **exactamente un objeto por cada** `documento_requerido_id` aplicable, ni uno más
-  (ids desconocidos se descartan) ni uno menos (los faltantes se rellenan con
-  `presente:false, legible:false, curp_coincide:null, observacion:"La IA no reportó este documento."`).
+- El array contiene **exactamente un objeto por cada fila de `solicitud_documentos`** de esa
+  solicitud, ni uno más ni uno menos. Ya no existe el campo `pagina` (no hay PDF único que paginar).
 
-### 19.5.2 `dictamenes` (veredicto humano — nuevo, no existía nada)
+### 19.4.2 `dictamenes` (veredicto humano — nuevo, no existía nada)
 
 ```sql
 CREATE TABLE IF NOT EXISTS dictamenes (
@@ -5862,7 +5851,7 @@ inserta una fila nueva (misma política append-only de D19-6).
 `coincide_con_ia = (resultado === predictamen.estado)` cuando hay `predictamen_id`, si no `NULL`.
 Es la métrica que permitirá medir si la IA sirve; no altera ninguna decisión.
 
-### 19.5.3 Rol `dictaminador`
+### 19.4.3 Rol `dictaminador`
 
 No hay migración de datos: `017_multi_rol.sql` ya eliminó el CHECK sobre `usuarios.rol`.
 Los cambios son de código:
@@ -5878,94 +5867,130 @@ Los cambios son de código:
 
 ---
 
-## 19.6 Servicio de IA — `backend/src/servicios/predictamen.ts`
+## 19.5 Servicio de IA — `backend/src/servicios/predictamen.ts`
 
-### 19.6.1 Driver
+### 19.5.1 Selección de la entrada (sin llamadas al modelo)
+
+Para cada `solicitud_id` del lote:
+
+1. Se leen **todas** las filas de `solicitud_documentos` de esa solicitud
+   (`SELECT id, documento_requerido_id, requisito, archivo_url, archivo_hash, archivo_nombre
+   FROM solicitud_documentos WHERE solicitud_id = $1 ORDER BY id`).
+   Es el checklist ya materializado por el motor de E41; **no se recalcula** (A19-3).
+2. Si el conjunto está **vacío**, se guarda una fila con `estado='error'`, `detalle=[]` y
+   `error_mensaje='La solicitud no tiene checklist de documentos.'`. No hay llamadas al modelo.
+3. Las filas **sin `archivo_url`** se resuelven en el servidor, **sin llamar al modelo**:
+   `presente=false, legible=false, curp_coincide=null, curp_leida=null,
+   observacion='No se adjuntó ningún archivo para este documento.'`.
+4. Las filas **con `archivo_url`** se resuelven con **una llamada al modelo por documento**
+   (D19-11). El archivo se lee de disco con `rutaAbsolutaDesdeUrl(archivo_url)`; si el archivo no
+   existe en disco, esa fila se trata como el caso 3 con
+   `observacion='El archivo adjunto no se encontró en el almacenamiento.'` y no se llama al modelo.
+5. Si **todas** las filas con archivo fallaron técnicamente (excepción / JSON inválido tras el
+   reintento), el pre-dictamen es `estado='error'` con `error_mensaje` del primer fallo. Si solo
+   fallaron **algunas**, esas filas se guardan con `presente=false, legible=false` y
+   `observacion='No se pudo evaluar este documento (error de la IA).'`, y el estado global se calcula
+   normalmente según D19-5.
+
+`documentos_evaluados` = total de filas de `solicitud_documentos`; `documentos_con_archivo` = las que
+tenían `archivo_url` no nulo.
+
+### 19.5.2 Driver
 
 `PREDICTAMEN_DRIVER ∈ {'anthropic','simulado'}`, default `'simulado'`.
 
 - **`anthropic`**: llamada real con `@anthropic-ai/sdk`. Requiere `ANTHROPIC_API_KEY`; si falta, el
-  arranque **no** falla (el módulo es opcional) pero E56 responde **503** `ia_no_configurada`.
-- **`simulado`**: no hace red. Determinista a partir del `archivo_hash` del expediente y del checklist:
-  marca `presente=false, legible=false` en el documento cuyo índice es
-  `parseInt(hash.slice(0,8),16) % totalDocumentos` **si** el nombre del archivo original contiene la
-  subcadena `NEG` (case-insensitive); en cualquier otro caso marca todo `presente=true, legible=true`.
-  Para la CURP: `curp_coincide = true` en los documentos cuyo `requisito` normalizado contiene `CURP`
-  o `IDENTIFICACION`, con `curp_leida = solicitudes.curp`; salvo que el nombre del archivo contenga
-  `CURPMAL`, en cuyo caso `curp_coincide=false` y `curp_leida='XXXX000000HXXXXX00'`.
-  `modelo_usado = 'simulado-v1'`. Este driver es el que usa el Evaluator (§19.13).
+  arranque **no** falla (el módulo es opcional) pero E55 responde **503** `ia_no_configurada`.
+- **`simulado`**: no hace red. **Determinista por documento**, a partir de
+  `solicitud_documentos.archivo_nombre` (o, si es null, de `archivo_hash`):
+  - si `archivo_nombre` contiene la subcadena `NEG` (case-insensitive) →
+    `presente=false, legible=false, observacion='Documento ilegible (simulado).'`;
+  - en cualquier otro caso → `presente=true, legible=true,
+    observacion='Documento legible (simulado).'`;
+  - **CURP:** solo en los documentos cuyo `requisito` normalizado (sin acentos, mayúsculas) contiene
+    `CURP` o `IDENTIFICACION` →
+    `curp_coincide=true`, `curp_leida = solicitudes.curp`; salvo que el `archivo_nombre` contenga
+    `CURPMAL`, en cuyo caso `curp_coincide=false` y `curp_leida='XXXX000000HXXXXX00'`.
+    En el resto de documentos, `curp_coincide=null` y `curp_leida=null`.
+  - `modelo_usado = 'simulado-v1'`, `latencia_ms` real medido (típicamente < 50 ms).
 
-### 19.6.2 Entrada del modelo (una sola llamada por solicitud)
+  Este driver es el que usa el Evaluator (§19.11).
 
-Bloques del mensaje `user`, en este orden:
-1. `{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"<b64 del PDF vigente>"}}`
-2. Un bloque `text` con: la lista numerada de documentos requeridos aplicables
-   (`documento_requerido_id` + `requisito`, obtenida de `solicitud_documentos` de esa solicitud —
-   que es el checklist ya materializado por el mismo motor de E41), la CURP capturada, el tipo de
-   persona y el folio.
+### 19.5.3 Entrada del modelo (una llamada por documento con archivo)
+
+Mensaje `user`, bloques en este orden:
+
+1. El archivo, según su mimetype deducido de la extensión de `archivo_url`:
+   - `.pdf` → `{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"<b64>"}}`
+   - `.jpg` / `.png` / `.webp` → `{"type":"image","source":{"type":"base64","media_type":"image/jpeg|image/png|image/webp","data":"<b64>"}}`
+2. Un bloque `text` con: el **nombre del requisito** de ese documento (`solicitud_documentos.requisito`),
+   la **CURP capturada** (`solicitudes.curp`, o `"no capturada"`), el tipo de persona y el folio.
 3. Instrucción de responder **solo JSON**.
 
 `system` (literal, en `backend/src/servicios/predictamen.prompt.ts`):
 
-> Eres un asistente de la Secretaría de Desarrollo Agropecuario de Querétaro. Recibes el expediente
-> escaneado de una solicitud de apoyo (un solo PDF con todos los documentos) y la lista de documentos
-> requeridos. Para cada documento requerido determina: (1) si está presente en el PDF, (2) si es
-> legible (no borroso, no cortado, no en blanco). Además, en la identificación oficial y en cualquier
-> documento donde la CURP sea visible, transcribe la CURP exactamente como aparece y compárala con la
-> CURP capturada. No evalúes vigencias, montos, superficies ni ningún otro contenido. No inventes
-> documentos: si no lo ves, `presente` es false. Responde ÚNICAMENTE con un objeto JSON válido, sin
-> texto antes ni después, con esta forma: {"documentos":[{"documento_requerido_id":number,
-> "presente":boolean,"legible":boolean,"curp_coincide":boolean|null,"curp_leida":string|null,
-> "pagina":number|null,"observacion":string}],"resumen":string}
+> Eres un asistente de la Secretaría de Desarrollo Agropecuario de Querétaro. Recibes UN archivo
+> escaneado que ventanilla adjuntó como soporte de UN documento requerido de una solicitud de apoyo, y
+> el nombre de ese documento requerido. Determina: (1) si el archivo corresponde a ese documento
+> requerido y por lo tanto el documento está presente, (2) si es legible (no borroso, no cortado, no
+> en blanco). Además, si en el archivo es visible una CURP (típicamente en la identificación oficial o
+> en la constancia de CURP), transcríbela exactamente como aparece y compárala con la CURP capturada.
+> Si el archivo no muestra ninguna CURP, `curp_coincide` y `curp_leida` deben ser null. No evalúes
+> vigencias, montos, superficies ni ningún otro contenido. Si el archivo no corresponde al documento
+> requerido que se te indica, `presente` es false. Responde ÚNICAMENTE con un objeto JSON válido, sin
+> texto antes ni después, con esta forma: {"presente":boolean,"legible":boolean,
+> "curp_coincide":boolean|null,"curp_leida":string|null,"observacion":string}
 
-Parámetros: `model = ANTHROPIC_MODEL` (default `claude-sonnet-4-5`), `max_tokens: 4000`,
-`temperature: 0`, timeout **120 s** por solicitud.
+Parámetros: `model = ANTHROPIC_MODEL` (default `claude-sonnet-4-5`), `max_tokens: 600`,
+`temperature: 0`, timeout **60 s** por documento.
 
-### 19.6.3 Salida y normalización
+### 19.5.4 Salida y normalización
 
 Se extrae el primer objeto JSON de la respuesta (tolerando fences ```` ```json ````), se valida con un
-esquema Zod, se normaliza según §19.5.1 y se calcula `estado` según D19-5. Si el JSON no parsea o
-falla el esquema tras **1 reintento**, se guarda una fila con `estado='error'`, `detalle=[]` y
-`error_mensaje` con el motivo recortado a 500 caracteres. Un fallo en una solicitud del lote **no**
-aborta las demás.
+esquema Zod y se normaliza según §19.4.1, añadiendo en el servidor `solicitud_documento_id`,
+`documento_requerido_id`, `requisito` y `archivo_url`. Si el JSON no parsea o falla el esquema tras
+**1 reintento**, se aplica la regla del §19.5.1 punto 5. Un fallo en un documento **no** aborta los
+demás documentos, y un fallo en una solicitud **no** aborta las demás solicitudes del lote.
 
-### 19.6.4 Concurrencia
+`resumen` lo compone el **backend** (no la IA) con esta plantilla determinista:
+- si `estado='positivo'`: `Todos los documentos están presentes y legibles.`
+- si `estado='negativo'`: `n documento(s) con problema: <requisito1>, <requisito2>…` (máx. 3
+  requisitos, luego `y n más`), recortado a 300 caracteres.
+- si `estado='error'`: el `error_mensaje`, recortado a 300 caracteres.
 
-El lote se procesa con concurrencia **3**. El endpoint responde cuando todas terminaron (síncrono,
-sin cola en background): 20 solicitudes × ~15 s / 3 ≈ 100 s, por debajo del timeout de 120 s por
-solicitud. Se sube el `requestTimeout` de la ruta E56 a **300 s**.
+### 19.5.5 Concurrencia
+
+Concurrencia **3 a nivel de solicitud** y, dentro de cada solicitud, concurrencia **3 entre sus
+documentos** (máximo 9 llamadas en vuelo). El endpoint responde cuando todas terminaron (síncrono,
+sin cola en background). Se sube el `requestTimeout` de la ruta E55 a **300 s**.
 
 ---
 
-## 19.7 Contrato de endpoints (E55–E61)
+## 19.6 Contrato de endpoints (E55–E59)
 
 Todos exigen `Authorization: Bearer <jwt>`. `DICTAMEN = ['dictaminador','admin']` vía
 `app.requiereRol('dictaminador','admin')` (multi-rol ya soportado). Errores con el formato existente
 `{ error: { codigo, mensaje } }`.
 
-### E55 — `POST /api/solicitudes/:id/expediente` (prerrequisito)
+> **No hay endpoint de subida de expediente ni de descarga de expediente.** Los archivos se suben con
+> **E46** (ya existente, no se toca) y se leen desde `/media/**`, que ya está servido con
+> autenticación por el hook existente de `server.ts`.
 
-- **Roles:** `ventanilla`, `capturista`, `admin`, `dictaminador`.
-- **Body:** `multipart/form-data`, campo `archivo`, **solo** `application/pdf`.
-- **200/201:** `{ ok: true, expediente: { id, solicitud_id, archivo_url, archivo_hash, archivo_nombre, bytes, paginas, subido_en, subido_por } }` (**201**).
-- **Errores:** 404 solicitud inexistente · 413 `archivo_muy_grande` (> `MAX_EXPEDIENTE_MB`) ·
-  422 `tipo_archivo_no_permitido` (mimetype ≠ PDF) · 422 `payload_invalido` (sin archivo o vacío) ·
-  403 fuera de alcance (misma regla `exigirAlcanceSobre` de E46).
-- Marca las versiones previas como `vigente=false` y escribe bitácora `solicitud_expediente_subido`.
-
-### E56 — `POST /api/dictamen/predictaminar`
+### E55 — `POST /api/dictamen/predictaminar`
 
 - **Roles:** `DICTAMEN`.
 - **Body:** `{ "solicitud_ids": [1,2,3] }` — array de enteros, **1..20**, sin repetidos.
-- **200:** `{ ok: true, resultados: [{ solicitud_id, predictamen_id, estado, resumen }] }`,
-  un elemento por solicitud enviada, en el mismo orden.
+- **200:** `{ ok: true, resultados: [{ solicitud_id, predictamen_id, estado, resumen,
+  documentos_evaluados, documentos_con_archivo }] }`, un elemento por solicitud enviada, en el mismo
+  orden.
 - **Errores:** 422 `payload_invalido` (array vacío, > 20, no enteros) ·
-  503 `ia_no_configurada` (driver `anthropic` sin `ANTHROPIC_API_KEY`) · 403 sin rol.
-- Una solicitud **sin expediente vigente** no rompe el lote: produce una fila con `estado='error'` y
-  `error_mensaje='La solicitud no tiene expediente escaneado.'`.
+  503 `ia_no_configurada` (driver `anthropic` sin `ANTHROPIC_API_KEY`) · 403 sin rol · 401 sin token.
+- Una solicitud **sin ningún documento con archivo** no rompe el lote: produce una fila con
+  `estado='negativo'` (todos los documentos `presente=false`), salvo que **no tenga checklist**, en
+  cuyo caso es `estado='error'` (§19.5.1 punto 2).
 - Bitácora: una entrada `predictamen_generado` por solicitud + una `predictamen_lote` con el total.
 
-### E57 — `GET /api/dictamen/bandeja`
+### E56 — `GET /api/dictamen/bandeja`
 
 - **Roles:** `DICTAMEN`.
 - **Query:** `pagina` (default 1), `por_pagina` (default 25, máx 100), `estado`
@@ -5981,37 +6006,47 @@ Todos exigen `Authorization: Bearer <jwt>`. `DICTAMEN = ['dictaminador','admin']
   "filas": [{
     "solicitud_id": 12, "folio": "TR-QRO-AMEALCO-2026-000012",
     "solicitante": "JUAN PÉREZ GARCÍA", "recibida_en": "2026-08-10T16:20:00.000Z",
-    "tiene_expediente": true,
-    "predictamen": { "id": 7, "estado": "negativo", "resumen": "Falta el comprobante de domicilio.", "generado_en": "2026-08-20T18:00:00.000Z", "documentos_con_problema": 1 },
+    "documentos_total": 8, "documentos_con_archivo": 6,
+    "predictamen": { "id": 7, "estado": "negativo", "resumen": "1 documento(s) con problema: Comprobante de domicilio.", "generado_en": "2026-08-20T18:00:00.000Z", "documentos_con_problema": 1 },
     "dictamen": null
   }]
 }
 ```
 
-  `predictamen` es `null` si nunca se generó; `dictamen` es
+  `documentos_total` y `documentos_con_archivo` salen de `solicitud_documentos` (sustituyen al antiguo
+  `tiene_expediente`). `predictamen` es `null` si nunca se generó; `dictamen` es
   `{ id, resultado, dictaminado_en, dictaminado_por_nombre }` o `null`.
 - **Orden (D19-7), implementado en SQL:**
   `ORDER BY CASE WHEN d.id IS NOT NULL THEN 4 WHEN p.estado='negativo' THEN 0 WHEN p.estado='error' THEN 1 WHEN p.id IS NULL THEN 2 ELSE 3 END, s.recibida_en ASC, s.id ASC`.
 - El aislamiento por alcance regional (`regionalForzada` / `leerAlcance`) **no** se aplica al
   `dictaminador`: dictamina a nivel estatal (A19-6).
 
-### E58 — `GET /api/dictamen/:solicitudId`
+### E57 — `GET /api/dictamen/:solicitudId`
 
 - **Roles:** `DICTAMEN`.
-- **200:** `{ solicitud: {id, folio, solicitante, curp, tipo_persona, componente, recibida_en},
-  expediente: {...}|null, documentos: [{documento_requerido_id, solicitud_documento_id, requisito,
-  recibido, ia: {presente, legible, curp_coincide, curp_leida, pagina, observacion}|null,
-  humano: {veredicto}|null}], predictamen: {...}|null, dictamen: {...}|null,
-  historial_predictamenes: [{id, estado, generado_en, modelo_usado}] }`.
+- **200:**
+
+```json
+{
+  "solicitud": { "id": 12, "folio": "…", "solicitante": "…", "curp": "…", "tipo_persona": "fisica", "componente": "…", "recibida_en": "…" },
+  "documentos": [{
+    "solicitud_documento_id": 341, "documento_requerido_id": 4, "requisito": "CURP",
+    "recibido": true, "archivo_url": "/media/solicitudes/2026/08/9f1c….pdf",
+    "archivo_nombre": "curp.pdf",
+    "ia": { "presente": true, "legible": true, "curp_coincide": true, "curp_leida": "…", "observacion": "…" },
+    "humano": { "veredicto": "ok" }
+  }],
+  "predictamen": { "id": 7, "estado": "negativo", "resumen": "…", "generado_en": "…", "modelo_usado": "simulado-v1" },
+  "dictamen": null,
+  "historial_predictamenes": [{ "id": 7, "estado": "negativo", "generado_en": "…", "modelo_usado": "simulado-v1" }]
+}
+```
+
+- `documentos` incluye **todas** las filas de `solicitud_documentos`, tengan o no archivo; `ia` es
+  `null` si aún no hay pre-dictamen o si ese documento no aparece en el `detalle`.
 - **404** si la solicitud no existe.
 
-### E59 — `GET /api/dictamen/:solicitudId/expediente.pdf`
-
-- **Roles:** `DICTAMEN`, `ventanilla`, `admin`.
-- **200:** el PDF vigente con `Content-Type: application/pdf` y
-  `Content-Disposition: inline; filename="<folio>.pdf"`. **404** si no hay expediente vigente.
-
-### E60 — `POST /api/dictamen/:solicitudId/confirmar`
+### E58 — `POST /api/dictamen/:solicitudId/confirmar`
 
 - **Roles:** `DICTAMEN`.
 - **Body:** `{ "resultado": "positivo"|"negativo", "nota": string|null,
@@ -6027,7 +6062,7 @@ Todos exigen `Authorization: Bearer <jwt>`. `DICTAMEN = ['dictaminador','admin']
 - **201:** `{ ok: true, dictamen: { id, solicitud_id, resultado, nota, coincide_con_ia, dictaminado_en, dictaminado_por } }`.
 - Bitácora `dictamen_confirmado`.
 
-### E61 — `GET /api/dictamen/metricas`
+### E59 — `GET /api/dictamen/metricas`
 
 - **Roles:** `DICTAMEN`.
 - **200:** `{ pendientes: n, negativos: n, positivos: n, sin_predictamen: n, dictaminadas: n,
@@ -6036,9 +6071,9 @@ Todos exigen `Authorization: Bearer <jwt>`. `DICTAMEN = ['dictaminador','admin']
 
 ---
 
-## 19.8 Pantallas
+## 19.7 Pantallas
 
-### 19.8.1 Navegación
+### 19.7.1 Navegación
 
 Alta en `pwa/src/navegacion/menu.ts`:
 
@@ -6052,17 +6087,19 @@ Alta en `pwa/src/navegacion/menu.ts`:
 `fill="none"`, misma familia visual que los existentes). Ruta protegida en `pwa/src/rutas.tsx` con
 `const DICTAMEN = ['dictaminador', 'admin']`.
 
-### 19.8.2 `/dictamen` — bandeja (`pwa/src/pantallas/Dictamen.tsx`)
+### 19.7.2 `/dictamen` — bandeja (`pwa/src/pantallas/Dictamen.tsx`)
 
 - `data-testid="pantalla-dictamen"`, `h1` con el texto `Dictamen`.
-- Cabecera: 4 tarjetas de métricas (E61) con testids `metrica-negativos`, `metrica-sin-predictamen`,
+- Cabecera: 4 tarjetas de métricas (E59) con testids `metrica-negativos`, `metrica-sin-predictamen`,
   `metrica-positivos`, `metrica-dictaminadas`.
 - Barra de filtros: `input-buscar-dictamen` (texto), `select-filtro-estado` con las opciones exactas
   `todas | negativo | error | sin_predictamen | positivo | dictaminadas`.
-- Tabla `tabla-dictamen` con columnas, en este orden: **checkbox · Folio · Solicitante · Pre-dictamen
-  IA · Recibida · Dictamen humano · Acciones**.
+- Tabla `tabla-dictamen` con columnas, en este orden: **checkbox · Folio · Solicitante · Documentos ·
+  Pre-dictamen IA · Recibida · Dictamen humano · Acciones**.
   - Fila: `data-testid="fila-dictamen-<solicitud_id>"`.
   - Checkbox: `chk-dictamen-<solicitud_id>`; el de encabezado, `chk-dictamen-todos`.
+  - Columna **Documentos**: `data-testid="docs-dictamen-<solicitud_id>"` con el texto exacto
+    `<documentos_con_archivo>/<documentos_total>`.
   - Chip del pre-dictamen: `chip-predictamen-<solicitud_id>`, con clase
     `chip chip-negativo` / `chip-positivo` / `chip-error` / `chip-neutro` y texto **exacto**
     `Negativo` / `Positivo` / `Error` / `Sin revisar`.
@@ -6077,23 +6114,32 @@ Alta en `pwa/src/navegacion/menu.ts`:
   `Pre-dictamen generado para n solicitud(es).`, la tabla se recarga y se limpia la selección.
 - Sin filas: `.vacio` con `data-testid="vacio-dictamen"` y texto `No hay solicitudes por dictaminar.`.
 
-### 19.8.3 `/dictamen/:id` — detalle (`pwa/src/pantallas/DictamenDetalle.tsx`)
+### 19.7.3 `/dictamen/:id` — detalle (`pwa/src/pantallas/DictamenDetalle.tsx`)
+
+**No hay visor de PDF único.** El panel principal es la lista de documentos individuales.
 
 - `data-testid="pantalla-dictamen-detalle"`. Cabecera con folio, solicitante, CURP capturada
-  (`texto-curp-capturada`) y el chip del pre-dictamen (`chip-predictamen-detalle`).
-- Panel izquierdo: visor del PDF (`<iframe data-testid="visor-expediente" src="/api/dictamen/:id/expediente.pdf">`)
-  o, si no hay expediente, un aviso `sin-expediente` con el texto
-  `Esta solicitud no tiene expediente escaneado.`.
-- Panel derecho: lista `lista-documentos-dictamen`, un bloque por documento requerido
-  (`doc-dictamen-<documento_requerido_id>`) con:
-  - el `requisito`;
-  - los badges de la IA `ia-presente-<id>` (`Presente` / `Falta`), `ia-legible-<id>`
-    (`Legible` / `Ilegible`) y, solo cuando `curp_coincide !== null`, `ia-curp-<id>`
-    (`CURP coincide` / `CURP no coincide`) con la CURP leída en `title`;
-  - el control humano: tres `radio` con `name="veredicto-<id>"` y testids
-    `veredicto-ok-<id>`, `veredicto-falta-<id>`, `veredicto-ilegible-<id>`.
-    **Precarga:** se preselecciona lo que dijo la IA (`ok` si presente y legible; `ilegible` si
-    presente pero no legible; `falta` si no presente). Precargar **no** es confirmar.
+  (`texto-curp-capturada`), el chip del pre-dictamen (`chip-predictamen-detalle`) y un contador
+  `resumen-documentos` con el texto `<con archivo>/<total> documentos con archivo`.
+- Cuerpo: lista `lista-documentos-dictamen`, **un bloque por fila de `solicitud_documentos`**
+  (`doc-dictamen-<documento_requerido_id>`) con, en este orden:
+  1. el `requisito` en negritas;
+  2. **el archivo ya subido**: si `archivo_url` no es nulo, un enlace
+     `data-testid="enlace-archivo-<documento_requerido_id>"` con `target="_blank"`, `rel="noopener"`,
+     texto = `archivo_nombre` (o `Ver archivo` si es nulo) y `href` = `archivo_url` con el token
+     adjunto como `?token=<jwt>` (el servido de `/media` ya exige token, `server.ts` líneas 78–84);
+     si `archivo_url` es nulo, un aviso
+     `data-testid="sin-archivo-<documento_requerido_id>"` con el texto exacto `Sin archivo adjunto.`;
+  3. **el estado de la IA para ese documento**: badges `ia-presente-<id>` (`Presente` / `Falta`),
+     `ia-legible-<id>` (`Legible` / `Ilegible`) y, solo cuando `curp_coincide !== null`,
+     `ia-curp-<id>` (`CURP coincide` / `CURP no coincide`) con la CURP leída en `title`.
+     Si aún no hay pre-dictamen para ese documento, en su lugar aparece
+     `ia-pendiente-<id>` con el texto `Sin revisar por IA.`;
+  4. **el control humano**: tres `radio` con `name="veredicto-<id>"` y testids
+     `veredicto-ok-<id>`, `veredicto-falta-<id>`, `veredicto-ilegible-<id>`.
+     **Precarga:** se preselecciona lo que dijo la IA (`ok` si presente y legible; `ilegible` si
+     presente pero no legible; `falta` si no presente). Si no hay IA, ninguno queda preseleccionado.
+     Precargar **no** es confirmar.
 - Pie: `select-resultado-dictamen` (opciones `positivo` / `negativo`, **sin valor preseleccionado**,
   placeholder `Elige el resultado`), `textarea-nota-dictamen` y `btn-confirmar-dictamen`
   (texto `Confirmar dictamen`).
@@ -6105,29 +6151,24 @@ Alta en `pwa/src/navegacion/menu.ts`:
 - No existe en toda la PWA ningún control con texto o `aria-label` que contenga `Aprobar con IA`,
   `Auto-aprobar` o `Aceptar sugerencia`.
 
-### 19.8.4 Delta en `DetalleSolicitud.tsx` (ventanilla)
+### 19.7.4 `DetalleSolicitud.tsx` — **sin cambios**
 
-Bloque nuevo `seccion-expediente` con:
-- `input[type=file] data-testid="input-expediente"` (`accept="application/pdf"`),
-- `btn-subir-expediente` (texto `Subir expediente`),
-- si ya hay expediente: `enlace-expediente` (abre E59 en pestaña nueva) con el nombre y el peso,
-- errores en `error-expediente` con `role="alert"` (mimetype no PDF, > `MAX_EXPEDIENTE_MB`).
-
-Nada más de esta pantalla cambia; los adjuntos por documento de E46 siguen intactos.
+Build 13 **no modifica** la pantalla de la solicitud. El checklist con adjunto por documento (E46) ya
+existe y es la entrada de la IA tal cual está. No se agrega ningún bloque de expediente.
 
 ---
 
-## 19.9 Estructura de archivos (delta Build 13)
+## 19.8 Estructura de archivos (delta Build 13)
 
 **Nuevos**
 
 ```
 db/migrations/018_predictamen_ia.sql
-backend/src/servicios/predictamen.ts              # orquestador del lote + normalización
-backend/src/servicios/predictamen.prompt.ts       # system prompt y armado de bloques
+backend/src/servicios/predictamen.ts              # orquestador del lote + por documento + normalización
+backend/src/servicios/predictamen.prompt.ts       # system prompt y armado de bloques por documento
 backend/src/servicios/ia/cliente.ts               # driver anthropic | simulado
 backend/src/db/queries/dictamen.ts                # bandeja, detalle, inserciones
-backend/src/rutas/dictamen.ts                     # E56-E61
+backend/src/rutas/dictamen.ts                     # E55-E59
 pwa/src/pantallas/Dictamen.tsx
 pwa/src/pantallas/DictamenDetalle.tsx
 ```
@@ -6135,20 +6176,20 @@ pwa/src/pantallas/DictamenDetalle.tsx
 **Modificados**
 
 ```
-backend/src/config.ts                 # MAX_EXPEDIENTE_MB, PREDICTAMEN_DRIVER, ANTHROPIC_API_KEY, ANTHROPIC_MODEL
+backend/src/config.ts                 # PREDICTAMEN_DRIVER, ANTHROPIC_API_KEY, ANTHROPIC_MODEL
 backend/src/server.ts                 # registro de rutas/dictamen.js
-backend/src/servicios/almacenamiento.ts  # guardarExpedienteSolicitud
-backend/src/rutas/solicitudes.ts      # E55 (subida del expediente)
 backend/package.json                  # + @anthropic-ai/sdk
 packages/shared/src/usuarios.ts       # rol dictaminador + etiqueta
 packages/shared/src/dto.ts            # tipos Predictamen, Dictamen, FilaBandejaDictamen
 pwa/src/rutas.tsx                     # /dictamen, /dictamen/:id
 pwa/src/navegacion/menu.ts            # nav-dictamen
 pwa/src/componentes/Iconos.tsx        # IconoSello
-pwa/src/pantallas/DetalleSolicitud.tsx  # seccion-expediente
 pwa/src/styles/componentes.css        # .chip-negativo/.chip-positivo/.chip-error/.chip-neutro
 .env.example / docker-compose.yml     # variables nuevas
 ```
+
+**No se modifican** (a diferencia de la revisión 1): `backend/src/servicios/almacenamiento.ts`,
+`backend/src/rutas/solicitudes.ts`, `pwa/src/pantallas/DetalleSolicitud.tsx`.
 
 **Dependencias:** alta única `"@anthropic-ai/sdk": "^0.30.1"` en `backend/package.json`.
 Cero altas en la PWA. Cero bajas.
@@ -6160,59 +6201,67 @@ Cero altas en la PWA. Cero bajas.
 | `PREDICTAMEN_DRIVER` | `simulado` | `anthropic` o `simulado` |
 | `ANTHROPIC_API_KEY` | *(vacío)* | solo driver `anthropic` |
 | `ANTHROPIC_MODEL` | `claude-sonnet-4-5` | modelo con visión |
-| `MAX_EXPEDIENTE_MB` | `25` | límite del PDF del expediente |
+
+Ya **no** se agrega `MAX_EXPEDIENTE_MB`: no hay subida nueva, y el límite vigente de E46
+(`MAX_UPLOAD_MB`, 8 MB por archivo) es suficiente para un documento suelto.
 
 **Comandos de dev** (sin cambios respecto al SPEC base): `npm run dev` en `backend/` y en `pwa/`,
 migraciones con `npm run migrar` en `backend/`.
 
 ---
 
-## 19.10 Nota de costo y latencia
+## 19.9 Nota de costo y latencia
 
-La extracción de la CURP **no** es una llamada aparte: viaja en la **misma** petición de visión que ya
-evalúa presencia y legibilidad de todo el expediente. El costo marginal de la CURP son los ~25 tokens
-de salida por documento con CURP visible; no hay una llamada por documento ni una segunda pasada de
-OCR. Por eso el costo del módulo escala con el **número de solicitudes**, no con el número de
-documentos: **una llamada por solicitud por cada vez que se pulsa "Pre-dictaminar"**.
+El costo escala con el **número de documentos con archivo**, no con el número de páginas de un PDF
+grande: **una llamada por documento adjuntado**, por cada vez que se pulsa "Pre-dictaminar". Los
+documentos sin archivo **no cuestan nada** (se resuelven en el servidor).
 
-Orden de magnitud esperado con `claude-sonnet-4-5` y un expediente de 10–20 páginas: ~1 llamada de
-entre 15 y 40 s, dominada por el tiempo de lectura del PDF. Con concurrencia 3, un lote de 20
-solicitudes ronda los 2 minutos. Regenerar un pre-dictamen cuesta exactamente lo mismo que generarlo,
-y por eso el disparo es manual (D19-4): nadie paga una llamada por cada expediente subido, solo por
-los que el dictaminador decide encolar.
+La extracción de la CURP **no** es una llamada aparte: viaja dentro de la misma llamada del archivo
+donde la CURP es visible (típicamente la identificación oficial y la constancia de CURP). Su costo
+marginal son ~25 tokens de salida.
+
+Orden de magnitud esperado con `claude-sonnet-4-5`: una solicitud con 8 documentos adjuntos ≈ 8
+llamadas de 3–8 s cada una; con concurrencia 3 por solicitud, ~20 s por solicitud. Un lote de 20
+solicitudes con concurrencia 3 a nivel de solicitud ronda los 2 minutos. Frente al PDF único
+descartado, el costo total de tokens es similar (las mismas páginas se leen), pero la precisión sube
+porque cada llamada evalúa **un** documento contra **un** requisito conocido, sin segmentación.
+
+Regenerar un pre-dictamen cuesta lo mismo que generarlo, y por eso el disparo es manual (D19-4).
 
 ---
 
-## 19.11 Assumptions del Build 13 (continúa la numeración de §18.6)
+## 19.10 Assumptions del Build 13 (continúa la numeración de §18.6)
 
-- **A19-1.** El módulo de escaneo/drag&drop descrito en la memoria del proyecto **no estaba
-  implementado**. Esta extensión construye la parte mínima imprescindible (tabla
-  `solicitud_expedientes` + E55 + E59 + bloque de subida). No se construye el drag&drop de varias
-  hojas, ni el reordenamiento de páginas, ni la integración con escáner: se sube un PDF ya armado.
-- **A19-2.** Los adjuntos por documento de E46 **no se migran ni se eliminan**. Conviven: E46 es el
-  soporte por requisito, el expediente único es la entrada de la IA. La IA nunca lee los adjuntos de
-  E46, aunque existan.
+- **A19-1.** **El expediente único en PDF queda fuera del scope de Build 13**, por decisión de
+  producto. No se construye la tabla `solicitud_expedientes`, ni endpoint de subida del expediente
+  completo, ni visor de PDF único, ni bloque de expediente en `DetalleSolicitud`. Si algún día se
+  requiere, será un build aparte que no invalida nada de este.
+- **A19-2.** Los adjuntos por documento de **E46 son la única entrada de la IA**. E46 ya existe, ya
+  funciona y **no forma parte de este build**: no se modifica, no se migra y no se re-verifica su
+  construcción (solo se usa como fixture).
 - **A19-3.** La lista de documentos que la IA evalúa sale de `solicitud_documentos` (checklist ya
   materializado al alta), no de recalcular `documentos_requeridos`. Así el pre-dictamen se mide
   contra las reglas vigentes **cuando se recibió la solicitud** (coherente con la Assumption 53 del
   SPEC base), y no contra reglas cambiadas después.
-- **A19-4.** Solo se acepta **PDF** como expediente. Un JPG suelto se rechaza: obliga a que ventanilla
-  arme el expediente completo, que es justo lo que hace comparable el pre-dictamen.
+- **A19-4.** Se aceptan como entrada los mismos tipos que E46 ya admite: JPG, PNG, WEBP y PDF. Un PDF
+  adjunto a un documento puede tener varias páginas (p. ej. un acta): la IA lo evalúa completo como
+  soporte de **ese** requisito.
 - **A19-5.** `estado='error'` es un valor de primera clase, distinto de `negativo`. Un fallo técnico
-  no puede parecer un expediente incompleto del ciudadano.
+  no puede parecer un expediente incompleto del ciudadano. Una solicitud **con** checklist pero
+  **sin ningún archivo** sí es `negativo` (eso sí es un defecto del expediente del ciudadano).
 - **A19-6.** El `dictaminador` **ve todas las regionales**. No se le aplica `regionalForzada`. La
   dictaminación es una función central; segmentarla por regional partiría la cola sin necesidad.
   Un usuario `ventanilla+dictaminador` sigue restringido en `/solicitudes` y abierto en `/dictamen`.
 - **A19-7.** `curp_coincide = null` no vuelve negativo el pre-dictamen. Si la IA no logra leer la
-  CURP, eso es incertidumbre de la IA, no un defecto del expediente; lo resuelve el humano mirando
-  el PDF.
+  CURP, eso es incertidumbre de la IA, no un defecto del expediente; lo resuelve el humano abriendo
+  el archivo.
 - **A19-8.** El pre-dictamen no cambia ningún estado de la solicitud ni escribe en
-  `solicitud_documentos`. Vive en su propia tabla, aislado. Si el módulo se apaga, el sistema anterior
-  queda intacto.
+  `solicitud_documentos` (en particular, **no** toca `recibido`). Vive en su propia tabla, aislado.
+  Si el módulo se apaga, el sistema anterior queda intacto.
 - **A19-9.** No hay endpoint para borrar pre-dictámenes ni dictámenes. Historial append-only; la
   corrección es una fila nueva.
 - **A19-10.** El lote es **síncrono** (sin cola ni worker). Con 20 solicitudes como techo y
-  concurrencia 3 cabe en un request; una cola con reintentos sería infraestructura desproporcionada
+  concurrencia 3×3 cabe en un request; una cola con reintentos sería infraestructura desproporcionada
   para el volumen real de ventanilla.
 - **A19-11.** El driver por defecto es `simulado` para que el sistema se pueda instalar, probar y
   evaluar sin `ANTHROPIC_API_KEY` y sin gastar. Producción se configura explícitamente con
@@ -6225,48 +6274,55 @@ los que el dictaminador decide encolar.
   superior sin rediseño (bastaría una tabla `resoluciones` que la referencie).
 - **A19-14.** No se notifica al solicitante. La salida del módulo es la cola priorizada, no la
   comunicación al ciudadano.
+- **A19-15.** El detalle no incrusta previsualizaciones de los archivos (`<img>` / `<iframe>`): usa
+  **enlaces** a `/media/...` con `?token=`. Incrustar obligaría a resolver el token en cada recurso y
+  no aporta nada al veredicto, que el humano toma abriendo el archivo en una pestaña.
 
 ---
 
-## 19.12 Rubric de evaluación — Build 13 (criterios 551–600)
+## 19.11 Rubric de evaluación — Build 13 (criterios 551–600)
 
 Salvo indicación contraria: backend en `http://localhost:3000`, PWA en `http://localhost:5173`,
 `PREDICTAMEN_DRIVER=simulado`, viewport de escritorio **1440×900**.
 
 **Fixture obligatorio para el Evaluator** (lo prepara el Generator en `db/seeds/` o en un script
-`scripts/fixture-dictamen.ts` idempotente):
+`scripts/fixture-dictamen.ts` idempotente; usa **E46**, que ya existe):
 - Usuario `dict.test` con rol exactamente `dictaminador`, y usuario `vent.dict` con rol
   `ventanilla+dictaminador`. Ambos sin cambio de contraseña pendiente.
-- Al menos **3 solicitudes** con checklist materializado: `S_POS` (expediente subido con nombre
-  `expediente-ok.pdf`), `S_NEG` (expediente subido con nombre `expediente-NEG.pdf`) y `S_SIN`
-  (sin expediente).
+- Al menos **3 solicitudes** con checklist materializado (`solicitud_documentos` con ≥ 3 filas cada
+  una) y con la CURP capturada en `solicitudes.curp`:
+  - **`S_POS`**: **todas** sus filas de `solicitud_documentos` con `archivo_url` cargado vía E46, con
+    `archivo_nombre` que **no** contiene `NEG` ni `CURPMAL` (p. ej. `curp-ok.pdf`, `ine-ok.jpg`).
+  - **`S_NEG`**: todas sus filas con archivo, pero **exactamente una** con `archivo_nombre` que
+    contiene `NEG` (p. ej. `domicilio-NEG.jpg`).
+  - **`S_SIN`**: checklist materializado pero **ninguna** fila con `archivo_url` (ningún adjunto).
 
 ### Migración, rol y arranque (551–557)
 
 | # | Criterio | Cómo verificar |
 |---|---|---|
-| 551 | Tras `npm run migrar`, existen las tablas `solicitud_expedientes`, `predictamenes_ia` y `dictamenes`. | `psql -c "select to_regclass('solicitud_expedientes'), to_regclass('predictamenes_ia'), to_regclass('dictamenes')"` → ninguna `NULL` |
-| 552 | `predictamenes_ia` tiene las columnas `solicitud_id, estado, detalle, modelo_usado, generado_en, generado_por` y `detalle` es de tipo `jsonb`. | `information_schema.columns` |
+| 551 | Tras `npm run migrar`, existen las tablas `predictamenes_ia` y `dictamenes`, y **no** existe ninguna tabla `solicitud_expedientes`. | `psql -c "select to_regclass('predictamenes_ia'), to_regclass('dictamenes'), to_regclass('solicitud_expedientes')"` → las dos primeras no `NULL`, la tercera `NULL` |
+| 552 | `predictamenes_ia` tiene las columnas `solicitud_id, documentos_evaluados, documentos_con_archivo, estado, detalle, modelo_usado, generado_en, generado_por`, `detalle` es de tipo `jsonb`, y **no** existe ninguna columna cuyo nombre contenga `expediente`. | `information_schema.columns` |
 | 553 | El CHECK de `predictamenes_ia.estado` acepta `positivo`, `negativo` y `error`, y rechaza cualquier otro valor. | `INSERT` directo con `estado='raro'` → error de constraint |
 | 554 | Ejecutar `npm run migrar` **dos veces seguidas** termina con código 0 ambas veces (migración idempotente). | CLI |
 | 555 | `ROLES_USUARIO` de `@sedea/shared` incluye `dictaminador` y `ETIQUETAS_ROL.dictaminador === 'Dictaminador'`. | Grep sobre `packages/shared/src/usuarios.ts` + `cd packages/shared && npm run build` código 0 |
 | 556 | Se puede crear/actualizar un usuario con rol `ventanilla+dictaminador` vía la API de usuarios y el `GET` posterior devuelve exactamente esa cadena. | curl con Bearer de `admin` |
 | 557 | `cd backend && npm run typecheck` y `cd pwa && npm run typecheck && npm run build` terminan con código 0. | CLI |
 
-### Expediente único en PDF — E55/E59 (558–565)
+### Entrada de la IA: documentos individuales ya existentes (558–565)
 
 | # | Criterio | Cómo verificar |
 |---|---|---|
-| 558 | `POST /api/solicitudes/<S_POS>/expediente` con un PDF válido y Bearer de `ventanilla` devuelve **201** y un JSON con `expediente.archivo_url` que empieza con `/media/expedientes/`. | curl multipart |
-| 559 | Tras 558, `GET /api/dictamen/<S_POS>/expediente.pdf` con Bearer de `dict.test` devuelve **200** y `content-type: application/pdf`. | curl `-i` |
-| 560 | Subir un `.jpg` a `POST /api/solicitudes/<S_POS>/expediente` devuelve **422** con `error.codigo === 'tipo_archivo_no_permitido'`. | curl multipart |
-| 561 | Subir un archivo mayor a `MAX_EXPEDIENTE_MB` devuelve **413** con `error.codigo === 'archivo_muy_grande'`. | curl con un PDF de relleno de 30 MB |
-| 562 | Subir un segundo PDF a la misma solicitud devuelve 201 y deja **exactamente una** fila con `vigente = TRUE` para esa `solicitud_id`, que es la del último `id`. | curl + `psql` |
-| 563 | `GET /api/dictamen/<S_SIN>/expediente.pdf` devuelve **404**. | curl |
-| 564 | En `/solicitudes/<S_POS>` existe `[data-testid="input-expediente"]` con `accept` que contiene `application/pdf`, y `[data-testid="btn-subir-expediente"]`. | Playwright con `ventanilla` |
-| 565 | Tras subir el expediente desde la UI, aparece `[data-testid="enlace-expediente"]` con `href` no vacío. | Playwright |
+| 558 | El fixture deja `S_POS` con **todas** sus filas de `solicitud_documentos` con `archivo_url` no nulo, y `S_SIN` con **cero** filas con `archivo_url` no nulo. | `psql`: `select count(*) filter (where archivo_url is not null), count(*) from solicitud_documentos where solicitud_id=…` |
+| 559 | E46 sigue funcionando sin cambios: `POST /api/solicitudes/<S_POS>/documentos/<docId>/archivo` con un JPG y Bearer de `ventanilla` devuelve **201** y el JSON trae `documento.archivo_url` que empieza con `/media/solicitudes/`. | curl multipart |
+| 560 | El archivo de un documento se puede abrir con token: `GET <archivo_url de una fila de S_POS>` con `Authorization: Bearer` de `dict.test` devuelve **200**; el mismo GET **sin** token devuelve **401**. | curl `-i` |
+| 561 | **No se construyó nada de expediente único:** `grep -ri "solicitud_expedientes\|guardarExpedienteSolicitud\|MAX_EXPEDIENTE_MB\|visor-expediente\|input-expediente" backend/src pwa/src db/migrations` no arroja ninguna coincidencia. | grep |
+| 562 | No existe ningún endpoint de expediente: `POST /api/solicitudes/<S_POS>/expediente` y `GET /api/dictamen/<S_POS>/expediente.pdf` con Bearer válido devuelven **404**. | curl |
+| 563 | `GET /api/dictamen/<S_POS>` (E57) devuelve `documentos.length` **igual** al número de filas de `solicitud_documentos` de esa solicitud, y cada elemento trae las claves `solicitud_documento_id`, `documento_requerido_id`, `requisito` y `archivo_url`. | curl + `psql` |
+| 564 | En `GET /api/dictamen/<S_SIN>` todos los elementos de `documentos` tienen `archivo_url === null`. | curl |
+| 565 | La respuesta de `GET /api/dictamen/<S_POS>` **no** contiene ninguna clave llamada `expediente` en ningún nivel. | curl + búsqueda en el JSON |
 
-### Pre-dictaminación — E56 (566–575)
+### Pre-dictaminación — E55 (566–575)
 
 | # | Criterio | Cómo verificar |
 |---|---|---|
@@ -6274,20 +6330,20 @@ Salvo indicación contraria: backend en `http://localhost:3000`, PWA en `http://
 | 567 | El mismo POST con Bearer de un usuario con rol solo `capturista` devuelve **403**. | curl |
 | 568 | Con Bearer de `dict.test` y body `{"solicitud_ids":[<S_POS>]}` devuelve **200**, `resultados.length === 1` y `resultados[0].estado === 'positivo'`. | curl |
 | 569 | Con `{"solicitud_ids":[<S_NEG>]}` devuelve 200 y `resultados[0].estado === 'negativo'`. | curl |
-| 570 | Con `{"solicitud_ids":[<S_SIN>]}` devuelve 200 y `resultados[0].estado === 'error'`; en BD esa fila tiene `error_mensaje` no nulo. | curl + `psql` |
+| 570 | Con `{"solicitud_ids":[<S_SIN>]}` devuelve 200, `resultados[0].estado === 'negativo'` y `resultados[0].documentos_con_archivo === 0`; en BD **todos** los elementos de `detalle` de esa fila tienen `presente === false`. | curl + `psql` |
 | 571 | Body `{"solicitud_ids":[]}` devuelve **422** con `error.codigo === 'payload_invalido'`. | curl |
 | 572 | Un body con **21** ids devuelve **422** y **no** inserta ninguna fila nueva en `predictamenes_ia`. | curl + conteo antes/después |
-| 573 | Tras 568, la fila de `predictamenes_ia` de `S_POS` tiene `modelo_usado` no vacío, `generado_por` = id de `dict.test` y `jsonb_array_length(detalle)` **igual** al número de filas de `solicitud_documentos` de esa solicitud. | `psql` |
+| 573 | Tras 568, la fila de `predictamenes_ia` de `S_POS` tiene `modelo_usado` no vacío, `generado_por` = id de `dict.test`, `jsonb_array_length(detalle)` **igual** al número de filas de `solicitud_documentos` de esa solicitud, y `documentos_evaluados` igual a ese mismo número. | `psql` |
 | 574 | Repetir 568 sobre `S_POS` **inserta una segunda fila** (el conteo de `predictamenes_ia` para esa solicitud aumenta en 1) y no actualiza la anterior. | `psql` antes/después |
-| 575 | Cada elemento de `detalle` tiene las claves `documento_requerido_id`, `presente`, `legible` y `curp_coincide`, con `presente` y `legible` de tipo boolean. | `psql` + validación del JSON |
+| 575 | Cada elemento de `detalle` tiene las claves `solicitud_documento_id`, `documento_requerido_id`, `archivo_url`, `presente`, `legible` y `curp_coincide`; `presente` y `legible` son boolean; y cada `solicitud_documento_id` existe en `solicitud_documentos` con esa `solicitud_id`. | `psql` + validación del JSON |
 
-### Bandeja — E57/E61 (576–583)
+### Bandeja — E56/E59 (576–583)
 
 | # | Criterio | Cómo verificar |
 |---|---|---|
 | 576 | `GET /api/dictamen/bandeja` con Bearer de `dict.test` devuelve **200** con `filas` de tipo array y `total` numérico. | curl |
-| 577 | En esa respuesta, el índice de la fila de `S_NEG` es **menor** que el de `S_SIN`, y el de `S_SIN` menor que el de `S_POS` (negativo → sin/erróneo → positivo). | curl + comparación de índices |
-| 578 | Cada fila trae `folio`, `solicitante`, `recibida_en`, `tiene_expediente` y `predictamen` (objeto o `null`). | curl |
+| 577 | En esa respuesta (tras pre-dictaminar `S_NEG` y `S_POS` y dejar una tercera solicitud sin pre-dictamen), el índice de la fila de `S_NEG` es **menor** que el de la solicitud sin pre-dictamen, y el de esta es menor que el de `S_POS` (negativo → sin pre-dictamen → positivo). | curl + comparación de índices |
+| 578 | Cada fila trae `folio`, `solicitante`, `recibida_en`, `documentos_total`, `documentos_con_archivo` y `predictamen` (objeto o `null`); ninguna fila trae la clave `tiene_expediente`. | curl |
 | 579 | `GET /api/dictamen/bandeja?estado=negativo` devuelve solo filas con `predictamen.estado === 'negativo'`. | curl |
 | 580 | `GET /api/dictamen/bandeja?q=<folio de S_NEG>` devuelve `total === 1` y esa fila es `S_NEG`. | curl |
 | 581 | `GET /api/dictamen/bandeja?por_pagina=200` devuelve `por_pagina <= 100` (se recorta al máximo). | curl |
@@ -6305,20 +6361,20 @@ Salvo indicación contraria: backend en `http://localhost:3000`, PWA en `http://
 | 588 | Marcando `chk-dictamen-todos` se marcan todos los `chk-dictamen-*` visibles y el texto de `btn-predictaminar` contiene el mismo número entre paréntesis. | Playwright |
 | 589 | Seleccionando `S_NEG` y pulsando `btn-predictaminar`, aparece `[data-testid="mensaje-predictamen"]` (≤ 30 s) y el `chip-predictamen-<S_NEG>` muestra el texto `Negativo`. | Playwright |
 | 590 | El `chip-predictamen-<S_POS>` tras pre-dictaminar muestra `Positivo`, y una solicitud nunca pre-dictaminada muestra `Sin revisar`. | Playwright |
-| 591 | La primera fila de la tabla (`fila-dictamen-*` con índice 0) tiene un chip cuyo texto es `Negativo` cuando existe al menos un pre-dictamen negativo sin dictaminar. | Playwright |
+| 591 | `[data-testid="docs-dictamen-<S_SIN>"]` muestra un texto que empieza con `0/` y `[data-testid="docs-dictamen-<S_POS>"]` muestra `n/n` con ambos números iguales y > 0. | Playwright |
 
 ### Detalle, confirmación humana y no-auto-aprobación (592–600)
 
 | # | Criterio | Cómo verificar |
 |---|---|---|
 | 592 | Pulsando `btn-ver-dictamen-<S_NEG>`, la URL termina en `/dictamen/<S_NEG>` y `[data-testid="pantalla-dictamen-detalle"]` es visible. | Playwright |
-| 593 | En ese detalle, `[data-testid="visor-expediente"]` existe y su `src` contiene `/expediente.pdf`. | Playwright |
+| 593 | En ese detalle **no existe** ningún `[data-testid="visor-expediente"]` ni ningún `iframe`; en cambio existe al menos un `[data-testid^="enlace-archivo-"]` cuyo `href` contiene `/media/solicitudes/`. | Playwright |
 | 594 | Existe un `[data-testid^="doc-dictamen-"]` por cada documento requerido de la solicitud, y su número coincide con `documentos.length` de `GET /api/dictamen/<S_NEG>`. | Playwright + curl |
-| 595 | En el documento que la IA marcó ausente, `[data-testid="ia-presente-<id>"]` tiene el texto `Falta` y el radio `veredicto-falta-<id>` está preseleccionado (`checked`). | Playwright + curl para conocer el id |
-| 596 | `[data-testid="btn-confirmar-dictamen"]` está `disabled` mientras `select-resultado-dictamen` tenga valor vacío. | Playwright |
-| 597 | Eligiendo `negativo` con la nota vacía y pulsando confirmar, aparece `[data-testid="error-dictamen"]` con `role="alert"` y **no** se crea ninguna fila en `dictamenes` para esa solicitud. | Playwright + `psql` |
+| 595 | En el documento que la IA marcó ausente/ilegible (el del archivo con `NEG`), `[data-testid="ia-legible-<id>"]` tiene el texto `Ilegible` y el radio `veredicto-ilegible-<id>` está preseleccionado (`checked`). | Playwright + curl para conocer el id |
+| 596 | En `/dictamen/<S_SIN>`, cada documento muestra `[data-testid="sin-archivo-<id>"]` con el texto `Sin archivo adjunto.` y **no** muestra `enlace-archivo-<id>`. | Playwright |
+| 597 | `[data-testid="btn-confirmar-dictamen"]` está `disabled` mientras `select-resultado-dictamen` tenga valor vacío; eligiendo `negativo` con la nota vacía y pulsando confirmar, aparece `[data-testid="error-dictamen"]` con `role="alert"` y **no** se crea ninguna fila en `dictamenes` para esa solicitud. | Playwright + `psql` |
 | 598 | Eligiendo `negativo` con una nota de ≥ 10 caracteres y confirmando, se crea **una** fila en `dictamenes` con `resultado='negativo'`, `dictaminado_por` = id de `dict.test`, `predictamen_id` = id del último pre-dictamen de esa solicitud y `coincide_con_ia = true`. | Playwright + `psql` |
-| 599 | `POST /api/dictamen/<S_POS>/confirmar` con body `{"resultado":"negativo","nota":"discrepo de la IA porque falta el anexo"}` (contradiciendo un pre-dictamen positivo) devuelve **201** y deja `coincide_con_ia = false`. | curl + `psql` |
+| 599 | `POST /api/dictamen/<S_POS>/confirmar` con body `{"resultado":"negativo","nota":"discrepo de la IA porque el INE está vencido"}` (contradiciendo un pre-dictamen positivo) devuelve **201** y deja `coincide_con_ia = false`. | curl + `psql` |
 | 600 | **No hay auto-aprobación:** (a) tras pre-dictaminar `S_POS` **sin** confirmar, `SELECT count(*) FROM dictamenes WHERE solicitud_id=<S_POS>` es **0** y la bandeja muestra `chip-dictamen-<S_POS>` con el texto `Pendiente`; (b) `grep -ri "auto-aprob\|autoaprob\|aprobar con ia" backend/src pwa/src` no arroja ninguna coincidencia; (c) `POST /api/dictamen/<S_POS>/confirmar` sin `resultado` en el body devuelve **422**. | `psql` + Playwright + grep + curl |
 
 **Definición de "terminado" (Build 13):** pasan los **50** criterios nuevos (551–600) **y** siguen

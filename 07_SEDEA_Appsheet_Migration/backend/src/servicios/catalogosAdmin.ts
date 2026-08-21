@@ -139,7 +139,8 @@ export async function listarEntidad(opts: {
     valores
   );
 
-  return { datos: data, total, pagina, porPagina };
+  // F-17 (criterio 464): el contrato de la respuesta es snake_case (`por_pagina`).
+  return { datos: data, total, pagina, por_pagina: porPagina };
 }
 
 /** Obtiene una fila por ID. */

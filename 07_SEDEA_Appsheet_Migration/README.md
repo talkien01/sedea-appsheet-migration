@@ -134,6 +134,35 @@ npm run dev:pwa             # PWA en http://localhost:5173 (proxy /api -> 3000)
 
 ---
 
+## Administración de catálogos (`/catalogos`)
+
+Accesible para los roles `admin` y `editor_datos`. El árbol muestra las ramas de
+programas/subprogramas, componentes/modalidades/proyectos y **conceptos de apoyo**
+(lista paginada con buscador por clave o nombre).
+
+**Duplicar.** Las filas de **proyectos** y de **conceptos de apoyo** tienen un
+botón *Duplicar* (`btn-duplicar-proyectos-<id>` / `btn-duplicar-tipos_apoyo-<id>`)
+junto a *Editar* y *Desactivar*. Al pulsarlo se abre el formulario **en modo alta**
+precargado con todos los datos del registro original salvo los campos únicos, que
+quedan vacíos para que los captures:
+
+- `clave` (siempre), y
+- `prefijo_folio` (solo en proyectos).
+
+El resto —nombre, componente, modalidad, categoría, unidad de medida— se copia como
+punto de partida editable. Al guardar se crea un registro **nuevo e independiente**
+con las validaciones normales de alta (clave repetida → error, sin crear nada); el
+registro original nunca se modifica.
+
+Caso de uso típico: das de alta el proyecto "Semilla de avena" completo, pulsas
+*Duplicar*, cambias clave, prefijo y nombre, y queda "Semilla de garbanzo" colgando
+del mismo componente y la misma modalidad.
+
+Es una función solo de front-end: no hay endpoint nuevo, usa el mismo `POST
+/api/admin/catalogos/:entidad` del alta.
+
+---
+
 ## Importación del padrón y catálogos
 
 El importador **no tiene ningún nombre de columna escrito en el código**: el mapeo

@@ -5403,3 +5403,237 @@ Salvo indicación contraria, Playwright con `admin` autenticado, viewport de esc
 
 **Definición de "terminado" (Build 11):** pasan los **27** criterios nuevos (504–530) **y** siguen
 pasando los 503 anteriores. Total acumulado: **530** criterios.
+# SPEC — Sección 18 (anexo)
+
+> **Anexo de `SPEC.md`.** Este archivo contiene, literal y completa, la **sección 18** de `SPEC.md`.
+> Debe concatenarse al final de `SPEC.md` sin modificar ni una línea de las secciones 1–17.
+> Mismo patrón que `SPEC_SECCION_14_JERARQUIA.md` y que el anexo de la sección 17.
+> Continúa la numeración de secciones (§17 = Build 11, "Densidad UI") y de criterios
+> (último criterio previo: **530**).
+>
+> **Sección retroactiva.** Documenta funcionalidad **ya construida, commiteada y verificada**
+> (commits `42d6f9e` y `cc0cefe`). No es un encargo de construcción: describe el estado actual del
+> código y fija los criterios con los que ese estado se re-verifica en cada corrida del Evaluator.
+
+---
+
+# 18. EXTENSIÓN — Duplicar registros de catálogo y listado de Conceptos de apoyo (Build 12)
+
+## 18.1 Objetivo
+
+En `/catalogos`, poder crear un registro nuevo a partir de uno existente con un solo clic
+("Duplicar"), para las dos entidades donde el alta es repetitiva y de alto volumen: **Proyectos** y
+**Conceptos de apoyo** (`tipos_apoyo`). El duplicado precarga todos los campos del registro origen
+salvo los únicos, que el usuario debe capturar de nuevo.
+
+De paso se cierra un hueco de Build 10: la rama **Conceptos de apoyo** del árbol mostraba solo el
+conteo y ninguna fila; ahora lista los conceptos de forma paginada y con buscador.
+
+**Cero cambios en backend, esquema y endpoints.** La funcionalidad es 100 % frontend y reutiliza los
+endpoints ya definidos en §16.5: **E50** (`GET /api/admin/catalogos/:entidad`) para el listado de
+conceptos y **E51** (`POST /api/admin/catalogos/:entidad`) para el alta que nace del duplicado.
+
+---
+
+## 18.2 Scope
+
+### SÍ incluye (lista cerrada)
+
+1. Botón de ícono **Duplicar** (`data-testid="btn-duplicar-<entidad>-<id>"`) en la fila de cada
+   registro de `proyectos` y de `tipos_apoyo` dentro de `ArbolCatalogos.tsx`, junto a Editar y a
+   Desactivar/Reactivar.
+2. Handler `abrirDuplicado(entidad, registro)` en `pwa/src/pantallas/Catalogos.tsx`: abre
+   `FormCatalogo` en `modo='alta'` con una **copia** del registro origen.
+3. Aviso `data-testid="aviso-duplicado"` dentro de `FormCatalogo`, visible solo cuando el alta viene
+   de "Duplicar".
+4. Renderizado de la rama **Conceptos de apoyo**: lista paginada + buscador sobre E50, con sus
+   propios `btn-editar-tipos_apoyo-<id>`, `btn-duplicar-tipos_apoyo-<id>` y
+   `btn-desactivar-tipos_apoyo-<id>` / `btn-reactivar-tipos_apoyo-<id>`.
+5. Corrección del submit de `proyectos` en `FormCatalogo.tsx`: la sobreescritura de `nombre`/`clave`
+   con los valores del registro origen queda acotada a `modo === 'edicion'`.
+
+### NO incluye
+
+- Ningún endpoint nuevo, ninguna migración, ningún cambio en `packages/shared`.
+- Duplicar en `programas`, `subprogramas`, `componentes`, `modalidades` ni
+  `documentos_requeridos`: esas ramas **no** tienen botón Duplicar.
+- Duplicado "profundo" (arrastrar hijos, documentos requeridos asociados o solicitudes): se copia
+  **solo** la fila seleccionada.
+- Duplicado en lote o multi-selección.
+- Cambios en `/solicitudes`, `/usuarios`, `/catalogos/documentos` ni en ninguna otra pantalla.
+
+---
+
+## 18.3 Comportamiento implementado
+
+### 18.3.1 Botón Duplicar
+
+Se renderiza con el componente `BotonIcono` de §17.4, `icono="copiar"` y `etiqueta="Duplicar"`
+(de donde salen `aria-label="Duplicar"`, `title="Duplicar"` y el `span.sr-solo`). Ocupa la tercera
+posición de `.arbol-acciones`, entre Editar y Desactivar/Reactivar.
+
+| Entidad | testId del botón | Componente que lo renderiza |
+|---|---|---|
+| `proyectos` | `btn-duplicar-proyectos-<id>` | `NodoProyecto` en `ArbolCatalogos.tsx` |
+| `tipos_apoyo` | `btn-duplicar-tipos_apoyo-<id>` | `NodoTipoApoyo` en `ArbolCatalogos.tsx` |
+
+### 18.3.2 Qué se copia y qué no
+
+`abrirDuplicado` construye `copia = { ...registro }` y aplica exactamente estas tres reglas:
+
+| Campo | Tratamiento | Motivo |
+|---|---|---|
+| `id` | se elimina de la copia | el alta genera un id nuevo |
+| `activo` | se elimina de la copia | toda alta nace activa (§16.5.4) |
+| `clave` | se fuerza a `''` | es única por catálogo |
+| `prefijo_folio` (solo `proyectos`) | se fuerza a `''` | inmutable y único (§14) |
+| todos los demás | se copian tal cual | incluye `nombre`, `componente_id`, `modalidad_id` en proyectos; `nombre`, `categoria`, `unidad_medida` en conceptos |
+
+El formulario se abre con `modo='alta'` y con `nonceForm` incrementado, lo que **remonta**
+`FormCatalogo` (sus campos usan `defaultValue`; sin `key` nueva conservarían lo anterior).
+
+### 18.3.3 Aviso en el formulario
+
+`Catalogos.tsx` pasa `duplicadoDe = "<clave del origen> · <nombre del origen>"`. `FormCatalogo`
+renderiza entonces `div.mensaje.aviso[data-testid="aviso-duplicado"]` con el texto:
+
+> Duplicando **CLAVE · Nombre**. Se copiaron sus datos; captura una clave *nueva* — o *y un prefijo
+> de folio nuevos*, en `proyectos` — para guardar un registro independiente. El original no se
+> modifica.
+
+En un alta normal (`btn-nuevo-*`) y en una edición, `duplicadoDe` es `null` y el aviso **no existe**
+en el DOM.
+
+### 18.3.4 Guardado
+
+El submit del duplicado es un alta normal: `POST /api/admin/catalogos/:entidad` (**E51**), con las
+mismas validaciones Zod `.strict()` y las mismas restricciones de unicidad ya especificadas en
+§16.5.4. Clave repetida ⇒ error de la API (409/422 según §16.5) mostrado en
+`data-testid="error-catalogo"`, sin cerrar el formulario y sin tocar el registro origen.
+
+Como `modo === 'alta'`, la rama de `proyectos` del submit **sí** envía `clave`, `nombre` y
+`prefijo_folio` tomados del formulario; la sobreescritura con los valores del registro solo ocurre en
+`modo === 'edicion'` (donde esos inputs van `disabled` y no llegan por `FormData`). Este es el bug
+corregido en `cc0cefe`.
+
+### 18.3.5 Rama "Conceptos de apoyo"
+
+- Encabezado `Conceptos de apoyo (<conteos.tipos_apoyo>)` + botón `btn-nuevo-tipos_apoyo`.
+- Buscador `input-buscar-tipos_apoyo` (`type="search"`); dispara la consulta a E50 con `q` a partir
+  de **2 caracteres**; con menos, se lista sin filtro.
+- Cada fila: `div[data-testid="nodo-tipos_apoyo-<id>"]` con `clave · nombre`, `chip-inactivo` si
+  está desactivado, y los tres botones de ícono.
+- Paginación: `POR_PAGINA_CONCEPTOS` filas; el bloque `paginacion-tipos_apoyo`
+  (`btn-conceptos-anterior` / `btn-conceptos-siguiente` + "Página X de N") se muestra **solo** si
+  `total > porPagina`.
+- Sin resultados ⇒ `p.vacio` con texto "Sin conceptos que coincidan.".
+- El toggle `incluir_inactivos` de la pantalla se propaga a la consulta E50 de conceptos.
+
+---
+
+## 18.4 Modelo de datos
+
+**Sin cambios.** Cero migraciones, cero columnas, cero seeds. Las tablas `proyectos` y `tipos_apoyo`
+siguen exactamente como en §12.3 / §14.3. El registro duplicado es una fila más de la misma tabla,
+sin ninguna marca de procedencia (no hay campo `duplicado_de`).
+
+---
+
+## 18.5 Archivos tocados
+
+| Archivo | Acción |
+|---|---|
+| `pwa/src/componentes/ArbolCatalogos.tsx` | MODIF: prop `onDuplicar` propagada por el árbol; `BotonIcono` Duplicar en `NodoProyecto` y en `NodoTipoApoyo`; rama "Conceptos de apoyo" con lista, buscador y paginación (`NodoTipoApoyo` **nuevo**) |
+| `pwa/src/pantallas/Catalogos.tsx` | MODIF: estado `duplicadoDe`, handler `abrirDuplicado`, `cargarConceptos` (E50), estado de búsqueda/página de conceptos, `onDuplicar={abrirDuplicado}` y `duplicadoDe={duplicadoDe}` |
+| `pwa/src/componentes/FormCatalogo.tsx` | MODIF: prop `duplicadoDe?: string \| null`, bloque `aviso-duplicado`, submit de `proyectos` acotado a `modo === 'edicion'` |
+| `backend/**`, `db/**`, `packages/shared/**`, `*/package.json`, `docker-compose.yml` | **sin cambios** |
+
+**Comandos (sin cambios):**
+
+```
+cd pwa
+npm run dev         # http://localhost:5173
+npm run typecheck   # tsc --noEmit
+npm run build       # vite build -> pwa/dist
+```
+
+Dependencias npm: **cero altas, cero bajas, cero cambios de versión**.
+
+---
+
+## 18.6 Assumptions del Build 12 (continúa la numeración de §17.12)
+
+- **A18-1.** Duplicar existe solo en `proyectos` y `tipos_apoyo`. Son las dos entidades de alto
+  volumen y campos repetitivos; `programas`, `subprogramas`, `componentes` y `modalidades` son
+  catálogos de pocas filas donde un alta desde cero cuesta lo mismo.
+- **A18-2.** `documentos_requeridos` queda fuera aunque sea voluminoso: no tiene `clave` (§16.5) y su
+  unicidad depende de la combinación apoyo/proyecto, lo que haría el duplicado ambiguo.
+- **A18-3.** La `clave` siempre se vacía en lugar de proponer una derivada (p. ej. `X-COPIA`): una
+  clave autogenerada acabaría en producción sin revisión humana.
+- **A18-4.** `prefijo_folio` se vacía en proyectos porque alimenta la folio-generación (§12.5) y es
+  inmutable tras el alta; heredarlo produciría folios colisionando entre dos proyectos.
+- **A18-5.** El duplicado **no** arrastra hijos ni documentos requeridos asociados. Copia de una sola
+  fila; si se necesitan documentos, se dan de alta aparte.
+- **A18-6.** `activo` se descarta de la copia: el alta nace activa por contrato de E51, aunque el
+  origen esté desactivado. Duplicar un registro desactivado produce uno activo.
+- **A18-7.** Se reutiliza `FormCatalogo` en `modo='alta'` en lugar de crear un componente
+  `FormDuplicado`: mismas validaciones, mismos `data-testid`, cero divergencia de comportamiento.
+- **A18-8.** No hay endpoint `POST /:entidad/:id/duplicar`. La copia se arma en el cliente y viaja
+  como un alta normal, de modo que la validación del servidor sigue siendo la única fuente de verdad.
+- **A18-9.** El registro duplicado no guarda rastro de su origen: la trazabilidad la da la bitácora
+  de auditoría existente, no una columna nueva.
+- **A18-10.** El buscador de conceptos exige 2 caracteres antes de filtrar, para no disparar una
+  consulta por cada tecla sobre un catálogo de ~150 filas.
+- **A18-11.** El aviso de duplicado usa `.mensaje.aviso` (no `role="alert"`): es informativo, no un
+  error, y no debe interrumpir al lector de pantalla.
+
+---
+
+## 18.7 Rubric de evaluación — Build 12 (criterios 531–550)
+
+Salvo indicación contraria, Playwright con `admin` autenticado en `/catalogos`, viewport de
+escritorio **1440×900**. "El proyecto P" = el primer `[data-testid^="nodo-proyectos-"]` visible;
+"el concepto C" = el primer `[data-testid^="nodo-tipos_apoyo-"]` visible.
+
+### Presencia y alcance del botón Duplicar (531–535)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 531 | En `/catalogos`, existe al menos un `[data-testid^="btn-duplicar-proyectos-"]` visible y su `id` coincide con el del `nodo-proyectos-<id>` que lo contiene. | Playwright |
+| 532 | Ese botón contiene exactamente **1** `svg`, tiene `aria-label="Duplicar"` y `title="Duplicar"`, y su `innerText` tras `trim()` es `''` (cumple el contrato de `BotonIcono`, §17.4). | Playwright |
+| 533 | En la fila del proyecto P, el orden de los `button` dentro de `.arbol-acciones` es: `btn-editar-proyectos-<id>`, `btn-duplicar-proyectos-<id>`, `btn-desactivar-proyectos-<id>` (o `btn-reactivar-…`). | Playwright, `$$eval` sobre los `data-testid` |
+| 534 | Existe al menos un `[data-testid^="btn-duplicar-tipos_apoyo-"]` visible, con `aria-label="Duplicar"`. | Playwright |
+| 535 | Con `incluir_inactivos` activado, en toda la página **0** elementos casan `[data-testid^="btn-duplicar-programas-"]`, `…-subprogramas-`, `…-componentes-`, `…-modalidades-` y `…-documentos_requeridos-`. | Playwright, `page.$$` por cada patrón |
+
+### Precarga del formulario al duplicar un proyecto (536–541)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 536 | Al pulsar `btn-duplicar-proyectos-<id>` del proyecto P, aparece `[data-testid="form-catalogo"]` y su `h2` empieza con `Nuevo` (no con `Editar`). | Playwright |
+| 537 | En ese formulario, `[data-testid="aviso-duplicado"]` es visible y su texto contiene la `clave` del proyecto P y la palabra `Duplicando`. | Playwright |
+| 538 | En ese formulario, `input-clave` tiene `value === ''` y **no** está `disabled`; `input-prefijo-folio` tiene `value === ''` y **no** está `disabled`. | Playwright |
+| 539 | En ese formulario, `input-nombre` tiene exactamente el `nombre` del proyecto P. | Playwright, comparando con el texto del nodo origen |
+| 540 | En ese formulario, `select-padre-componente` y `select-padre-modalidad` tienen seleccionados los mismos valores que el proyecto P devuelve en E49 (`componente_id` / `modalidad_id`). | Playwright + `GET /api/admin/catalogos/arbol` con curl/`request` |
+| 541 | `[data-testid="leyenda-clave-inmutable"]` **no** existe en el formulario de duplicado (es exclusivo del modo edición). | Playwright |
+
+### Guardado del duplicado (542–546)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 542 | Capturando en el duplicado del proyecto P una `clave` y un `prefijo_folio` nuevos y pulsando `btn-guardar-catalogo`, el formulario se cierra y aparece un mensaje de éxito con el texto `Registro creado correctamente.`. | Playwright |
+| 543 | Tras 542, `GET /api/admin/catalogos/proyectos?q=<clave nueva>` (E50) devuelve **200** con `total === 1`, y esa fila tiene `componente_id` y `modalidad_id` **iguales** a los del proyecto P y `activo === true`. | curl / `request` con Bearer |
+| 544 | Tras 542, el proyecto P original sigue existiendo sin cambios: su `clave`, `nombre`, `prefijo_folio`, `componente_id` y `modalidad_id` en E50 son idénticos a los leídos antes de duplicar. | curl antes/después |
+| 545 | Tras 542, el `prefijo_folio` del nuevo proyecto es el capturado y **distinto** del de P (no se heredó). | curl |
+| 546 | Duplicando el proyecto P de nuevo y guardando con la `clave` **ya existente** de P, la respuesta es **409 o 422**, el formulario permanece abierto, `[data-testid="error-catalogo"]` es visible, y `GET /api/admin/catalogos/proyectos?q=<clave de P>` sigue devolviendo `total === 1`. | Playwright + curl |
+
+### Duplicado de conceptos de apoyo y rama del árbol (547–550)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 547 | La rama "Conceptos de apoyo" renderiza **≥ 1** `[data-testid^="nodo-tipos_apoyo-"]`, y el número de nodos visibles es ≤ el conteo mostrado en su `h3`. | Playwright |
+| 548 | Escribiendo en `[data-testid="input-buscar-tipos_apoyo"]` un fragmento (≥ 2 caracteres) de la clave del concepto C, la lista queda reducida y `nodo-tipos_apoyo-<id de C>` sigue visible; borrando el buscador, la lista vuelve a su tamaño inicial. | Playwright |
+| 549 | Al pulsar `btn-duplicar-tipos_apoyo-<id de C>`: se abre `form-catalogo` con `aviso-duplicado` visible, `input-clave` vacío y editable, `input-nombre` con el nombre de C, e `input-categoria` / `input-unidad-medida` con los mismos valores que C devuelve en E50. | Playwright + curl |
+| 550 | Guardando ese duplicado con una `clave` nueva, `GET /api/admin/catalogos/tipos_apoyo?q=<clave nueva>` devuelve `total === 1` con `categoria` y `unidad_medida` iguales a los de C; el concepto C original permanece idéntico; y `cd pwa && npm run typecheck && npm run build` terminan con código 0. | curl + CLI |
+
+**Definición de "terminado" (Build 12):** pasan los **20** criterios nuevos (531–550) **y** siguen
+pasando los 530 anteriores. Total acumulado: **550** criterios.

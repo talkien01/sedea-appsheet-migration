@@ -250,3 +250,24 @@ export function IconoCopiar(props: Props) {
     </Base>
   );
 }
+
+/** Sello de dictamen (Build 13): mango, base y linea de apoyo. */
+export function IconoSello(props: Props) {
+  return (
+    <Base {...props}>
+      <path d="M9 4.5A2.5 2.5 0 0 1 15 4.5c0 2-1.5 2.8-1.5 4.5h-3C10.5 7.3 9 6.5 9 4.5Z" />
+      <path d="M6.5 13h11l1 4h-13z" />
+      <path d="M4.5 20h15" />
+    </Base>
+  );
+}
+
+/** Ojo abierto: "Ver detalle" en las filas de la bandeja de dictamen. */
+export function IconoOjo(props: Props) {
+  return (
+    <Base {...props}>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="2.75" />
+    </Base>
+  );
+}

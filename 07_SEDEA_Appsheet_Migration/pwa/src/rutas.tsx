@@ -30,6 +30,8 @@ import CambiarPassword from './pantallas/CambiarPassword';
 import SinPermiso from './pantallas/SinPermiso';
 import Catalogos from './pantallas/Catalogos';
 import CatalogoDocumentos from './pantallas/CatalogoDocumentos';
+import Dictamen from './pantallas/Dictamen';
+import DictamenDetalle from './pantallas/DictamenDetalle';
 
 const CAMPO = ['capturista', 'admin'];
 const AUDITORIA = ['auditor', 'admin'];
@@ -39,6 +41,9 @@ const GESTION = ['admin', 'auditor', 'editor_datos'];
 const USUARIOS = ['admin', 'editor_datos'];
 // Modulo de ventanilla: rol nuevo `ventanilla` y admin (D34).
 const VENTANILLA = ['ventanilla', 'capturista', 'admin'];
+// Build 13: pre-dictaminacion con IA. El rol `dictaminador` NO hereda
+// permisos de `ventanilla` (A19-12): entra a /dictamen y no a /solicitudes.
+const DICTAMEN = ['dictaminador', 'admin'];
 
 export default function Rutas() {
   return (
@@ -205,6 +210,24 @@ export default function Rutas() {
           element={
             <RutaProtegida roles={VENTANILLA}>
               <FolioEntrega />
+            </RutaProtegida>
+          }
+        />
+
+        {/* Build 13: cola de pre-dictaminacion y detalle del dictamen. */}
+        <Route
+          path="/dictamen"
+          element={
+            <RutaProtegida roles={DICTAMEN}>
+              <Dictamen />
+            </RutaProtegida>
+          }
+        />
+        <Route
+          path="/dictamen/:id"
+          element={
+            <RutaProtegida roles={DICTAMEN}>
+              <DictamenDetalle />
             </RutaProtegida>
           }
         />

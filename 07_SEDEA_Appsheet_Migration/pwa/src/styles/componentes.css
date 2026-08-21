@@ -1429,3 +1429,92 @@ input[type='radio'] {
     font-size: 14px;
   }
 }
+
+/* ------------------- Dictamen (Build 13, SPEC 19.7) ----------------------- */
+
+/* Chips de estado del pre-dictamen y del dictamen humano. A diferencia de
+   `.chip` (que es un filtro pulsable), estos son etiquetas de solo lectura. */
+.chip-negativo,
+.chip-positivo,
+.chip-error,
+.chip-neutro {
+  cursor: default;
+  min-height: 28px;
+  padding: 3px 12px;
+  font-size: 12px;
+}
+
+.chip-negativo {
+  background: var(--peligro-suave, #fde8e8);
+  border-color: var(--peligro, #c0392b);
+  color: var(--peligro, #c0392b);
+}
+
+.chip-positivo {
+  background: var(--exito-suave, #e6f4ea);
+  border-color: var(--exito, #1e7e34);
+  color: var(--exito, #1e7e34);
+}
+
+.chip-error {
+  background: var(--aviso-suave, #fff4e5);
+  border-color: var(--aviso, #b26a00);
+  color: var(--aviso, #b26a00);
+}
+
+.chip-neutro {
+  background: var(--bg-elev-2);
+  border-color: var(--border-strong);
+  color: var(--fg-muted);
+}
+
+.metricas-dictamen {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.barra-filtros-dictamen {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.barra-filtros-dictamen .campo {
+  margin: 0;
+  min-width: 200px;
+}
+
+/* Un bloque por fila de solicitud_documentos. */
+.doc-dictamen {
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.badges-ia {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.veredicto-humano {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  border: 0;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.opcion-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}

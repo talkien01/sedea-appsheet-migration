@@ -13,7 +13,8 @@ import {
   IconoLupa,
   IconoSincronizar,
   IconoUsuarios,
-  IconoCapas
+  IconoCapas,
+  IconoSello
 } from '../componentes/Iconos';
 
 export type Grupo = 'Campo' | 'Gestión' | 'Ventanilla' | 'Administración';
@@ -92,6 +93,16 @@ export const DESTINOS: Destino[] = [
     roles: ['ventanilla', 'capturista', 'admin'],
     grupo: 'Ventanilla',
     Icono: IconoDocumento
+  },
+  // Build 13: cola de pre-dictaminacion con IA y dictamen humano.
+  {
+    id: 'dictamen',
+    ruta: '/dictamen',
+    etiqueta: 'Dictamen',
+    testId: 'nav-dictamen',
+    roles: ['dictaminador', 'admin'],
+    grupo: 'Ventanilla',
+    Icono: IconoSello
   },
   {
     id: 'usuarios',

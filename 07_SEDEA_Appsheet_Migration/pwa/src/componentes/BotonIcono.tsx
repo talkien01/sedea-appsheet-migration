@@ -3,11 +3,11 @@
 import type { ReactNode } from 'react';
 import {
   IconoLapiz, IconoLlave, IconoOjoTachado, IconoCheck, IconoBasura, IconoCopiar, IconoMas,
-  IconoAgregar
+  IconoAgregar, IconoOjo
 } from './Iconos';
 
 export type NombreIconoAccion =
-  | 'lapiz' | 'llave' | 'ojo-tachado' | 'check' | 'basura' | 'copiar' | 'mas';
+  | 'lapiz' | 'llave' | 'ojo-tachado' | 'check' | 'basura' | 'copiar' | 'mas' | 'ojo';
 
 const MAPA: Record<NombreIconoAccion, (p: { tamano?: number }) => ReactNode> = {
   'lapiz': IconoLapiz,
@@ -16,7 +16,8 @@ const MAPA: Record<NombreIconoAccion, (p: { tamano?: number }) => ReactNode> = {
   'check': IconoCheck,
   'basura': IconoBasura,
   'copiar': IconoCopiar,
-  'mas': IconoMas
+  'mas': IconoMas,
+  'ojo': IconoOjo
 };
 
 type Props = {

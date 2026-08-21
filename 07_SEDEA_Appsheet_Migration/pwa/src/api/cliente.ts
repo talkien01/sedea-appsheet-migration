@@ -19,7 +19,12 @@ import type {
   RespuestaEstadisticasStaging,
   RespuestaLogin,
   RespuestaCaptura,
-  ResumenStaging
+  ResumenStaging,
+  MetricasDictamen,
+  RespuestaBandejaDictamen,
+  RespuestaDetalleDictamen,
+  ResultadoPredictaminar,
+  VeredictoDocumento
 } from '@sedea/shared';
 import { obtenerSesion } from '../db/repositorios';
 
@@ -359,6 +364,47 @@ export const api = {
 
   async catalogosReferencias(): Promise<any> {
     return peticion('/admin/catalogos/referencias');
+  },
+
+  // ------------------------------------------------------------------------
+  // Build 13: pre-dictaminacion con IA y dictamen humano (E55-E59).
+  // Solo `dictaminador` y `admin`. Siempre en linea.
+  // ------------------------------------------------------------------------
+  async dictamenBandeja(parametros: URLSearchParams): Promise<RespuestaBandejaDictamen> {
+    return peticion<RespuestaBandejaDictamen>(`/dictamen/bandeja?${parametros.toString()}`);
+  },
+
+  async dictamenMetricas(): Promise<MetricasDictamen> {
+    return peticion<MetricasDictamen>('/dictamen/metricas');
+  },
+
+  async dictamenDetalle(solicitudId: number): Promise<RespuestaDetalleDictamen> {
+    return peticion<RespuestaDetalleDictamen>(`/dictamen/${solicitudId}`);
+  },
+
+  /** Disparo MANUAL en lote (maximo 20 solicitudes). Nunca automatico. */
+  async predictaminar(
+    solicitudIds: number[]
+  ): Promise<{ ok: true; resultados: ResultadoPredictaminar[] }> {
+    return peticion('/dictamen/predictaminar', {
+      method: 'POST',
+      body: JSON.stringify({ solicitud_ids: solicitudIds })
+    });
+  },
+
+  /** Confirmacion HUMANA: `resultado` siempre explicito, nunca copiado de la IA. */
+  async confirmarDictamen(
+    solicitudId: number,
+    cuerpo: {
+      resultado: 'positivo' | 'negativo';
+      nota: string | null;
+      detalle: Array<{ documento_requerido_id: number; veredicto: VeredictoDocumento }>;
+    }
+  ): Promise<{ ok: true; dictamen: { id: number; coincide_con_ia: boolean | null } }> {
+    return peticion(`/dictamen/${solicitudId}/confirmar`, {
+      method: 'POST',
+      body: JSON.stringify(cuerpo)
+    });
   }
 };
 

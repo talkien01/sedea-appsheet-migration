@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { apiSolicitudes } from '../api/solicitudes';
+import { ETIQUETAS_NOMBRE_SOLICITANTE, type TipoPersona } from '@sedea/shared';
 
 interface DatosFolio {
   folio: string;
@@ -12,6 +13,9 @@ interface DatosFolio {
   concepto_nombre: string;
   monto: number;
   regional_nombre: string;
+  /** Solo para persona moral / grupo; null en persona fisica. */
+  representante_etiqueta: string | null;
+  representante_nombre: string | null;
 }
 
 /**
@@ -53,10 +57,15 @@ export default function FolioEntrega() {
         const s = detalle.solicitud as unknown as SolicitudFolio;
         // Mismo criterio que la caratula de expediente: para persona moral o
         // grupo manda la razon social.
+        const esMoralOGrupo = s.tipo_persona === 'moral' || s.tipo_persona === 'grupo';
         const nombre =
-          (s.tipo_persona === 'moral' || s.tipo_persona === 'grupo') && s.razon_social
-            ? s.razon_social
-            : s.nombre_solicitante;
+          esMoralOGrupo && s.razon_social ? s.razon_social : s.nombre_solicitante;
+        // Para moral/grupo `nombre_solicitante` ES el representante (asi lo
+        // etiqueta la captura); solo tiene sentido mostrarlo aparte cuando el
+        // renglon "Nombre" ya lo ocupa la razon social. En persona fisica seria
+        // una linea repetida, por eso queda en null.
+        const mostrarRepresentante =
+          esMoralOGrupo && !!s.razon_social && !!(s.nombre_solicitante ?? '').trim();
         // El apoyo se entrega por su valor total (estatal + productor).
         const concepto = detalle.conceptos[0];
         setDatos({
@@ -67,7 +76,11 @@ export default function FolioEntrega() {
           proyecto_nombre: texto(s.proyecto_nombre),
           concepto_nombre: texto(concepto?.tipo_apoyo),
           monto: concepto?.monto_total ?? 0,
-          regional_nombre: texto(s.regional_nombre)
+          regional_nombre: texto(s.regional_nombre),
+          representante_etiqueta: mostrarRepresentante
+            ? ETIQUETAS_NOMBRE_SOLICITANTE[s.tipo_persona as TipoPersona]
+            : null,
+          representante_nombre: mostrarRepresentante ? s.nombre_solicitante : null
         });
         // Generar QR con el folio
         return import('qrcode').then(QRCode =>
@@ -103,6 +116,12 @@ export default function FolioEntrega() {
         <div className="folio-seccion">
           <h3>DATOS DEL BENEFICIARIO</h3>
           <p><strong>Nombre:</strong> <span data-testid="folio-nombre">{datos.beneficiario_nombre}</span></p>
+          {datos.representante_nombre && (
+            <p>
+              <strong>{datos.representante_etiqueta}:</strong>{' '}
+              <span data-testid="folio-representante">{datos.representante_nombre}</span>
+            </p>
+          )}
           <p><strong>CURP:</strong> <span data-testid="folio-curp">{datos.beneficiario_curp}</span></p>
           <p><strong>Regional:</strong> <span data-testid="folio-regional">{datos.regional_nombre}</span></p>
         </div>

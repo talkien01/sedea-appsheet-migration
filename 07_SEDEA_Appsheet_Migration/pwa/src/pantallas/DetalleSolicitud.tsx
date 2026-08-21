@@ -167,6 +167,8 @@ export default function DetalleSolicitud() {
           display: none;
         }
         @media print {
+          @page { size: A4; margin: 12mm; }
+
           .tarjeta,
           .modal-fondo,
           nav,
@@ -175,20 +177,89 @@ export default function DetalleSolicitud() {
           .barra-lateral,
           .barra-inferior,
           .franja-estado,
+          .hoja-mas,
+          .salto-contenido,
+          .banner-nuevo,
+          .zona-drop,
           .vacio {
             display: none !important;
           }
+
+          /* El cascaron es una rejilla con columna de barra lateral y alturas
+             de viewport. Si no se neutraliza, la caratula sale desplazada a la
+             derecha y la tabla de conceptos se corta fuera del area imprimible
+             (ahi aparecian las guias de margen del navegador encima del texto). */
+          html, body, #root, .cascaron, .contenido {
+            display: block !important;
+            width: auto !important;
+            max-width: none !important;
+            min-width: 0 !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            background: #fff !important;
+            grid-template-columns: none !important;
+            grid-template-rows: none !important;
+            grid-template-areas: none !important;
+          }
+
           [data-testid="caratula-imprimible"] {
             display: block !important;
+            width: 100%;
             font-family: sans-serif;
             color: #000;
           }
           .caratula h1 { font-size: 1.2rem; margin-bottom: 4px; }
           .caratula .caratula-campo { margin-bottom: 8px; }
-          .caratula table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-          .caratula th, .caratula td { border: 1px solid #000; padding: 4px 6px; font-size: 0.85rem; }
-          .caratula ul { list-style: none; padding: 0; }
-          .caratula li { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 0.85rem; }
+          .caratula table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+          }
+          /* componentes.css aplica white-space: nowrap a todo th/td: en papel eso
+             desborda las celdas y encima el texto de las columnas contiguas. */
+          .caratula th, .caratula td {
+            border: 1px solid #000;
+            padding: 4px 6px;
+            font-size: 0.8rem;
+            white-space: normal;
+            vertical-align: top;
+          }
+          /* Solo las celdas de datos parten palabras largas; los encabezados
+             cortos (CANT., TOTAL) no deben cortarse a la mitad. */
+          .caratula td { overflow-wrap: anywhere; }
+          .caratula th { letter-spacing: normal; }
+          .caratula ul { list-style: none; padding: 0; margin: 0; }
+          .caratula li {
+            display: flex;
+            align-items: flex-start;
+            gap: 2.5mm;
+            margin-bottom: 2mm;
+            font-size: 0.85rem;
+            line-height: 1.3;
+            break-inside: avoid;
+          }
+          /* Casilla dibujada con tamano fijo en mm: el input nativo heredaba
+             18px (mas alto que el texto) y se veia desproporcionado. */
+          .caratula li input[type="checkbox"] {
+            -webkit-appearance: none;
+            appearance: none;
+            flex: 0 0 auto;
+            width: 4mm;
+            height: 4mm;
+            min-width: 4mm;
+            margin: 0.6mm 0 0 0;
+            padding: 0;
+            border: 0.35mm solid #000;
+            border-radius: 0.5mm;
+            background: #fff;
+            box-shadow: none;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
         }
       `}</style>
 

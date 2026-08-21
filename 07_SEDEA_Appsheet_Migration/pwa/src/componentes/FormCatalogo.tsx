@@ -2,6 +2,21 @@
 // [data-testid="form-catalogo"]
 import type { NombreEntidad } from '@sedea/shared';
 
+/**
+ * Etiqueta legible en singular por entidad, con el articulo/adjetivo del genero
+ * correcto. El nombre de la entidad es el de la tabla (plural tecnico), asi que
+ * no sirve para armar el titulo del formulario.
+ */
+const ETIQUETAS_SINGULARES: Record<NombreEntidad, { nombre: string; nuevo: string }> = {
+  programas: { nombre: 'programa', nuevo: 'Nuevo' },
+  subprogramas: { nombre: 'subprograma', nuevo: 'Nuevo' },
+  componentes: { nombre: 'componente', nuevo: 'Nuevo' },
+  modalidades: { nombre: 'modalidad', nuevo: 'Nueva' },
+  proyectos: { nombre: 'proyecto', nuevo: 'Nuevo' },
+  tipos_apoyo: { nombre: 'concepto de apoyo', nuevo: 'Nuevo' },
+  documentos_requeridos: { nombre: 'regla de documentos', nuevo: 'Nueva' }
+};
+
 interface Props {
   entidad: NombreEntidad;
   modo: 'alta' | 'edicion';
@@ -76,7 +91,13 @@ export default function FormCatalogo({
   };
 
   const esEdicion = modo === 'edicion';
-  const titulo = esEdicion ? `Editar ${entidad}` : `Nuevo ${entidad}`;
+  const etiqueta = ETIQUETAS_SINGULARES[entidad];
+  // "Duplicar" reusa el modo alta, pero conviene nombrarlo por lo que es.
+  const titulo = esEdicion
+    ? `Editar ${etiqueta.nombre}`
+    : duplicadoDe
+      ? `Duplicar ${etiqueta.nombre}`
+      : `${etiqueta.nuevo} ${etiqueta.nombre}`;
 
   return (
     <div className="tarjeta" data-testid="form-catalogo">

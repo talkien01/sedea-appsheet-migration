@@ -3,7 +3,7 @@
 // Build 12: pestanas por nivel. Una pestana por entidad raiz, cada una con su
 // tabla a todo el ancho; el formulario de alta/edicion se abre como modal en
 // vez de ocupar una columna fija del 60%.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSesion } from '../App';
 import { api, ErrorPeticion } from '../api/cliente';
 import { useEstadoRed } from '../sync/estadoRed';
@@ -101,26 +101,39 @@ export default function Catalogos() {
     null
   );
 
+  // Guardas de orden de respuesta: cada refetch toma un token creciente y solo
+  // aplica su resultado si sigue siendo el ultimo disparado. Sin esto, alternar
+  // "Mostrar desactivados" justo despues de desactivar un registro puede dejar
+  // que la respuesta vieja resuelva al final y pise los datos frescos.
+  const tokenArbol = useRef(0);
+  const tokenConceptos = useRef(0);
+
   const cargarArbol = useCallback(async () => {
+    const token = ++tokenArbol.current;
     setCargando(true);
     setError(null);
     try {
       const params = new URLSearchParams();
       if (incluirInactivos) params.set('incluir_inactivos', 'true');
       const data = await (api as any).catalogosArbol(params);
+      if (token !== tokenArbol.current) return;
       setArbol(data);
     } catch (fallo) {
+      if (token !== tokenArbol.current) return;
       setError(
         fallo instanceof ErrorPeticion && fallo.estado === 0
           ? 'Esta sección requiere conexión a internet.'
           : (fallo as Error).message
       );
     } finally {
-      setCargando(false);
+      // Solo la peticion vigente apaga el spinner; una respuesta vieja que
+      // llega tarde no debe declarar terminada la carga en curso.
+      if (token === tokenArbol.current) setCargando(false);
     }
   }, [incluirInactivos]);
 
   const cargarConceptos = useCallback(async () => {
+    const token = ++tokenConceptos.current;
     try {
       const params = new URLSearchParams();
       if (incluirInactivos) params.set('incluir_inactivos', 'true');
@@ -128,8 +141,10 @@ export default function Catalogos() {
       params.set('por_pagina', String(POR_PAGINA_CONCEPTOS));
       if (busquedaConceptos.trim().length >= 2) params.set('q', busquedaConceptos.trim());
       const data = await (api as any).catalogosEntidad('tipos_apoyo', params);
+      if (token !== tokenConceptos.current) return;
       setConceptos({ datos: data.datos ?? [], total: data.total ?? 0 });
     } catch {
+      if (token !== tokenConceptos.current) return;
       setConceptos({ datos: [], total: 0 });
     }
   }, [incluirInactivos, paginaConceptos, busquedaConceptos]);

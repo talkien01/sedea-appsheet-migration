@@ -1,5 +1,13 @@
-// Componente de arbol jerarquico para la pantalla de catalogos.
-// [data-testid="arbol-catalogos"]
+// Catalogos por PESTANAS: una pestana por entidad raiz, cada una con una tabla
+// a todo el ancho (Build 12). Sustituye al arbol vertical unico de Build 10.
+//
+// La jerarquia no se pinta con sangrias sino con una columna "Jerarquia" que
+// nombra al padre (p. ej. "↳ PRG-2026" o "PET → MOD-PEPFO"), asi la tabla
+// aprovecha el ancho completo de la pantalla.
+//
+// [data-testid="arbol-catalogos"] se conserva: es el contenedor de la vista y
+// varias specs lo usan como senal de "catalogos ya cargo".
+import { useMemo, useState } from 'react';
 import type { NombreEntidad } from '@sedea/shared';
 import { BotonIcono, BotonCrear, HuecoIcono } from './BotonIcono';
 
@@ -23,6 +31,7 @@ interface Props {
   arbol: ArbolDatos | null;
   cargando: boolean;
   incluirInactivos: boolean;
+  onIncluirInactivos: (valor: boolean) => void;
   conceptos: ListaConceptos;
   onBuscarConceptos: (q: string) => void;
   onPaginaConceptos: (pagina: number) => void;
@@ -32,10 +41,40 @@ interface Props {
   onCambiarEstado: (entidad: NombreEntidad, id: number, activo: boolean) => void;
 }
 
+/** Una fila plana de la tabla: el registro mas su contexto jerarquico. */
+interface Fila {
+  entidad: NombreEntidad;
+  registro: any;
+  /** 0 = raiz, 1 = hijo, 2 = nieto. Solo tine efecto visual leve en la clave. */
+  nivel: number;
+  /** Texto de la columna "Jerarquia" (cadena vacia = raiz). */
+  jerarquia: string;
+  duplicable: boolean;
+}
+
+type ClavePestana = 'programas' | 'componentes' | 'tipos_apoyo';
+
+const PESTANAS: { clave: ClavePestana; titulo: string }[] = [
+  { clave: 'programas', titulo: 'Programas' },
+  { clave: 'componentes', titulo: 'Componentes' },
+  { clave: 'tipos_apoyo', titulo: 'Conceptos de apoyo' }
+];
+
+/** Filtro de texto del buscador local (clave o nombre). */
+function coincide(registro: any, q: string): boolean {
+  const t = q.trim().toLowerCase();
+  if (t.length === 0) return true;
+  return (
+    String(registro.clave ?? '').toLowerCase().includes(t) ||
+    String(registro.nombre ?? '').toLowerCase().includes(t)
+  );
+}
+
 export default function ArbolCatalogos({
   arbol,
   cargando,
   incluirInactivos,
+  onIncluirInactivos,
   conceptos,
   onBuscarConceptos,
   onPaginaConceptos,
@@ -44,10 +83,110 @@ export default function ArbolCatalogos({
   onDuplicar,
   onCambiarEstado
 }: Props) {
+  const [pestana, setPestana] = useState<ClavePestana>('programas');
+  const [busquedaProgramas, setBusquedaProgramas] = useState('');
+  const [busquedaComponentes, setBusquedaComponentes] = useState('');
+
+  const visible = (r: any) => incluirInactivos || r.activo;
+
+  // Rama programas -> subprogramas, aplanada.
+  const filasProgramas = useMemo<Fila[]>(() => {
+    if (!arbol) return [];
+    const filas: Fila[] = [];
+    for (const prog of arbol.programas) {
+      if (!visible(prog)) continue;
+      filas.push({ entidad: 'programas', registro: prog, nivel: 0, jerarquia: '', duplicable: false });
+      for (const sub of prog.subprogramas ?? []) {
+        if (!visible(sub)) continue;
+        filas.push({
+          entidad: 'subprogramas',
+          registro: sub,
+          nivel: 1,
+          jerarquia: `↳ ${prog.clave}`,
+          duplicable: false
+        });
+      }
+    }
+    return filas;
+  }, [arbol, incluirInactivos]);
+
+  // Rama componentes -> modalidades -> proyectos, aplanada.
+  const filasComponentes = useMemo<Fila[]>(() => {
+    if (!arbol) return [];
+    const filas: Fila[] = [];
+    for (const comp of arbol.componentes) {
+      if (!visible(comp)) continue;
+      filas.push({ entidad: 'componentes', registro: comp, nivel: 0, jerarquia: '', duplicable: false });
+      for (const mod of comp.modalidades ?? []) {
+        if (!visible(mod)) continue;
+        filas.push({
+          entidad: 'modalidades',
+          registro: mod,
+          nivel: 1,
+          jerarquia: `↳ ${comp.clave}`,
+          duplicable: false
+        });
+        for (const proy of mod.proyectos ?? []) {
+          if (!visible(proy)) continue;
+          filas.push({
+            entidad: 'proyectos',
+            registro: proy,
+            nivel: 2,
+            jerarquia: `${comp.clave} → ${mod.clave}`,
+            duplicable: true
+          });
+        }
+      }
+      // Proyectos colgados del componente sin modalidad: el arbol anterior no
+      // los mostraba y quedaban invisibles en la pantalla.
+      for (const proy of comp.proyectos_sin_modalidad ?? []) {
+        if (!visible(proy)) continue;
+        filas.push({
+          entidad: 'proyectos',
+          registro: proy,
+          nivel: 2,
+          jerarquia: `${comp.clave} → (sin modalidad)`,
+          duplicable: true
+        });
+      }
+    }
+    for (const proy of arbol.proyectos_huerfanos ?? []) {
+      if (!visible(proy)) continue;
+      filas.push({
+        entidad: 'proyectos',
+        registro: proy,
+        nivel: 2,
+        jerarquia: '(sin componente)',
+        duplicable: true
+      });
+    }
+    return filas;
+  }, [arbol, incluirInactivos]);
+
+  const filasConceptos = useMemo<Fila[]>(
+    () =>
+      conceptos.datos.map((c) => ({
+        entidad: 'tipos_apoyo' as NombreEntidad,
+        registro: c,
+        nivel: 0,
+        // Los conceptos de apoyo son planos: no cuelgan de ninguna entidad.
+        jerarquia: '',
+        duplicable: true
+      })),
+    [conceptos.datos]
+  );
+
+  const conteos = arbol?.conteos ?? {};
+  const totales: Record<ClavePestana, number> = {
+    programas: (conteos.programas ?? 0) + (conteos.subprogramas ?? 0),
+    componentes: (conteos.componentes ?? 0) + (conteos.modalidades ?? 0) + (conteos.proyectos ?? 0),
+    tipos_apoyo: conteos.tipos_apoyo ?? 0
+  };
+
   if (cargando) {
     return (
       <div className="tarjeta" data-testid="arbol-catalogos">
-        <p>Cargando árbol…</p>
+        <p>Cargando catálogos…</p>
       </div>
     );
   }
@@ -60,113 +199,165 @@ export default function ArbolCatalogos({
     );
   }
 
+  const filas =
+    pestana === 'programas'
+      ? filasProgramas.filter((f) => coincide(f.registro, busquedaProgramas))
+      : pestana === 'componentes'
+        ? filasComponentes.filter((f) => coincide(f.registro, busquedaComponentes))
+        : filasConceptos;
+
+  const busqueda =
+    pestana === 'programas'
+      ? busquedaProgramas
+      : pestana === 'componentes'
+        ? busquedaComponentes
+        : conceptos.busqueda;
+
+  const alBuscar = (q: string) => {
+    if (pestana === 'programas') setBusquedaProgramas(q);
+    else if (pestana === 'componentes') setBusquedaComponentes(q);
+    else onBuscarConceptos(q);
+  };
+
   return (
-    <div className="tarjeta arbol-contenedor" data-testid="arbol-catalogos">
-      <section className="arbol-rama">
-        <div className="arbol-encabezado">
-          <h3>Programas</h3>
-          <div className="arbol-encabezado-acciones">
-            <BotonCrear
-              etiquetaCorta="Programa"
-              etiqueta="Nuevo programa"
-              testId="btn-nuevo-programas"
-              onClick={() => onNuevo('programas')}
-            />
-            <BotonCrear
-              etiquetaCorta="Subprograma"
-              etiqueta="Nuevo subprograma"
-              testId="btn-nuevo-subprogramas"
-              onClick={() => onNuevo('subprogramas')}
-            />
-          </div>
-        </div>
-        {arbol.programas.map((prog) => (
-          <NodoPrograma
-            key={prog.id}
-            programa={prog}
-            incluirInactivos={incluirInactivos}
-            onEditar={onEditar}
-            onCambiarEstado={onCambiarEstado}
-          />
+    <div className="catalogos-vista" data-testid="arbol-catalogos">
+      <div className="catalogos-pestanas" role="tablist" aria-label="Catálogos">
+        {PESTANAS.map((p) => (
+          <button
+            key={p.clave}
+            type="button"
+            role="tab"
+            id={`tab-${p.clave}`}
+            aria-selected={pestana === p.clave}
+            aria-controls={`panel-${p.clave}`}
+            className={pestana === p.clave ? 'catalogos-pestana activa' : 'catalogos-pestana'}
+            data-testid={`tab-${p.clave}`}
+            onClick={() => setPestana(p.clave)}
+          >
+            {p.titulo}
+            <span className="catalogos-pestana-conteo" data-testid={`conteo-${p.clave}`}>
+              {totales[p.clave]}
+            </span>
+          </button>
         ))}
-      </section>
+      </div>
 
-      <section className="arbol-rama">
-        <div className="arbol-encabezado">
-          <h3>Componentes</h3>
-          <div className="arbol-encabezado-acciones">
-            <BotonCrear
-              etiquetaCorta="Componente"
-              etiqueta="Nuevo componente"
-              testId="btn-nuevo-componentes"
-              onClick={() => onNuevo('componentes')}
-            />
-            <BotonCrear
-              etiquetaCorta="Modalidad"
-              etiqueta="Nueva modalidad"
-              testId="btn-nuevo-modalidades"
-              onClick={() => onNuevo('modalidades')}
-            />
-            <BotonCrear
-              etiquetaCorta="Proyecto"
-              etiqueta="Nuevo proyecto"
-              testId="btn-nuevo-proyectos"
-              onClick={() => onNuevo('proyectos')}
+      <section
+        className="tarjeta catalogos-panel-pestana"
+        role="tabpanel"
+        id={`panel-${pestana}`}
+        aria-labelledby={`tab-${pestana}`}
+        data-testid={`panel-${pestana}`}
+      >
+        <div className="catalogos-barra">
+          <div className="catalogos-barra-buscador">
+            <label htmlFor="input-buscar-catalogo" className="sr-solo">
+              Buscar en {PESTANAS.find((p) => p.clave === pestana)!.titulo}
+            </label>
+            <input
+              type="search"
+              id="input-buscar-catalogo"
+              data-testid={`input-buscar-${pestana}`}
+              placeholder="Buscar por clave o nombre"
+              value={busqueda}
+              onChange={(e) => alBuscar(e.target.value)}
             />
           </div>
-        </div>
-        {arbol.componentes.map((comp) => (
-          <NodoComponente
-            key={comp.id}
-            componente={comp}
-            incluirInactivos={incluirInactivos}
-            onEditar={onEditar}
-            onDuplicar={onDuplicar}
-            onCambiarEstado={onCambiarEstado}
-          />
-        ))}
-      </section>
 
-      <section className="arbol-rama">
-        <div className="arbol-encabezado">
-          <h3>Conceptos de apoyo ({arbol.conteos.tipos_apoyo})</h3>
-          <div className="arbol-encabezado-acciones">
-            <BotonCrear
-              etiquetaCorta="Concepto"
-              etiqueta="Nuevo concepto"
-              testId="btn-nuevo-tipos_apoyo"
-              onClick={() => onNuevo('tipos_apoyo')}
-            />
+          <div className="catalogos-barra-altas">
+            {pestana === 'programas' && (
+              <>
+                <BotonCrear
+                  etiquetaCorta="Nuevo programa"
+                  etiqueta="Nuevo programa"
+                  testId="btn-nuevo-programas"
+                  onClick={() => onNuevo('programas')}
+                />
+                <BotonCrear
+                  etiquetaCorta="Nuevo subprograma"
+                  etiqueta="Nuevo subprograma"
+                  testId="btn-nuevo-subprogramas"
+                  onClick={() => onNuevo('subprogramas')}
+                />
+              </>
+            )}
+            {pestana === 'componentes' && (
+              <>
+                <BotonCrear
+                  etiquetaCorta="Nuevo componente"
+                  etiqueta="Nuevo componente"
+                  testId="btn-nuevo-componentes"
+                  onClick={() => onNuevo('componentes')}
+                />
+                <BotonCrear
+                  etiquetaCorta="Nueva modalidad"
+                  etiqueta="Nueva modalidad"
+                  testId="btn-nuevo-modalidades"
+                  onClick={() => onNuevo('modalidades')}
+                />
+                <BotonCrear
+                  etiquetaCorta="Nuevo proyecto"
+                  etiqueta="Nuevo proyecto"
+                  testId="btn-nuevo-proyectos"
+                  onClick={() => onNuevo('proyectos')}
+                />
+              </>
+            )}
+            {pestana === 'tipos_apoyo' && (
+              <BotonCrear
+                etiquetaCorta="Nuevo concepto"
+                etiqueta="Nuevo concepto"
+                testId="btn-nuevo-tipos_apoyo"
+                onClick={() => onNuevo('tipos_apoyo')}
+              />
+            )}
           </div>
-        </div>
 
-        <div className="campo">
-          <label htmlFor="input-buscar-conceptos" className="sr-solo">
-            Buscar concepto de apoyo
+          <label className="toggle-campo catalogos-barra-toggle">
+            <input
+              type="checkbox"
+              data-testid="toggle-incluir-inactivos"
+              checked={incluirInactivos}
+              onChange={(e) => onIncluirInactivos(e.target.checked)}
+            />
+            Mostrar desactivados
           </label>
-          <input
-            type="search"
-            id="input-buscar-conceptos"
-            data-testid="input-buscar-tipos_apoyo"
-            placeholder="Buscar concepto (clave o nombre)"
-            value={conceptos.busqueda}
-            onChange={(e) => onBuscarConceptos(e.target.value)}
-          />
         </div>
 
-        {conceptos.datos.length === 0 && <p className="vacio">Sin conceptos que coincidan.</p>}
+        {filas.length === 0 ? (
+          <p className="vacio" data-testid="tabla-vacia">
+            No hay registros que coincidan.
+          </p>
+        ) : (
+          <div className="tabla-contenedor">
+            <table className="tabla-catalogos">
+              <thead>
+                <tr>
+                  <th scope="col">Clave</th>
+                  <th scope="col">Nombre</th>
+                  <th scope="col">Jerarquía</th>
+                  <th scope="col">Estado</th>
+                  <th scope="col" className="col-acciones">
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filas.map((fila) => (
+                  <FilaCatalogo
+                    key={`${fila.entidad}-${fila.registro.id}`}
+                    fila={fila}
+                    onEditar={onEditar}
+                    onDuplicar={onDuplicar}
+                    onCambiarEstado={onCambiarEstado}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-        {conceptos.datos.map((concepto) => (
-          <NodoTipoApoyo
-            key={concepto.id}
-            concepto={concepto}
-            onEditar={onEditar}
-            onDuplicar={onDuplicar}
-            onCambiarEstado={onCambiarEstado}
-          />
-        ))}
-
-        {conceptos.total > conceptos.porPagina && (
+        {pestana === 'tipos_apoyo' && conceptos.total > conceptos.porPagina && (
           <div className="campo acciones" data-testid="paginacion-tipos_apoyo">
             <button
               type="button"
@@ -196,367 +387,82 @@ export default function ArbolCatalogos({
   );
 }
 
-function NodoTipoApoyo({
-  concepto,
+/**
+ * Fila de la tabla. Mantiene los data-testid de siempre:
+ * `nodo-<entidad>-<id>` en la fila y `btn-<accion>-<entidad>-<id>` en cada boton.
+ * La columna de acciones conserva la clase `.arbol-acciones` y el orden fijo
+ * editar | duplicar | desactivar (SPEC crit. 533): las filas sin "Duplicar"
+ * pintan un hueco para que las tres ranuras caigan alineadas.
+ */
+function FilaCatalogo({
+  fila,
   onEditar,
   onDuplicar,
   onCambiarEstado
 }: {
-  concepto: any;
+  fila: Fila;
   onEditar: (entidad: NombreEntidad, registro: any) => void;
   onDuplicar: (entidad: NombreEntidad, registro: any) => void;
   onCambiarEstado: (entidad: NombreEntidad, id: number, activo: boolean) => void;
 }) {
+  const { entidad, registro, nivel, jerarquia, duplicable } = fila;
+
   return (
-    <div className="arbol-hijo" data-testid={`nodo-tipos_apoyo-${concepto.id}`}>
-      <div className={`arbol-fila ${!concepto.activo ? 'inactivo' : ''}`}>
-        <span className="arbol-sangria">·</span>
-        <span className="arbol-texto">
-          {concepto.clave} · {concepto.nombre}
-        </span>
-        {!concepto.activo && (
+    <tr
+      className={`fila-catalogo nivel-${nivel} ${registro.activo ? '' : 'inactivo'}`}
+      data-testid={`nodo-${entidad}-${registro.id}`}
+    >
+      <td data-etiqueta="Clave">
+        <span className="celda-clave">{registro.clave}</span>
+      </td>
+      <td data-etiqueta="Nombre">
+        <span className="celda-nombre">{registro.nombre}</span>
+      </td>
+      <td data-etiqueta="Jerarquía">
+        <span className="celda-jerarquia">{jerarquia || '—'}</span>
+      </td>
+      <td data-etiqueta="Estado">
+        {registro.activo ? (
+          <span className="badge capturado" data-testid="chip-activo">
+            Activo
+          </span>
+        ) : (
           <span className="badge pendiente" data-testid="chip-inactivo">
             Desactivado
           </span>
         )}
+      </td>
+      <td data-etiqueta="Acciones" className="col-acciones">
         <div className="arbol-acciones acciones en-fila">
           <BotonIcono
             icono="lapiz"
             etiqueta="Editar"
-            testId={`btn-editar-tipos_apoyo-${concepto.id}`}
-            onClick={() => onEditar('tipos_apoyo', concepto)}
+            testId={`btn-editar-${entidad}-${registro.id}`}
+            onClick={() => onEditar(entidad, registro)}
           />
+          {duplicable ? (
+            <BotonIcono
+              icono="copiar"
+              etiqueta="Duplicar"
+              testId={`btn-duplicar-${entidad}-${registro.id}`}
+              onClick={() => onDuplicar(entidad, registro)}
+            />
+          ) : (
+            <HuecoIcono />
+          )}
           <BotonIcono
-            icono="copiar"
-            etiqueta="Duplicar"
-            testId={`btn-duplicar-tipos_apoyo-${concepto.id}`}
-            onClick={() => onDuplicar('tipos_apoyo', concepto)}
-          />
-          <BotonIcono
-            icono={concepto.activo ? 'ojo-tachado' : 'check'}
-            etiqueta={concepto.activo ? 'Desactivar' : 'Reactivar'}
-            tono={concepto.activo ? 'peligro' : 'neutro'}
+            icono={registro.activo ? 'ojo-tachado' : 'check'}
+            etiqueta={registro.activo ? 'Desactivar' : 'Reactivar'}
+            tono={registro.activo ? 'peligro' : 'neutro'}
             testId={
-              concepto.activo
-                ? `btn-desactivar-tipos_apoyo-${concepto.id}`
-                : `btn-reactivar-tipos_apoyo-${concepto.id}`
+              registro.activo
+                ? `btn-desactivar-${entidad}-${registro.id}`
+                : `btn-reactivar-${entidad}-${registro.id}`
             }
-            onClick={() => onCambiarEstado('tipos_apoyo', concepto.id, !concepto.activo)}
+            onClick={() => onCambiarEstado(entidad, registro.id, !registro.activo)}
           />
         </div>
-      </div>
-    </div>
+      </td>
+    </tr>
   );
 }
-
-function NodoPrograma({
-  programa,
-  incluirInactivos,
-  onEditar,
-  onCambiarEstado
-}: {
-  programa: any;
-  incluirInactivos: boolean;
-  onEditar: (entidad: NombreEntidad, registro: any) => void;
-  onCambiarEstado: (entidad: NombreEntidad, id: number, activo: boolean) => void;
-}) {
-  const [expandido, setExpandido] = useState(true);
-
-  if (!incluirInactivos && !programa.activo) return null;
-
-  return (
-    <div className="arbol-nodo" data-testid={`nodo-programas-${programa.id}`}>
-      <div className={`arbol-fila ${!programa.activo ? 'inactivo' : ''}`}>
-        <button
-          type="button"
-          className="arbol-toggle"
-          onClick={() => setExpandido(!expandido)}
-          aria-expanded={expandido}
-        >
-          {expandido ? '▾' : '▸'}
-        </button>
-        <span className="arbol-texto">
-          <strong>{programa.clave}</strong> · {programa.nombre}
-        </span>
-        {!programa.activo && (
-          <span className="badge pendiente" data-testid="chip-inactivo">
-            Desactivado
-          </span>
-        )}
-        <div className="arbol-acciones acciones en-fila">
-          <BotonIcono
-            icono="lapiz"
-            etiqueta="Editar"
-            testId={`btn-editar-programas-${programa.id}`}
-            onClick={() => onEditar('programas', programa)}
-          />
-          <HuecoIcono />
-          <BotonIcono
-            icono={programa.activo ? 'ojo-tachado' : 'check'}
-            etiqueta={programa.activo ? 'Desactivar' : 'Reactivar'}
-            tono={programa.activo ? 'peligro' : 'neutro'}
-            testId={programa.activo ? `btn-desactivar-programas-${programa.id}` : `btn-reactivar-programas-${programa.id}`}
-            onClick={() => onCambiarEstado('programas', programa.id, !programa.activo)}
-          />
-        </div>
-      </div>
-      {expandido && programa.subprogramas && programa.subprogramas.length > 0 && (
-        <div className="arbol-hijos">
-          {programa.subprogramas.map((sub: any) => (
-            <NodoSubprograma
-              key={sub.id}
-              subprograma={sub}
-              incluirInactivos={incluirInactivos}
-              onEditar={onEditar}
-              onCambiarEstado={onCambiarEstado}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function NodoSubprograma({
-  subprograma,
-  incluirInactivos,
-  onEditar,
-  onCambiarEstado
-}: {
-  subprograma: any;
-  incluirInactivos: boolean;
-  onEditar: (entidad: NombreEntidad, registro: any) => void;
-  onCambiarEstado: (entidad: NombreEntidad, id: number, activo: boolean) => void;
-}) {
-  if (!incluirInactivos && !subprograma.activo) return null;
-
-  return (
-    <div className="arbol-hijo" data-testid={`nodo-subprogramas-${subprograma.id}`}>
-      <div className={`arbol-fila ${!subprograma.activo ? 'inactivo' : ''}`}>
-        <span className="arbol-sangria">·</span>
-        <span className="arbol-texto">
-          {subprograma.clave} · {subprograma.nombre}
-        </span>
-        {!subprograma.activo && (
-          <span className="badge pendiente" data-testid="chip-inactivo">
-            Desactivado
-          </span>
-        )}
-        <div className="arbol-acciones acciones en-fila">
-          <BotonIcono
-            icono="lapiz"
-            etiqueta="Editar"
-            testId={`btn-editar-subprogramas-${subprograma.id}`}
-            onClick={() => onEditar('subprogramas', subprograma)}
-          />
-          <HuecoIcono />
-          <BotonIcono
-            icono={subprograma.activo ? 'ojo-tachado' : 'check'}
-            etiqueta={subprograma.activo ? 'Desactivar' : 'Reactivar'}
-            tono={subprograma.activo ? 'peligro' : 'neutro'}
-            testId={subprograma.activo ? `btn-desactivar-subprogramas-${subprograma.id}` : `btn-reactivar-subprogramas-${subprograma.id}`}
-            onClick={() => onCambiarEstado('subprogramas', subprograma.id, !subprograma.activo)}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function NodoComponente({
-  componente,
-  incluirInactivos,
-  onEditar,
-  onDuplicar,
-  onCambiarEstado
-}: {
-  componente: any;
-  incluirInactivos: boolean;
-  onEditar: (entidad: NombreEntidad, registro: any) => void;
-  onDuplicar: (entidad: NombreEntidad, registro: any) => void;
-  onCambiarEstado: (entidad: NombreEntidad, id: number, activo: boolean) => void;
-}) {
-  const [expandido, setExpandido] = useState(true);
-
-  if (!incluirInactivos && !componente.activo) return null;
-
-  return (
-    <div className="arbol-nodo" data-testid={`nodo-componentes-${componente.id}`}>
-      <div className={`arbol-fila ${!componente.activo ? 'inactivo' : ''}`}>
-        <button
-          type="button"
-          className="arbol-toggle"
-          onClick={() => setExpandido(!expandido)}
-          aria-expanded={expandido}
-        >
-          {expandido ? '▾' : '▸'}
-        </button>
-        <span className="arbol-texto">
-          <strong>{componente.clave}</strong> · {componente.nombre}
-        </span>
-        {!componente.activo && (
-          <span className="badge pendiente" data-testid="chip-inactivo">
-            Desactivado
-          </span>
-        )}
-        <div className="arbol-acciones acciones en-fila">
-          <BotonIcono
-            icono="lapiz"
-            etiqueta="Editar"
-            testId={`btn-editar-componentes-${componente.id}`}
-            onClick={() => onEditar('componentes', componente)}
-          />
-          <HuecoIcono />
-          <BotonIcono
-            icono={componente.activo ? 'ojo-tachado' : 'check'}
-            etiqueta={componente.activo ? 'Desactivar' : 'Reactivar'}
-            tono={componente.activo ? 'peligro' : 'neutro'}
-            testId={componente.activo ? `btn-desactivar-componentes-${componente.id}` : `btn-reactivar-componentes-${componente.id}`}
-            onClick={() => onCambiarEstado('componentes', componente.id, !componente.activo)}
-          />
-        </div>
-      </div>
-      {expandido && componente.modalidades && componente.modalidades.length > 0 && (
-        <div className="arbol-hijos">
-          {componente.modalidades.map((mod: any) => (
-            <NodoModalidad
-              key={mod.id}
-              modalidad={mod}
-              incluirInactivos={incluirInactivos}
-              onEditar={onEditar}
-              onDuplicar={onDuplicar}
-              onCambiarEstado={onCambiarEstado}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function NodoModalidad({
-  modalidad,
-  incluirInactivos,
-  onEditar,
-  onDuplicar,
-  onCambiarEstado
-}: {
-  modalidad: any;
-  incluirInactivos: boolean;
-  onEditar: (entidad: NombreEntidad, registro: any) => void;
-  onDuplicar: (entidad: NombreEntidad, registro: any) => void;
-  onCambiarEstado: (entidad: NombreEntidad, id: number, activo: boolean) => void;
-}) {
-  const [expandido, setExpandido] = useState(true);
-
-  if (!incluirInactivos && !modalidad.activo) return null;
-
-  return (
-    <div className="arbol-hijo" data-testid={`nodo-modalidades-${modalidad.id}`}>
-      <div className={`arbol-fila ${!modalidad.activo ? 'inactivo' : ''}`}>
-        <button
-          type="button"
-          className="arbol-toggle"
-          onClick={() => setExpandido(!expandido)}
-          aria-expanded={expandido}
-        >
-          {expandido ? '▾' : '▸'}
-        </button>
-        <span className="arbol-texto">
-          {modalidad.clave} · {modalidad.nombre}
-        </span>
-        {!modalidad.activo && (
-          <span className="badge pendiente" data-testid="chip-inactivo">
-            Desactivado
-          </span>
-        )}
-        <div className="arbol-acciones acciones en-fila">
-          <BotonIcono
-            icono="lapiz"
-            etiqueta="Editar"
-            testId={`btn-editar-modalidades-${modalidad.id}`}
-            onClick={() => onEditar('modalidades', modalidad)}
-          />
-          <HuecoIcono />
-          <BotonIcono
-            icono={modalidad.activo ? 'ojo-tachado' : 'check'}
-            etiqueta={modalidad.activo ? 'Desactivar' : 'Reactivar'}
-            tono={modalidad.activo ? 'peligro' : 'neutro'}
-            testId={modalidad.activo ? `btn-desactivar-modalidades-${modalidad.id}` : `btn-reactivar-modalidades-${modalidad.id}`}
-            onClick={() => onCambiarEstado('modalidades', modalidad.id, !modalidad.activo)}
-          />
-        </div>
-      </div>
-      {expandido && modalidad.proyectos && modalidad.proyectos.length > 0 && (
-        <div className="arbol-nietos">
-          {modalidad.proyectos.map((proy: any) => (
-            <NodoProyecto
-              key={proy.id}
-              proyecto={proy}
-              incluirInactivos={incluirInactivos}
-              onEditar={onEditar}
-              onDuplicar={onDuplicar}
-              onCambiarEstado={onCambiarEstado}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function NodoProyecto({
-  proyecto,
-  incluirInactivos,
-  onEditar,
-  onDuplicar,
-  onCambiarEstado
-}: {
-  proyecto: any;
-  incluirInactivos: boolean;
-  onEditar: (entidad: NombreEntidad, registro: any) => void;
-  onDuplicar: (entidad: NombreEntidad, registro: any) => void;
-  onCambiarEstado: (entidad: NombreEntidad, id: number, activo: boolean) => void;
-}) {
-  if (!incluirInactivos && !proyecto.activo) return null;
-
-  return (
-    <div className="arbol-nieto" data-testid={`nodo-proyectos-${proyecto.id}`}>
-      <div className={`arbol-fila ${!proyecto.activo ? 'inactivo' : ''}`}>
-        <span className="arbol-sangria-doble">·</span>
-        <span className="arbol-texto">
-          {proyecto.clave} · {proyecto.nombre}
-        </span>
-        {!proyecto.activo && (
-          <span className="badge pendiente" data-testid="chip-inactivo">
-            Desactivado
-          </span>
-        )}
-        <div className="arbol-acciones acciones en-fila">
-          <BotonIcono
-            icono="lapiz"
-            etiqueta="Editar"
-            testId={`btn-editar-proyectos-${proyecto.id}`}
-            onClick={() => onEditar('proyectos', proyecto)}
-          />
-          <BotonIcono
-            icono="copiar"
-            etiqueta="Duplicar"
-            testId={`btn-duplicar-proyectos-${proyecto.id}`}
-            onClick={() => onDuplicar('proyectos', proyecto)}
-          />
-          <BotonIcono
-            icono={proyecto.activo ? 'ojo-tachado' : 'check'}
-            etiqueta={proyecto.activo ? 'Desactivar' : 'Reactivar'}
-            tono={proyecto.activo ? 'peligro' : 'neutro'}
-            testId={proyecto.activo ? `btn-desactivar-proyectos-${proyecto.id}` : `btn-reactivar-proyectos-${proyecto.id}`}
-            onClick={() => onCambiarEstado('proyectos', proyecto.id, !proyecto.activo)}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// useState local dentro del mismo archivo
-import { useState } from 'react';

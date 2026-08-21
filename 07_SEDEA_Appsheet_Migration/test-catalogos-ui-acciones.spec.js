@@ -1,5 +1,7 @@
-// Verificacion del fix de UI de /catalogos: cabecera compacta (icono + etiqueta
-// corta), tooltip visible en los iconos de accion y columnas de accion alineadas.
+// Verificacion del fix de UI de /catalogos: botones de alta con icono, tooltip
+// visible en los iconos de accion y columnas de accion alineadas.
+// Build 12: el arbol unico se sustituyo por pestanas + tabla ancha, asi que las
+// altas y las filas se buscan DENTRO de la pestana que les corresponde.
 const { test, expect } = require('@playwright/test');
 
 const BASE = 'http://localhost:5173';
@@ -17,40 +19,51 @@ async function login(page) {
   await expect(page.locator('[data-testid="arbol-catalogos"]')).toBeVisible();
 }
 
-test('cabecera: botones de alta compactos con icono + etiqueta corta', async ({ page }) => {
+/** Pestana donde vive cada entidad tras el rediseno de Build 12. */
+const PESTANA_DE = {
+  'btn-nuevo-programas': 'tab-programas',
+  'btn-nuevo-subprogramas': 'tab-programas',
+  'btn-nuevo-componentes': 'tab-componentes',
+  'btn-nuevo-modalidades': 'tab-componentes',
+  'btn-nuevo-proyectos': 'tab-componentes',
+  'btn-nuevo-tipos_apoyo': 'tab-tipos_apoyo'
+};
+
+test('barra de herramientas: botones de alta con icono y nombre accesible', async ({ page }) => {
   test.setTimeout(120000);
   await login(page);
 
   const esperado = {
-    'btn-nuevo-programas': ['Programa', 'Nuevo programa'],
-    'btn-nuevo-subprogramas': ['Subprograma', 'Nuevo subprograma'],
-    'btn-nuevo-componentes': ['Componente', 'Nuevo componente'],
-    'btn-nuevo-modalidades': ['Modalidad', 'Nueva modalidad'],
-    'btn-nuevo-proyectos': ['Proyecto', 'Nuevo proyecto'],
-    'btn-nuevo-tipos_apoyo': ['Concepto', 'Nuevo concepto']
+    'btn-nuevo-programas': 'Nuevo programa',
+    'btn-nuevo-subprogramas': 'Nuevo subprograma',
+    'btn-nuevo-componentes': 'Nuevo componente',
+    'btn-nuevo-modalidades': 'Nueva modalidad',
+    'btn-nuevo-proyectos': 'Nuevo proyecto',
+    'btn-nuevo-tipos_apoyo': 'Nuevo concepto'
   };
 
-  for (const [testId, [corta, larga]] of Object.entries(esperado)) {
+  for (const [testId, etiqueta] of Object.entries(esperado)) {
+    await page.click(`[data-testid="${PESTANA_DE[testId]}"]`);
     const b = page.locator(`[data-testid="${testId}"]`);
     await expect(b).toBeVisible();
-    expect((await b.innerText()).trim()).toBe(corta);
-    await expect(b).toHaveAttribute('aria-label', larga);
-    await expect(b).toHaveAttribute('title', larga);
+    expect((await b.innerText()).trim()).toBe(etiqueta);
+    await expect(b).toHaveAttribute('aria-label', etiqueta);
+    await expect(b).toHaveAttribute('title', etiqueta);
     expect(await b.locator('svg').count()).toBe(1); // el glifo "+"
     // Nombre accesible completo: sigue resolviendose por rol + nombre.
-    await expect(page.getByRole('button', { name: larga })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: etiqueta })).toHaveCount(1);
   }
 
-  // Cada grupo de altas va en UNA sola linea (mismo `top` para todos sus botones).
-  const grupos = page.locator('.arbol-encabezado-acciones');
-  const n = await grupos.count();
-  expect(n).toBe(3);
-  for (let i = 0; i < n; i++) {
-    const cajas = await grupos.nth(i).locator('button').evaluateAll((els) =>
+  // El grupo de altas de cada pestana va en UNA sola linea (mismo `top`).
+  for (const tab of ['tab-programas', 'tab-componentes', 'tab-tipos_apoyo']) {
+    await page.click(`[data-testid="${tab}"]`);
+    const grupos = page.locator('.catalogos-barra-altas');
+    await expect(grupos).toHaveCount(1);
+    const tops = await grupos.locator('button').evaluateAll((els) =>
       els.map((e) => Math.round(e.getBoundingClientRect().top))
     );
-    console.log(`GRUPO ${i} tops:`, JSON.stringify(cajas));
-    expect(new Set(cajas).size).toBe(1);
+    console.log(`${tab} tops:`, JSON.stringify(tops));
+    expect(new Set(tops).size).toBe(1);
   }
 });
 
@@ -60,20 +73,32 @@ test('acciones de fila: 3 columnas alineadas y orden fijo editar|duplicar|desact
   test.setTimeout(120000);
   await login(page);
 
-  // El orden de los botones dentro de .arbol-acciones no cambia (SPEC crit. 533).
-  const orden = await page.$$eval('.arbol-acciones', (nodos) =>
-    nodos.map((n) =>
-      Array.from(n.querySelectorAll('button')).map((b) => b.getAttribute('data-testid'))
-    )
-  );
-  for (const fila of orden) {
-    const tipos = fila.map((t) => t.split('-')[1]);
-    const esperado = tipos.filter((t) => ['editar', 'duplicar', 'desactivar', 'reactivar'].includes(t));
-    expect(tipos).toEqual(esperado);
-    expect(tipos[0]).toBe('editar');
-    expect(['desactivar', 'reactivar']).toContain(tipos[tipos.length - 1]);
-  }
+  // Las filas con "Duplicar" (proyectos y conceptos) viven en estas pestanas.
+  for (const tab of ['tab-componentes', 'tab-tipos_apoyo']) {
+    await page.click(`[data-testid="${tab}"]`);
 
+    // El orden de los botones dentro de .arbol-acciones no cambia (SPEC crit. 533).
+    const orden = await page.$$eval('.arbol-acciones', (nodos) =>
+      nodos.map((n) =>
+        Array.from(n.querySelectorAll('button')).map((b) => b.getAttribute('data-testid'))
+      )
+    );
+    expect(orden.length).toBeGreaterThan(0);
+    for (const fila of orden) {
+      const tipos = fila.map((t) => t.split('-')[1]);
+      const esperado = tipos.filter((t) =>
+        ['editar', 'duplicar', 'desactivar', 'reactivar'].includes(t)
+      );
+      expect(tipos).toEqual(esperado);
+      expect(tipos[0]).toBe('editar');
+      expect(['desactivar', 'reactivar']).toContain(tipos[tipos.length - 1]);
+    }
+    await verificarColumnas(page, tab);
+  }
+});
+
+/** Las tres ranuras de accion caen siempre en la misma X dentro de una pestana. */
+async function verificarColumnas(page, tab) {
   // Alineacion: editar siempre en la misma X; desactivar/reactivar siempre en la misma X.
   const xs = await page.evaluate(() => {
     const izq = (sel) =>
@@ -88,7 +113,7 @@ test('acciones de fila: 3 columnas alineadas y orden fijo editar|duplicar|desact
       )
     };
   });
-  console.log('COLUMNAS X:', JSON.stringify({
+  console.log(`COLUMNAS X (${tab}):`, JSON.stringify({
     editar: [...new Set(xs.editar)],
     duplicar: [...new Set(xs.duplicar)],
     estado: [...new Set(xs.estado)]
@@ -99,12 +124,13 @@ test('acciones de fila: 3 columnas alineadas y orden fijo editar|duplicar|desact
   // Duplicar cae entre editar y desactivar.
   expect(xs.duplicar[0]).toBeGreaterThan(xs.editar[0]);
   expect(xs.estado[0]).toBeGreaterThan(xs.duplicar[0]);
-});
+}
 
 test('tooltip visible al pasar el cursor sobre Duplicar', async ({ page }) => {
   test.setTimeout(120000);
   await login(page);
 
+  await page.click('[data-testid="tab-tipos_apoyo"]');
   const dup = page.locator('[data-testid^="btn-duplicar-tipos_apoyo-"]').first();
   await dup.scrollIntoViewIfNeeded();
   await expect(dup).toBeVisible();
@@ -141,16 +167,19 @@ test('las acciones siguen funcionando: editar, duplicar y alta', async ({ page }
   test.setTimeout(120000);
   await login(page);
 
-  // Alta desde la cabecera compacta.
+  // Alta desde la barra de herramientas de la pestana.
   await page.locator('[data-testid="btn-nuevo-programas"]').click();
   await expect(page.locator('[data-testid="form-catalogo"]')).toBeVisible();
   await expect(page.locator('[data-testid="form-catalogo"] h2')).toContainText('Nuevo');
+  await page.locator('[data-testid="btn-cancelar-catalogo"]').click();
 
   // Editar.
   await page.locator('[data-testid^="btn-editar-programas-"]').first().click();
   await expect(page.locator('[data-testid="form-catalogo"] h2')).toContainText('Editar');
+  await page.locator('[data-testid="btn-cancelar-catalogo"]').click();
 
   // Duplicar: abre alta con aviso de duplicado y clave vacia.
+  await page.click('[data-testid="tab-tipos_apoyo"]');
   await page.locator('[data-testid^="btn-duplicar-tipos_apoyo-"]').first().click();
   await expect(page.locator('[data-testid="form-catalogo"] h2')).toContainText('Nuevo');
   await expect(page.locator('[data-testid="aviso-duplicado"]')).toBeVisible();

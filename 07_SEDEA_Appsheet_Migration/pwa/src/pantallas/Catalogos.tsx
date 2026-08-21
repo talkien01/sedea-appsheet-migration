@@ -1,6 +1,8 @@
 // Pantalla de administracion de catalogos jerarquicos (Build 10).
 // [data-testid="pantalla-catalogos"]
-// Layout de 2 columnas en >=1024px (arbol 40% / panel 60%), apiladas en movil.
+// Build 12: pestanas por nivel. Una pestana por entidad raiz, cada una con su
+// tabla a todo el ancho; el formulario de alta/edicion se abre como modal en
+// vez de ocupar una columna fija del 60%.
 import { useCallback, useEffect, useState } from 'react';
 import { useSesion } from '../App';
 import { api, ErrorPeticion } from '../api/cliente';
@@ -270,15 +272,6 @@ export default function Catalogos() {
       <header className="catalogos-header">
         <h1>Catálogos del programa</h1>
         <div className="catalogos-acciones">
-          <label className="toggle-campo">
-            <input
-              type="checkbox"
-              data-testid="toggle-incluir-inactivos"
-              checked={incluirInactivos}
-              onChange={(e) => setIncluirInactivos(e.target.checked)}
-            />
-            Mostrar desactivados
-          </label>
           <a href="/catalogos/documentos" data-testid="link-reglas-documentos" className="boton secundario">
             Reglas de documentos
           </a>
@@ -333,32 +326,40 @@ export default function Catalogos() {
       )}
 
       <div className="catalogos-layout">
-        <aside className="catalogos-arbol">
-          <ArbolCatalogos
-            arbol={arbol}
-            cargando={cargando}
-            incluirInactivos={incluirInactivos}
-            conceptos={{
-              datos: conceptos.datos,
-              total: conceptos.total,
-              pagina: paginaConceptos,
-              porPagina: POR_PAGINA_CONCEPTOS,
-              busqueda: busquedaConceptos
-            }}
-            onBuscarConceptos={(q) => {
-              setBusquedaConceptos(q);
-              setPaginaConceptos(1);
-            }}
-            onPaginaConceptos={setPaginaConceptos}
-            onNuevo={abrirAlta}
-            onEditar={abrirEdicion}
-            onDuplicar={abrirDuplicado}
-            onCambiarEstado={cambiarEstado}
-          />
-        </aside>
+        <ArbolCatalogos
+          arbol={arbol}
+          cargando={cargando}
+          incluirInactivos={incluirInactivos}
+          onIncluirInactivos={setIncluirInactivos}
+          conceptos={{
+            datos: conceptos.datos,
+            total: conceptos.total,
+            pagina: paginaConceptos,
+            porPagina: POR_PAGINA_CONCEPTOS,
+            busqueda: busquedaConceptos
+          }}
+          onBuscarConceptos={(q) => {
+            setBusquedaConceptos(q);
+            setPaginaConceptos(1);
+          }}
+          onPaginaConceptos={setPaginaConceptos}
+          onNuevo={abrirAlta}
+          onEditar={abrirEdicion}
+          onDuplicar={abrirDuplicado}
+          onCambiarEstado={cambiarEstado}
+        />
+      </div>
 
-        <main className="catalogos-panel">
-          {modoForm && entidadSeleccionada && (
+      {/* El formulario ya no ocupa una columna fija: aparece como modal solo
+          mientras se crea o edita un registro. */}
+      {modoForm && entidadSeleccionada && (
+        <div
+          className="modal-fondo"
+          role="dialog"
+          aria-modal="true"
+          data-testid="modal-form-catalogo"
+        >
+          <div className="modal modal-form-catalogo">
             <FormCatalogo
               key={nonceForm}
               duplicadoDe={duplicadoDe}
@@ -371,14 +372,9 @@ export default function Catalogos() {
               alGuardar={guardar}
               alCancelar={cerrarForm}
             />
-          )}
-          {!modoForm && (
-            <div className="mensaje aviso">
-              Selecciona un nodo del árbol o pulsa "Nuevo" para crear un registro.
-            </div>
-          )}
-        </main>
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

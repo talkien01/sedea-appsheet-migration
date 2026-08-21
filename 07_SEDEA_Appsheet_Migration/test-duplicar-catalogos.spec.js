@@ -36,19 +36,27 @@ async function login(page) {
   await page.waitForURL((u) => !String(u).includes('/login'), { timeout: 30000 });
   await page.goto(`${BASE}/catalogos`);
   await expect(page.locator('[data-testid="pantalla-catalogos"]')).toBeVisible();
+  await expect(page.locator('[data-testid="arbol-catalogos"]')).toBeVisible();
+}
+
+/** Build 12: cada entidad vive en su pestana; hay que abrirla antes de buscar filas. */
+async function abrirPestana(page, tab) {
+  await page.click(`[data-testid="${tab}"]`);
+  await expect(page.locator(`[data-testid="panel-${tab.replace('tab-', '')}"]`)).toBeVisible();
 }
 
 test('Duplicar proyecto: alta precargada, clave/prefijo vacios, original intacto', async ({ page }) => {
   test.setTimeout(120000);
   await login(page);
 
-  // --- Proyecto origen: el primero del arbol ---
+  // --- Proyecto origen: el primero de la pestana Componentes ---
+  await abrirPestana(page, 'tab-componentes');
   const botonDuplicar = page.locator('[data-testid^="btn-duplicar-proyectos-"]').first();
   await expect(botonDuplicar).toBeVisible();
   const testId = await botonDuplicar.getAttribute('data-testid');
   const idOrigen = testId.replace('btn-duplicar-proyectos-', '');
   const filaOrigen = page.locator(`[data-testid="nodo-proyectos-${idOrigen}"]`);
-  const textoOrigen = (await filaOrigen.locator('.arbol-texto').innerText()).trim();
+  const textoOrigen = (await filaOrigen.locator('.celda-clave').innerText()).trim();
   console.log('PROYECTO ORIGEN:', idOrigen, textoOrigen);
 
   // Datos del original leidos de la API (para comparar FKs al final)
@@ -119,7 +127,7 @@ test('Duplicar proyecto: alta precargada, clave/prefijo vacios, original intacto
   expect(nuevo.modalidad_id).toBe(original.modalidad_id);
   expect(nuevo.activo).toBe(true);
 
-  // Ambos visibles en el arbol
+  // Ambos visibles en la tabla de la pestana Componentes
   await expect(page.locator(`[data-testid="nodo-proyectos-${idOrigen}"]`)).toBeVisible();
   await expect(page.locator(`[data-testid="nodo-proyectos-${nuevo.id}"]`)).toBeVisible();
   await expect(page.locator(`[data-testid="nodo-proyectos-${nuevo.id}"]`)).toContainText(claveNueva);
@@ -130,12 +138,13 @@ test('Duplicar proyecto con clave repetida: rechazo por validacion normal de alt
   test.setTimeout(120000);
   await login(page);
 
+  await abrirPestana(page, 'tab-componentes');
   const botonDuplicar = page.locator('[data-testid^="btn-duplicar-proyectos-"]').first();
   const testId = await botonDuplicar.getAttribute('data-testid');
   const idOrigen = testId.replace('btn-duplicar-proyectos-', '');
   const claveOrigen = (
-    await page.locator(`[data-testid="nodo-proyectos-${idOrigen}"] .arbol-texto`).innerText()
-  ).split('·')[0].trim();
+    await page.locator(`[data-testid="nodo-proyectos-${idOrigen}"] .celda-clave`).innerText()
+  ).trim();
 
   await botonDuplicar.click();
   await page.locator('[data-testid="input-clave"]').fill(claveOrigen);
@@ -151,6 +160,7 @@ test('Duplicar concepto de apoyo (tipos_apoyo)', async ({ page }) => {
   test.setTimeout(120000);
   await login(page);
 
+  await abrirPestana(page, 'tab-tipos_apoyo');
   const botonDuplicar = page.locator('[data-testid^="btn-duplicar-tipos_apoyo-"]').first();
   await expect(botonDuplicar).toBeVisible({ timeout: 15000 });
   const testId = await botonDuplicar.getAttribute('data-testid');

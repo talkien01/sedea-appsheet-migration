@@ -1,5 +1,5 @@
 /* Build 10: estilos de la pantalla de catalogos.
-   Solo layout de dos columnas y sangrias del arbol.
+   Build 12: el arbol vertical se sustituye por pestanas + tabla ancha.
    Todos los colores, radios y sombras vienen de tokens.css. */
 
 .pantalla-catalogos {
@@ -27,70 +27,122 @@
 }
 
 .catalogos-layout {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--espacio-4);
   max-width: none;
 }
 
-@media (min-width: 1024px) {
-  .catalogos-layout {
-    grid-template-columns: 40% 60%;
-  }
-}
-
-/* Arbol */
-.arbol-contenedor {
-  max-height: 70vh;
-  overflow-y: auto;
-}
-
-.arbol-rama {
-  margin-bottom: var(--espacio-4);
-}
-
-/* Cabecera de rama: titulo a la izquierda, grupo de altas pegado a la derecha.
-   Los botones viven en su propio contenedor (no como hermanos sueltos del h3),
-   porque con `space-between` cada boton se repartia el ancho por su cuenta y la
-   cabecera quedaba desalineada. */
-.arbol-encabezado {
+/* ---------------------------- Pestanas por nivel -------------------------
+   Una pestana por entidad raiz. La pestana activa se marca con el naranja de
+   marca y el titulo va en la display face; el conteo viaja en una pildora. */
+.catalogos-pestanas {
   display: flex;
   flex-wrap: wrap;
-  justify-content: space-between;
+  gap: var(--espacio-1);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: calc(var(--espacio-3) * -1);
+}
+
+.catalogos-pestana {
+  display: inline-flex;
   align-items: center;
-  gap: 6px var(--espacio-3);
-  margin-bottom: var(--espacio-2);
-}
-
-.arbol-encabezado h3 {
-  margin: 0;
-  font-size: 1rem;
+  gap: 8px;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  padding: 10px 16px;
+  margin-bottom: -1px;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
   font-weight: 600;
-  white-space: nowrap;
+  color: var(--fg-muted);
+  cursor: pointer;
 }
 
-/* El grupo se mantiene en UNA sola linea y como bloque indivisible: si no cabe
-   junto al titulo, baja entero al renglon siguiente (pegado a la derecha) en vez
-   de partirse boton por boton, que era lo que se veia amontonado. */
-.arbol-encabezado-acciones {
+.catalogos-pestana:hover {
+  color: var(--fg);
+  background: var(--bg-sunk);
+}
+
+.catalogos-pestana.activa {
+  color: var(--fg);
+  border-bottom-color: var(--brand-orange);
+}
+
+.catalogos-pestana-conteo {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-sunk);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+.catalogos-pestana.activa .catalogos-pestana-conteo {
+  background: color-mix(in srgb, var(--brand-orange) 16%, transparent);
+  color: var(--brand-orange);
+}
+
+.catalogos-panel-pestana {
+  border-top-left-radius: 0;
+}
+
+/* ------------------------- Barra de herramientas -------------------------- */
+.catalogos-barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espacio-2) var(--espacio-3);
+  margin-bottom: var(--espacio-3);
+}
+
+.catalogos-barra-buscador {
+  flex: 1 1 240px;
+  min-width: 200px;
+}
+
+.catalogos-barra-buscador input {
+  width: 100%;
+}
+
+/* El grupo de altas se mantiene en UNA sola linea: si no cabe, baja entero al
+   renglon siguiente en vez de partirse boton por boton. */
+.catalogos-barra-altas {
   display: flex;
   flex: 0 0 auto;
   flex-wrap: nowrap;
-  justify-content: flex-end;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
 }
 
-/* Boton de alta compacto: glifo "+" + etiqueta corta ("Programa"). El nombre
-   accesible completo ("Nuevo programa") lo da el aria-label. */
+/* `label` global trae margin-bottom y display:block (convencion de formulario);
+   aqui es un toggle en linea, asi que se neutralizan. */
+.catalogos-barra-toggle {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding-left: var(--espacio-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.catalogos-barra-toggle input {
+  margin: 0;
+}
+
+/* Boton de alta: glifo "+" + etiqueta. */
 .pantalla-catalogos .boton-crear {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  min-height: 30px;
-  padding: 4px 9px;
-  font-size: 12px;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -99,48 +151,75 @@
   flex: 0 0 auto;
 }
 
-.arbol-nodo,
-.arbol-hijo,
-.arbol-nieto {
-  margin-left: var(--espacio-2);
+/* El primer boton de alta de cada pestana es la accion primaria. */
+.catalogos-barra-altas .boton-crear:first-child {
+  background: var(--brand-orange);
+  border-color: var(--brand-orange);
+  color: var(--sobre-acento, #fff);
 }
 
-.arbol-fila {
+/* ------------------------------ Tabla ancha ------------------------------- */
+.tabla-catalogos {
+  width: 100%;
+  table-layout: auto;
+}
+
+.tabla-catalogos th,
+.tabla-catalogos td {
+  padding: 9px var(--espacio-2);
+  vertical-align: middle;
+}
+
+.tabla-catalogos tbody tr.inactivo {
+  opacity: 0.55;
+}
+
+.celda-clave {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.fila-catalogo.nivel-0 .celda-nombre {
+  font-weight: 600;
+}
+
+.celda-jerarquia {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.tabla-catalogos .col-acciones {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* Paginacion de conceptos: botones y leyenda en una sola linea centrada.
+   `.campo.acciones` por si solo dejaba la leyenda (un bloque) encimada. */
+.catalogos-panel-pestana [data-testid='paginacion-tipos_apoyo'] {
   display: flex;
   align-items: center;
-  gap: var(--espacio-2);
-  padding: var(--espacio-2) 0;
-  border-bottom: 1px solid var(--border);
+  justify-content: center;
+  gap: var(--espacio-3);
+  margin-top: var(--espacio-3);
+  margin-bottom: 0;
 }
 
-.arbol-fila.inactivo {
-  opacity: 0.6;
+.catalogos-panel-pestana [data-testid='paginacion-tipos_apoyo'] .leyenda {
+  margin: 0;
+  white-space: nowrap;
 }
 
-.arbol-toggle {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  color: var(--fg-muted);
-  font-size: 0.8rem;
-}
-
-.arbol-texto {
-  flex: 1;
-  min-width: 0;
-  padding-right: var(--espacio-2);
-  font-size: 0.9rem;
-}
-
-.arbol-sangria {
-  margin-left: var(--espacio-3);
-  color: var(--fg-subtle);
-}
-
-.arbol-sangria-doble {
-  margin-left: calc(var(--espacio-3) * 2);
-  color: var(--fg-subtle);
+/* Formulario en modal: un poco mas ancho que el modal estandar porque el
+   FormCatalogo tiene selects de padre con textos largos. */
+.modal-form-catalogo {
+  width: min(620px, 100%);
+  background: transparent;
+  box-shadow: none;
 }
 
 /* Columna de acciones de fila: siempre las mismas tres ranuras y en el mismo
@@ -170,12 +249,25 @@
   }
 }
 
-.arbol-hijos {
-  margin-left: var(--espacio-3);
-}
+/* En movil la tabla se convierte en tarjetas (componentes.css): la celda de
+   acciones deja de ir pegada a la derecha para no romper el par
+   etiqueta/valor. */
+@media (max-width: 767px) {
+  .catalogos-barra-altas {
+    flex-wrap: wrap;
+  }
 
-.arbol-nietos {
-  margin-left: var(--espacio-3);
+  /* La casilla mide 44px de objetivo tactil (S15.11.1): el toggle ocupa su
+     propio renglon para que no quede apretado contra los botones de alta. */
+  .catalogos-barra-toggle {
+    flex: 1 0 100%;
+    padding-left: 0;
+  }
+
+  .tabla-catalogos .col-acciones {
+    width: auto;
+    text-align: left;
+  }
 }
 
 /* Formulario */

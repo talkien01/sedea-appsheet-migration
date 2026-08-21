@@ -136,23 +136,41 @@ npm run dev:pwa             # PWA en http://localhost:5173 (proxy /api -> 3000)
 
 ## Administración de catálogos (`/catalogos`)
 
-Accesible para los roles `admin` y `editor_datos`. El árbol muestra las ramas de
-programas/subprogramas, componentes/modalidades/proyectos y **conceptos de apoyo**
-(lista paginada con buscador por clave o nombre).
+Accesible para los roles `admin` y `editor_datos`.
 
-**Cómo se leen los botones del árbol.**
+**Layout: pestañas por nivel.** La pantalla se organiza en tres pestañas
+horizontales, cada una con su **tabla a todo el ancho** de la pantalla (ya no hay
+un árbol angosto ni una columna de formulario fija al lado):
 
-- *Altas:* cada encabezado de rama (Programas, Componentes, Conceptos de apoyo)
-  lleva a su derecha un grupo de botones compactos con el glifo `+` y una
-  etiqueta corta: `+ Programa`, `+ Subprograma`, `+ Componente`, `+ Modalidad`,
-  `+ Proyecto`, `+ Concepto`. El nombre completo ("Nuevo programa"…) sigue en el
-  `aria-label`/`title`, y los `data-testid` (`btn-nuevo-<entidad>`) no cambian.
-  Si el grupo no cabe junto al título, baja entero al renglón siguiente pegado a
-  la derecha, en vez de repartirse desordenado.
+| Pestaña | Qué contiene |
+|---|---|
+| **Programas** | Programas y los subprogramas que cuelgan de ellos |
+| **Componentes** | Componentes, sus modalidades y los proyectos que cuelgan de ambos |
+| **Conceptos de apoyo** | `tipos_apoyo`, paginado de 20 en 20 con buscador en el servidor |
+
+Cada pestaña lleva su **contador** al lado del nombre ("Programas · 2") y una
+**barra de herramientas**: buscador por clave o nombre, los botones `+ Nuevo …`
+de esa pestaña y el toggle **"Mostrar desactivados"**.
+
+La tabla tiene cinco columnas: **Clave · Nombre · Jerarquía · Estado · Acciones**.
+La jerarquía no se pinta con sangrías sino nombrando al padre en su propia
+columna — `↳ PRG-2026` para un subprograma, `PET → MOD-PEPFO` para un proyecto
+que cuelga de componente + modalidad, `—` para una raíz. En móvil la tabla se
+convierte en tarjetas, como el resto de las tablas de la app.
+
+El **formulario de alta/edición** se abre como **modal** y solo existe mientras
+se está creando o editando un registro.
+
+**Cómo se leen los botones.**
+
+- *Altas:* la barra de cada pestaña lleva sus botones con el glifo `+` —
+  `+ Nuevo programa`, `+ Nuevo subprograma` en Programas; `+ Nuevo componente`,
+  `+ Nueva modalidad`, `+ Nuevo proyecto` en Componentes; `+ Nuevo concepto` en
+  Conceptos de apoyo. Los `data-testid` (`btn-nuevo-<entidad>`) no cambian.
 - *Acciones de fila:* siempre las mismas tres ranuras y en el mismo orden —
   **Editar** (lápiz) · **Duplicar** (dos hojas) · **Desactivar/Reactivar** (ojo
   tachado / palomita). Las filas que no admiten *Duplicar* dejan la ranura vacía,
-  para que las tres columnas queden alineadas en todo el árbol. Al pasar el
+  para que las tres columnas queden alineadas en toda la tabla. Al pasar el
   cursor (o al llegar con el teclado) cada ícono muestra **su nombre en un
   tooltip inmediato**, sin esperar al tooltip lento del navegador.
 
@@ -173,6 +191,9 @@ registro original nunca se modifica.
 Caso de uso típico: das de alta el proyecto "Semilla de avena" completo, pulsas
 *Duplicar*, cambias clave, prefijo y nombre, y queda "Semilla de garbanzo" colgando
 del mismo componente y la misma modalidad.
+
+> Los proyectos y las modalidades viven en la pestaña **Componentes**; los
+> conceptos, en **Conceptos de apoyo**. Abre la pestaña antes de buscar la fila.
 
 Es una función solo de front-end: no hay endpoint nuevo, usa el mismo `POST
 /api/admin/catalogos/:entidad` del alta.

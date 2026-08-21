@@ -24,13 +24,15 @@ test(`captura /catalogos (${FASE})`, async ({ page }) => {
     .locator('[data-testid="arbol-catalogos"]')
     .screenshot({ path: `scratchpad/catalogos-${FASE}-arbol.png` });
 
-  // Zoom a la cabecera de "Programas" y a la primera fila con Duplicar.
-  const enc = page.locator('.arbol-encabezado').first();
+  // Zoom a la barra de herramientas y a la primera fila con Duplicar
+  // (Build 12: los proyectos viven en la pestana "Componentes").
+  const enc = page.locator('.catalogos-barra').first();
   await enc.screenshot({ path: `scratchpad/catalogos-${FASE}-encabezado.png` });
 
+  await page.click('[data-testid="tab-componentes"]');
   const filaDup = page.locator('[data-testid^="btn-duplicar-proyectos-"]').first();
   if (await filaDup.count()) {
-    const fila = filaDup.locator('xpath=ancestor::div[contains(@class,"arbol-fila")]');
+    const fila = filaDup.locator('xpath=ancestor::tr');
     await fila.screenshot({ path: `scratchpad/catalogos-${FASE}-fila-duplicar.png` });
   }
 

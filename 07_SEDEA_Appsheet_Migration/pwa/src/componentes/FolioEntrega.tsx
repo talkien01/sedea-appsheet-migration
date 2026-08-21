@@ -170,13 +170,43 @@ export default function FolioEntrega() {
           margin-top: 24px;
           text-align: center;
         }
+        /* El reset del cascaron (rejilla con barra lateral y alturas de
+           viewport) vive en styles/impresion.css, compartido con la caratula
+           de expediente. Aqui solo lo especifico del folio. */
         @media print {
-          .no-print, .folio-acciones {
+          .folio-acciones,
+          nav,
+          .migas,
+          .vacio {
             display: none !important;
           }
           .tarjeta {
-            box-shadow: none;
-            border: none;
+            display: block !important;
+            box-shadow: none !important;
+            border: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #fff !important;
+          }
+          /* El padding de 20mm se suma al margen de @page y empuja el folio
+             fuera de la hoja; en papel el margen lo pone @page. */
+          .folio-entrega-print {
+            max-width: none;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+          }
+          .folio-folio {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .folio-qr,
+          .folio-footer {
+            break-inside: avoid;
+          }
+          .qr-image {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
         }
       `}</style>

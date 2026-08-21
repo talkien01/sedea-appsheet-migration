@@ -572,6 +572,21 @@ variable de entorno nueva ni migración adicional**:
 | **Banner post-guardado** | Al guardar una solicitud, la redirección automática (4 s) lleva a `/solicitudes/:id?nuevo=1`. El detalle muestra un banner de confirmación que desaparece al tocarlo o a los 10 s. |
 | **Drag & drop** | Cada documento del checklist tiene una zona de arrastre encima del selector de archivo. Sin librerías externas. |
 | **Carátula imprimible** | El botón "Imprimir carátula" llama a `window.print()`. Se imprime solo el bloque con folio, solicitante, municipio, proyecto, conceptos y lista de documentos con casillas vacías para check manual. |
+| **Folio de entrega con QR** | `/solicitudes/:id/folio` genera la hoja de entrega con el QR del folio. También se imprime con `window.print()`. |
+
+### Reglas de impresión compartidas
+
+`pwa/src/styles/impresion.css` (importado desde `global.css`) contiene el bloque
+`@media print` común a **todas** las pantallas imprimibles: `@page A4` con margen
+de 12 mm, ocultado del chrome de la app (franja de estado, barra lateral, barra
+inferior, hoja "Más", banners y zonas de arrastre) y aplanado de la rejilla del
+cascarón a bloques.
+
+Ese aplanado es obligatorio: el cascarón es un `display: grid` con una columna
+fija para la barra lateral y `height: 100dvh`. Si no se neutraliza, el documento
+sale desplazado a la derecha y recortado fuera del área imprimible, y la barra
+lateral se dibuja dentro del PDF. Cada pantalla imprimible agrega en su propio
+bloque `@media print` únicamente lo específico de su documento.
 
 ---
 

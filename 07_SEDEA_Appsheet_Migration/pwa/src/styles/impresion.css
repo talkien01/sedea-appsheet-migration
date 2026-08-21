@@ -1,0 +1,57 @@
+/* ==========================================================================
+   Reglas de impresion compartidas por todas las pantallas imprimibles
+   (caratula de expediente en DetalleSolicitud, folio de entrega con QR en
+   FolioEntrega).
+
+   El cascaron es una rejilla con una columna fija para la barra lateral
+   (var(--ancho-lateral)) y alturas de viewport (100dvh). Si no se neutraliza
+   en @media print, el contenido imprimible sale desplazado a la derecha, se
+   corta fuera del area imprimible y la barra lateral aparece dibujada en el
+   PDF. Aqui se apaga el chrome de la app y se aplana el cascaron a bloques.
+
+   Cada pantalla agrega en su propio bloque @media print solo lo que es
+   especifico de su documento (que tarjetas ocultar, tipografia, tablas...).
+   ========================================================================== */
+
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  /* Chrome de la aplicacion: nunca debe salir en papel. */
+  .franja-estado,
+  .barra-lateral,
+  .barra-inferior,
+  .salto-contenido,
+  .banner-nuevo,
+  .zona-drop,
+  .hoja-mas,
+  .modal-fondo,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Se aplana la rejilla del cascaron para que el documento arranque en x=0
+     y ocupe el ancho util de la hoja. */
+  html,
+  body,
+  #root,
+  .cascaron,
+  .contenido {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+    grid-template-columns: none !important;
+    grid-template-rows: none !important;
+    grid-template-areas: none !important;
+  }
+}

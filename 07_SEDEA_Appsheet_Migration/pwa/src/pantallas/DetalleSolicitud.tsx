@@ -166,44 +166,17 @@ export default function DetalleSolicitud() {
         [data-testid="caratula-imprimible"] {
           display: none;
         }
+        /* @page, el reset de la rejilla del cascaron y el ocultado del chrome
+           de la app (franja, barra lateral, hoja "Mas"...) viven ahora en
+           styles/impresion.css, compartidos con el folio de entrega. Aqui solo
+           lo especifico de la caratula. */
         @media print {
-          @page { size: A4; margin: 12mm; }
-
           .tarjeta,
-          .modal-fondo,
           nav,
           header,
           .barra-superior,
-          .barra-lateral,
-          .barra-inferior,
-          .franja-estado,
-          .hoja-mas,
-          .salto-contenido,
-          .banner-nuevo,
-          .zona-drop,
           .vacio {
             display: none !important;
-          }
-
-          /* El cascaron es una rejilla con columna de barra lateral y alturas
-             de viewport. Si no se neutraliza, la caratula sale desplazada a la
-             derecha y la tabla de conceptos se corta fuera del area imprimible
-             (ahi aparecian las guias de margen del navegador encima del texto). */
-          html, body, #root, .cascaron, .contenido {
-            display: block !important;
-            width: auto !important;
-            max-width: none !important;
-            min-width: 0 !important;
-            height: auto !important;
-            min-height: 0 !important;
-            max-height: none !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: visible !important;
-            background: #fff !important;
-            grid-template-columns: none !important;
-            grid-template-rows: none !important;
-            grid-template-areas: none !important;
           }
 
           [data-testid="caratula-imprimible"] {

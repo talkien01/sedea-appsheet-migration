@@ -46,9 +46,14 @@ const esquemaEnv = z.object({
   // Build 13: pre-dictaminacion con IA. Todas con default: ninguna rompe el
   // arranque si falta (A19-11). El default es `simulado` para poder instalar,
   // probar y evaluar sin ANTHROPIC_API_KEY y sin gastar.
-  PREDICTAMEN_DRIVER: z.enum(['anthropic', 'simulado']).default('simulado'),
+  PREDICTAMEN_DRIVER: z.enum(['anthropic', 'openai_compatible', 'simulado']).default('simulado'),
   ANTHROPIC_API_KEY: z.string().default(''),
-  ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-5')
+  ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-5'),
+  // Driver `openai_compatible`: cualquier endpoint que hable Chat Completions
+  // estilo OpenAI (Qwen via DashScope compatible-mode, OpenRouter, OpenAI...).
+  PREDICTAMEN_API_BASE_URL: z.string().default(''),
+  PREDICTAMEN_API_KEY: z.string().default(''),
+  PREDICTAMEN_MODEL: z.string().default('')
 });
 
 const parseado = esquemaEnv.safeParse(process.env);
@@ -81,6 +86,9 @@ export const config = {
   predictamenDriver: env.PREDICTAMEN_DRIVER,
   anthropicApiKey: env.ANTHROPIC_API_KEY,
   anthropicModelo: env.ANTHROPIC_MODEL,
+  predictamenApiBaseUrl: env.PREDICTAMEN_API_BASE_URL,
+  predictamenApiKey: env.PREDICTAMEN_API_KEY,
+  predictamenModelo: env.PREDICTAMEN_MODEL,
   directorioMigraciones: resolverDirectorio('db/migrations'),
   directorioSeeds: resolverDirectorio('db/seeds')
 };

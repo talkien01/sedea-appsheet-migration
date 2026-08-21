@@ -6,8 +6,21 @@
 //   PREDICTAMEN_DRIVER=anthropic            -> llamada real con @anthropic-ai/sdk.
 //     Si falta ANTHROPIC_API_KEY el arranque NO falla (el modulo es opcional):
 //     la ruta E55 responde 503 ia_no_configurada.
+//   PREDICTAMEN_DRIVER=openai_compatible    -> llamada real por HTTP al protocolo
+//     Chat Completions estilo OpenAI (Qwen-VL via DashScope compatible-mode,
+//     OpenRouter, Together, Fireworks, la propia OpenAI...). Parametrizado con
+//     PREDICTAMEN_API_BASE_URL / PREDICTAMEN_API_KEY / PREDICTAMEN_MODEL. Si
+//     falta la key o la base url, mismo criterio: 503 ia_no_configurada.
+//
+// Los tres drivers cumplen la MISMA interfaz DriverIa: son intercambiables sin
+// tocar predictamen.ts, endpoints ni pantallas.
 import { config } from '../../config.js';
-import { SYSTEM_PREDICTAMEN, bloquesDeDocumento, type ContextoDocumento } from '../predictamen.prompt.js';
+import {
+  SYSTEM_PREDICTAMEN,
+  bloquesDeDocumento,
+  bloquesOpenAiDeDocumento,
+  type ContextoDocumento
+} from '../predictamen.prompt.js';
 
 /** Veredicto crudo del modelo sobre UN archivo, antes de normalizar. */
 export interface VeredictoIa {
@@ -170,13 +183,92 @@ class DriverAnthropic implements DriverIa {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Driver openai_compatible (Chat Completions con vision)
+// ---------------------------------------------------------------------------
+
+/**
+ * Habla el protocolo de Chat Completions estilo OpenAI contra cualquier
+ * endpoint compatible. No usa SDK: una sola llamada `fetch` a
+ * `${PREDICTAMEN_API_BASE_URL}/chat/completions`.
+ *
+ * Proveedores probados por configuracion (ver README): Qwen-VL via DashScope
+ * compatible-mode, y la propia OpenAI cambiando solo las variables de entorno.
+ */
+export class DriverOpenAiCompatible implements DriverIa {
+  /** `fetch` inyectable para poder stubbear la llamada HTTP en pruebas. */
+  constructor(private readonly fetchImpl: typeof fetch = fetch) {}
+
+  get modelo(): string {
+    return config.predictamenModelo.trim() || 'openai-compatible';
+  }
+
+  disponible(): boolean {
+    return (
+      config.predictamenApiKey.trim().length > 0 &&
+      config.predictamenApiBaseUrl.trim().length > 0
+    );
+  }
+
+  async evaluarDocumento(entrada: EntradaDocumentoIa): Promise<VeredictoIa> {
+    const base = config.predictamenApiBaseUrl.trim().replace(/\/+$/, '');
+    const contenido = bloquesOpenAiDeDocumento(
+      entrada.contenido.toString('base64'),
+      entrada.mediaType,
+      entrada.contexto
+    );
+
+    const respuesta = await this.fetchImpl(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${config.predictamenApiKey.trim()}`
+      },
+      body: JSON.stringify({
+        model: this.modelo,
+        max_tokens: 600,
+        temperature: 0,
+        messages: [
+          { role: 'system', content: SYSTEM_PREDICTAMEN },
+          { role: 'user', content: contenido }
+        ]
+      }),
+      signal: AbortSignal.timeout(TIMEOUT_MS)
+    });
+
+    if (!respuesta.ok) {
+      const cuerpo = await respuesta.text().catch(() => '');
+      throw new Error(`La IA respondió ${respuesta.status}: ${cuerpo.slice(0, 300)}`);
+    }
+
+    const datos = (await respuesta.json()) as {
+      choices?: { message?: { content?: unknown } }[];
+    };
+    const bruto = datos.choices?.[0]?.message?.content;
+    // Algunos proveedores devuelven el contenido como lista de bloques.
+    const texto = Array.isArray(bruto)
+      ? bruto
+          .map((b: { text?: string }) => (typeof b?.text === 'string' ? b.text : ''))
+          .join('\n')
+      : typeof bruto === 'string'
+        ? bruto
+        : '';
+
+    const json = extraerJson(texto);
+    if (!json) throw new Error('La IA no devolvió un JSON válido.');
+    return json as unknown as VeredictoIa;
+  }
+}
+
 let driverActual: DriverIa | null = null;
 
 /** Driver vigente segun PREDICTAMEN_DRIVER. Se memoiza por proceso. */
 export function driverIa(): DriverIa {
   if (!driverActual) {
-    driverActual =
-      config.predictamenDriver === 'anthropic' ? new DriverAnthropic() : new DriverSimulado();
+    if (config.predictamenDriver === 'anthropic') driverActual = new DriverAnthropic();
+    else if (config.predictamenDriver === 'openai_compatible')
+      driverActual = new DriverOpenAiCompatible();
+    else driverActual = new DriverSimulado();
   }
   return driverActual;
 }

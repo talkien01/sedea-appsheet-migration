@@ -69,3 +69,27 @@ export function bloquesDeDocumento(
 
   return [bloqueArchivo, { type: 'text', text: textoDeContexto(ctx) }];
 }
+
+/**
+ * Mismo contenido que `bloquesDeDocumento`, pero en el formato de Chat
+ * Completions estilo OpenAI que usan Qwen (DashScope compatible-mode),
+ * OpenRouter, Together, Fireworks y la propia API de OpenAI.
+ *
+ * Las imagenes viajan como `image_url` con data URI. Los PDF viajan como
+ * bloque `file` con `file_data` (formato de OpenAI); el soporte de PDF depende
+ * del proveedor: Qwen-VL solo acepta imagenes, asi que con ese proveedor los
+ * adjuntos deben ser JPG/PNG/WEBP.
+ */
+export function bloquesOpenAiDeDocumento(
+  base64: string,
+  mediaType: string,
+  ctx: ContextoDocumento
+): unknown[] {
+  const dataUri = `data:${mediaType};base64,${base64}`;
+  const bloqueArchivo =
+    mediaType === 'application/pdf'
+      ? { type: 'file', file: { filename: 'documento.pdf', file_data: dataUri } }
+      : { type: 'image_url', image_url: { url: dataUri } };
+
+  return [bloqueArchivo, { type: 'text', text: textoDeContexto(ctx) }];
+}

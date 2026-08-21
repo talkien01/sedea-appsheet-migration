@@ -44,6 +44,10 @@ services:
       PREDICTAMEN_DRIVER: ${PREDICTAMEN_DRIVER:-simulado}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-5}
+      # Driver `openai_compatible` (Qwen-VL via DashScope, OpenAI, OpenRouter...).
+      PREDICTAMEN_API_BASE_URL: ${PREDICTAMEN_API_BASE_URL:-}
+      PREDICTAMEN_API_KEY: ${PREDICTAMEN_API_KEY:-}
+      PREDICTAMEN_MODEL: ${PREDICTAMEN_MODEL:-}
       SEED_ADMIN_USER: ${SEED_ADMIN_USER:-admin}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-cambiame123}
     ports:

@@ -692,16 +692,57 @@ al adjuntar un documento, porque cada corrida cuesta llamadas al modelo.
 
 | Variable | Default | Uso |
 |---|---|---|
-| `PREDICTAMEN_DRIVER` | `simulado` | `anthropic` (visión real) o `simulado` |
+| `PREDICTAMEN_DRIVER` | `simulado` | `simulado`, `anthropic` u `openai_compatible` |
 | `ANTHROPIC_API_KEY` | *(vacío)* | Solo con driver `anthropic` |
 | `ANTHROPIC_MODEL` | `claude-sonnet-4-5` | Modelo con visión |
+| `PREDICTAMEN_API_BASE_URL` | *(vacío)* | Solo con driver `openai_compatible` |
+| `PREDICTAMEN_API_KEY` | *(vacío)* | Solo con driver `openai_compatible` |
+| `PREDICTAMEN_MODEL` | *(vacío)* | Solo con driver `openai_compatible` |
+
+Los tres drivers cumplen la **misma interfaz** y son intercambiables: cambiar de
+uno a otro es cambiar variables de entorno, no código. Ni el servicio de
+pre-dictamen, ni los endpoints, ni las pantallas cambian.
 
 El default es **`simulado`**: no toca la red, es determinista y permite instalar,
 probar y correr los tests sin llave de API y sin gastar. Producción se configura
-explícitamente con `PREDICTAMEN_DRIVER=anthropic` y la llave en el `.env` **del
-servidor** (nunca en git). Con driver `anthropic` y sin `ANTHROPIC_API_KEY` el
-arranque **no** falla: el endpoint de pre-dictaminación responde `503
-ia_no_configurada`.
+explícitamente con un driver real y las llaves en el `.env` **del servidor**
+(nunca en git). Con un driver real y sin sus credenciales el arranque **no**
+falla: el endpoint de pre-dictaminación responde `503 ia_no_configurada`
+(`anthropic` sin `ANTHROPIC_API_KEY`; `openai_compatible` sin
+`PREDICTAMEN_API_KEY` o sin `PREDICTAMEN_API_BASE_URL`).
+
+#### Driver `openai_compatible` (Qwen, OpenAI y otros)
+
+Habla el protocolo de **Chat Completions estilo OpenAI** con bloques de imagen
+(`image_url` con data URI) por HTTP directo, sin SDK. Sirve para cualquier
+proveedor que exponga esa API: **Qwen (Alibaba)** vía DashScope *compatible-mode*,
+OpenAI, OpenRouter, Together, Fireworks.
+
+Ejemplo **Qwen-VL vía DashScope**:
+
+```bash
+PREDICTAMEN_DRIVER=openai_compatible
+PREDICTAMEN_API_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+PREDICTAMEN_API_KEY=sk-...          # llave de DashScope
+PREDICTAMEN_MODEL=qwen-vl-max
+```
+
+El **mismo driver** sirve para OpenAI/ChatGPT cambiando solo esas variables
+(`PREDICTAMEN_API_BASE_URL=https://api.openai.com/v1`, `PREDICTAMEN_MODEL=gpt-4o`).
+
+Nota sobre PDF: las imágenes (JPG/PNG/WEBP) viajan como `image_url`; los PDF
+viajan como bloque `file` con `file_data`, formato que **no todos los proveedores
+soportan** — Qwen-VL solo acepta imágenes, así que con ese proveedor los adjuntos
+deben escanearse como imagen.
+
+La llamada HTTP está verificada con un stub (sin gastar API):
+
+```bash
+npx tsx scripts/prueba-driver-openai.ts
+```
+
+La integración contra un endpoint **vivo** de Qwen queda pendiente de que alguien
+configure una llave real de DashScope y la pruebe manualmente.
 
 Con el driver real hay **una llamada por documento adjuntado**; los documentos sin
 archivo no cuestan nada (se resuelven en el servidor).

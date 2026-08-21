@@ -16,6 +16,7 @@ import { ErrorApi } from '../plugins/errores.js';
 import { pool } from '../db/pool.js';
 import { enTransaccion, bitacoraEnTransaccion } from '../servicios/promocion.js';
 import { predictaminarLote } from '../servicios/predictamen.js';
+import { driverIa } from '../servicios/ia/cliente.js';
 import {
   bandejaDictamen,
   detalleDictamen,
@@ -96,9 +97,11 @@ export default async function rutasDictamen(app: FastifyInstance): Promise<void>
         throw error422('payload_invalido', 'La lista de solicitudes tiene identificadores repetidos.');
       }
 
-      // El driver `anthropic` sin API key no puede operar: 503 explicito, no
-      // un pre-dictamen falso.
-      if (config.predictamenDriver === 'anthropic' && config.anthropicApiKey.trim().length === 0) {
+      // Un driver real sin credenciales no puede operar: 503 explicito, no un
+      // pre-dictamen falso. `anthropic` -> sin ANTHROPIC_API_KEY;
+      // `openai_compatible` -> sin PREDICTAMEN_API_KEY o sin
+      // PREDICTAMEN_API_BASE_URL. El driver `simulado` siempre esta disponible.
+      if (!driverIa().disponible()) {
         throw new ErrorApi(
           503,
           'ia_no_configurada',

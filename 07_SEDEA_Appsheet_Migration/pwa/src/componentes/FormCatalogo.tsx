@@ -6,6 +6,8 @@ interface Props {
   entidad: NombreEntidad;
   modo: 'alta' | 'edicion';
   registro: any | null;
+  /** Etiqueta del registro origen cuando el alta viene de "Duplicar". */
+  duplicadoDe?: string | null;
   referencias: any | null;
   guardando: boolean;
   errorApi: string | null;
@@ -17,6 +19,7 @@ export default function FormCatalogo({
   entidad,
   modo,
   registro,
+  duplicadoDe = null,
   referencias,
   guardando,
   errorApi,
@@ -54,8 +57,14 @@ export default function FormCatalogo({
       if (modo === 'alta') {
         datos.prefijo_folio = (formData.get('prefijo_folio') as string)?.trim().toUpperCase();
       }
-      if (registro?.nombre) datos.nombre = registro.nombre;
-      if (registro?.clave) datos.clave = registro.clave;
+      // En edicion los inputs de clave/prefijo van `disabled`, asi que no
+      // llegan por FormData y hay que recuperarlos del registro. En alta (y en
+      // el alta que nace de "Duplicar") mandan los valores capturados en el
+      // formulario, que ya vienen resueltos arriba.
+      if (modo === 'edicion') {
+        if (registro?.nombre) datos.nombre = registro.nombre;
+        if (registro?.clave) datos.clave = registro.clave;
+      }
     }
 
     if (entidad === 'tipos_apoyo') {
@@ -72,6 +81,14 @@ export default function FormCatalogo({
   return (
     <div className="tarjeta" data-testid="form-catalogo">
       <h2>{titulo}</h2>
+
+      {duplicadoDe && (
+        <div className="mensaje aviso" data-testid="aviso-duplicado">
+          Duplicando <strong>{duplicadoDe}</strong>. Se copiaron sus datos; captura una clave
+          {entidad === 'proyectos' ? ' y un prefijo de folio nuevos' : ' nueva'} para guardar un
+          registro independiente. El original no se modifica.
+        </div>
+      )}
 
       {errorApi && (
         <div className="mensaje error" role="alert" data-testid="error-catalogo">

@@ -59,6 +59,9 @@ function contarHijosActivos(
   return 0;
 }
 
+/** Tamano de pagina de la lista de conceptos de apoyo del arbol. */
+const POR_PAGINA_CONCEPTOS = 20;
+
 export default function Catalogos() {
   const { perfil } = useSesion();
   const enLinea = useEstadoRed();
@@ -67,6 +70,10 @@ export default function Catalogos() {
   const [arbol, setArbol] = useState<ArbolDatos | null>(null);
   const [referencias, setReferencias] = useState<Referencias | null>(null);
   const [cargando, setCargando] = useState(true);
+  // Rama de conceptos de apoyo: lista paginada con buscador (E50 sobre tipos_apoyo).
+  const [conceptos, setConceptos] = useState<{ datos: any[]; total: number }>({ datos: [], total: 0 });
+  const [paginaConceptos, setPaginaConceptos] = useState(1);
+  const [busquedaConceptos, setBusquedaConceptos] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   // Guardia de rol: solo admin y editor_datos pueden acceder a catálogos (F-09)
@@ -79,6 +86,11 @@ export default function Catalogos() {
   const [entidadSeleccionada, setEntidadSeleccionada] = useState<NombreEntidad | null>(null);
   const [registroSeleccionado, setRegistroSeleccionado] = useState<any | null>(null);
   const [modoForm, setModoForm] = useState<'alta' | 'edicion' | null>(null);
+  // Texto del registro origen cuando el alta viene de "Duplicar" (null si no).
+  const [duplicadoDe, setDuplicadoDe] = useState<string | null>(null);
+  // Se incrementa en cada apertura del form para forzar el remontaje: los
+  // campos usan defaultValue, asi que sin key nueva conservarian lo anterior.
+  const [nonceForm, setNonceForm] = useState(0);
   const [guardando, setGuardando] = useState(false);
   const [errorForm, setErrorForm] = useState<string | null>(null);
   const [exito, setExito] = useState<string | null>(null);
@@ -106,6 +118,20 @@ export default function Catalogos() {
     }
   }, [incluirInactivos]);
 
+  const cargarConceptos = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (incluirInactivos) params.set('incluir_inactivos', 'true');
+      params.set('pagina', String(paginaConceptos));
+      params.set('por_pagina', String(POR_PAGINA_CONCEPTOS));
+      if (busquedaConceptos.trim().length >= 2) params.set('q', busquedaConceptos.trim());
+      const data = await (api as any).catalogosEntidad('tipos_apoyo', params);
+      setConceptos({ datos: data.datos ?? [], total: data.total ?? 0 });
+    } catch {
+      setConceptos({ datos: [], total: 0 });
+    }
+  }, [incluirInactivos, paginaConceptos, busquedaConceptos]);
+
   const cargarReferencias = useCallback(async () => {
     try {
       const data = await (api as any).catalogosReferencias();
@@ -120,12 +146,18 @@ export default function Catalogos() {
     void cargarReferencias();
   }, [cargarArbol, cargarReferencias]);
 
+  useEffect(() => {
+    void cargarConceptos();
+  }, [cargarConceptos]);
+
   const abrirAlta = (entidad: NombreEntidad) => {
     setEntidadSeleccionada(entidad);
     setRegistroSeleccionado(null);
     setModoForm('alta');
     setErrorForm(null);
     setExito(null);
+    setDuplicadoDe(null);
+    setNonceForm((n) => n + 1);
   };
 
   const abrirEdicion = (entidad: NombreEntidad, registro: any) => {
@@ -134,6 +166,30 @@ export default function Catalogos() {
     setModoForm('edicion');
     setErrorForm(null);
     setExito(null);
+    setDuplicadoDe(null);
+    setNonceForm((n) => n + 1);
+  };
+
+  /**
+   * Duplicar: abre el formulario en modo ALTA precargado con los valores del
+   * registro origen, salvo los campos unicos que el usuario debe capturar de
+   * nuevo (`clave` siempre; `prefijo_folio` ademas en proyectos). El registro
+   * origen no se toca: al guardar se crea un registro nuevo e independiente
+   * que pasa por las mismas validaciones de alta.
+   */
+  const abrirDuplicado = (entidad: NombreEntidad, registro: any) => {
+    const copia: Record<string, unknown> = { ...registro };
+    delete copia.id;
+    delete copia.activo;
+    copia.clave = '';
+    if (entidad === 'proyectos') copia.prefijo_folio = '';
+    setEntidadSeleccionada(entidad);
+    setRegistroSeleccionado(copia);
+    setModoForm('alta');
+    setErrorForm(null);
+    setExito(null);
+    setDuplicadoDe(`${registro.clave} · ${registro.nombre}`);
+    setNonceForm((n) => n + 1);
   };
 
   const cerrarForm = () => {
@@ -157,6 +213,7 @@ export default function Catalogos() {
       }
       await cargarArbol();
       await cargarReferencias();
+      await cargarConceptos();
       // F-24: el toast vive en la pantalla, no en el formulario, para que siga
       // visible despues de cerrar el form. cerrarForm() limpiaria `exito`, asi
       // que aqui solo se cierra el formulario y luego se anuncia el exito.
@@ -174,6 +231,7 @@ export default function Catalogos() {
     try {
       await (api as any).cambiarEstadoCatalogo(entidad, id, activo);
       await cargarArbol();
+      await cargarConceptos();
     } catch (fallo) {
       setError((fallo as Error).message);
     }
@@ -280,8 +338,21 @@ export default function Catalogos() {
             arbol={arbol}
             cargando={cargando}
             incluirInactivos={incluirInactivos}
+            conceptos={{
+              datos: conceptos.datos,
+              total: conceptos.total,
+              pagina: paginaConceptos,
+              porPagina: POR_PAGINA_CONCEPTOS,
+              busqueda: busquedaConceptos
+            }}
+            onBuscarConceptos={(q) => {
+              setBusquedaConceptos(q);
+              setPaginaConceptos(1);
+            }}
+            onPaginaConceptos={setPaginaConceptos}
             onNuevo={abrirAlta}
             onEditar={abrirEdicion}
+            onDuplicar={abrirDuplicado}
             onCambiarEstado={cambiarEstado}
           />
         </aside>
@@ -289,6 +360,8 @@ export default function Catalogos() {
         <main className="catalogos-panel">
           {modoForm && entidadSeleccionada && (
             <FormCatalogo
+              key={nonceForm}
+              duplicadoDe={duplicadoDe}
               entidad={entidadSeleccionada}
               modo={modoForm}
               registro={registroSeleccionado}

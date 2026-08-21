@@ -10,12 +10,25 @@ interface ArbolDatos {
   conteos: Record<string, number>;
 }
 
+/** Lista paginada de conceptos de apoyo (E50 sobre tipos_apoyo). */
+interface ListaConceptos {
+  datos: any[];
+  total: number;
+  pagina: number;
+  porPagina: number;
+  busqueda: string;
+}
+
 interface Props {
   arbol: ArbolDatos | null;
   cargando: boolean;
   incluirInactivos: boolean;
+  conceptos: ListaConceptos;
+  onBuscarConceptos: (q: string) => void;
+  onPaginaConceptos: (pagina: number) => void;
   onNuevo: (entidad: NombreEntidad) => void;
   onEditar: (entidad: NombreEntidad, registro: any) => void;
+  onDuplicar: (entidad: NombreEntidad, registro: any) => void;
   onCambiarEstado: (entidad: NombreEntidad, id: number, activo: boolean) => void;
 }
 
@@ -23,8 +36,12 @@ export default function ArbolCatalogos({
   arbol,
   cargando,
   incluirInactivos,
+  conceptos,
+  onBuscarConceptos,
+  onPaginaConceptos,
   onNuevo,
   onEditar,
+  onDuplicar,
   onCambiarEstado
 }: Props) {
   if (cargando) {
@@ -110,6 +127,7 @@ export default function ArbolCatalogos({
             componente={comp}
             incluirInactivos={incluirInactivos}
             onEditar={onEditar}
+            onDuplicar={onDuplicar}
             onCambiarEstado={onCambiarEstado}
           />
         ))}
@@ -127,7 +145,112 @@ export default function ArbolCatalogos({
             Nuevo concepto
           </button>
         </div>
+
+        <div className="campo">
+          <label htmlFor="input-buscar-conceptos" className="sr-solo">
+            Buscar concepto de apoyo
+          </label>
+          <input
+            type="search"
+            id="input-buscar-conceptos"
+            data-testid="input-buscar-tipos_apoyo"
+            placeholder="Buscar concepto (clave o nombre)"
+            value={conceptos.busqueda}
+            onChange={(e) => onBuscarConceptos(e.target.value)}
+          />
+        </div>
+
+        {conceptos.datos.length === 0 && <p className="vacio">Sin conceptos que coincidan.</p>}
+
+        {conceptos.datos.map((concepto) => (
+          <NodoTipoApoyo
+            key={concepto.id}
+            concepto={concepto}
+            onEditar={onEditar}
+            onDuplicar={onDuplicar}
+            onCambiarEstado={onCambiarEstado}
+          />
+        ))}
+
+        {conceptos.total > conceptos.porPagina && (
+          <div className="campo acciones" data-testid="paginacion-tipos_apoyo">
+            <button
+              type="button"
+              className="secundario"
+              data-testid="btn-conceptos-anterior"
+              disabled={conceptos.pagina <= 1}
+              onClick={() => onPaginaConceptos(conceptos.pagina - 1)}
+            >
+              Anterior
+            </button>
+            <span className="leyenda">
+              Página {conceptos.pagina} de {Math.ceil(conceptos.total / conceptos.porPagina)}
+            </span>
+            <button
+              type="button"
+              className="secundario"
+              data-testid="btn-conceptos-siguiente"
+              disabled={conceptos.pagina * conceptos.porPagina >= conceptos.total}
+              onClick={() => onPaginaConceptos(conceptos.pagina + 1)}
+            >
+              Siguiente
+            </button>
+          </div>
+        )}
       </section>
+    </div>
+  );
+}
+
+function NodoTipoApoyo({
+  concepto,
+  onEditar,
+  onDuplicar,
+  onCambiarEstado
+}: {
+  concepto: any;
+  onEditar: (entidad: NombreEntidad, registro: any) => void;
+  onDuplicar: (entidad: NombreEntidad, registro: any) => void;
+  onCambiarEstado: (entidad: NombreEntidad, id: number, activo: boolean) => void;
+}) {
+  return (
+    <div className="arbol-hijo" data-testid={`nodo-tipos_apoyo-${concepto.id}`}>
+      <div className={`arbol-fila ${!concepto.activo ? 'inactivo' : ''}`}>
+        <span className="arbol-sangria">·</span>
+        <span className="arbol-texto">
+          {concepto.clave} · {concepto.nombre}
+        </span>
+        {!concepto.activo && (
+          <span className="badge pendiente" data-testid="chip-inactivo">
+            Desactivado
+          </span>
+        )}
+        <div className="arbol-acciones acciones en-fila">
+          <BotonIcono
+            icono="lapiz"
+            etiqueta="Editar"
+            testId={`btn-editar-tipos_apoyo-${concepto.id}`}
+            onClick={() => onEditar('tipos_apoyo', concepto)}
+          />
+          <BotonIcono
+            icono="copiar"
+            etiqueta="Duplicar"
+            testId={`btn-duplicar-tipos_apoyo-${concepto.id}`}
+            onClick={() => onDuplicar('tipos_apoyo', concepto)}
+          />
+          <BotonIcono
+            icono={concepto.activo ? 'ojo-tachado' : 'check'}
+            etiqueta={concepto.activo ? 'Desactivar' : 'Reactivar'}
+            tono={concepto.activo ? 'peligro' : 'neutro'}
+            testId={
+              concepto.activo
+                ? `btn-desactivar-tipos_apoyo-${concepto.id}`
+                : `btn-reactivar-tipos_apoyo-${concepto.id}`
+            }
+            onClick={() => onCambiarEstado('tipos_apoyo', concepto.id, !concepto.activo)}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -248,11 +371,13 @@ function NodoComponente({
   componente,
   incluirInactivos,
   onEditar,
+  onDuplicar,
   onCambiarEstado
 }: {
   componente: any;
   incluirInactivos: boolean;
   onEditar: (entidad: NombreEntidad, registro: any) => void;
+  onDuplicar: (entidad: NombreEntidad, registro: any) => void;
   onCambiarEstado: (entidad: NombreEntidad, id: number, activo: boolean) => void;
 }) {
   const [expandido, setExpandido] = useState(true);
@@ -302,6 +427,7 @@ function NodoComponente({
               modalidad={mod}
               incluirInactivos={incluirInactivos}
               onEditar={onEditar}
+              onDuplicar={onDuplicar}
               onCambiarEstado={onCambiarEstado}
             />
           ))}
@@ -315,11 +441,13 @@ function NodoModalidad({
   modalidad,
   incluirInactivos,
   onEditar,
+  onDuplicar,
   onCambiarEstado
 }: {
   modalidad: any;
   incluirInactivos: boolean;
   onEditar: (entidad: NombreEntidad, registro: any) => void;
+  onDuplicar: (entidad: NombreEntidad, registro: any) => void;
   onCambiarEstado: (entidad: NombreEntidad, id: number, activo: boolean) => void;
 }) {
   const [expandido, setExpandido] = useState(true);
@@ -369,6 +497,7 @@ function NodoModalidad({
               proyecto={proy}
               incluirInactivos={incluirInactivos}
               onEditar={onEditar}
+              onDuplicar={onDuplicar}
               onCambiarEstado={onCambiarEstado}
             />
           ))}
@@ -382,11 +511,13 @@ function NodoProyecto({
   proyecto,
   incluirInactivos,
   onEditar,
+  onDuplicar,
   onCambiarEstado
 }: {
   proyecto: any;
   incluirInactivos: boolean;
   onEditar: (entidad: NombreEntidad, registro: any) => void;
+  onDuplicar: (entidad: NombreEntidad, registro: any) => void;
   onCambiarEstado: (entidad: NombreEntidad, id: number, activo: boolean) => void;
 }) {
   if (!incluirInactivos && !proyecto.activo) return null;
@@ -409,6 +540,12 @@ function NodoProyecto({
             etiqueta="Editar"
             testId={`btn-editar-proyectos-${proyecto.id}`}
             onClick={() => onEditar('proyectos', proyecto)}
+          />
+          <BotonIcono
+            icono="copiar"
+            etiqueta="Duplicar"
+            testId={`btn-duplicar-proyectos-${proyecto.id}`}
+            onClick={() => onDuplicar('proyectos', proyecto)}
           />
           <BotonIcono
             icono={proyecto.activo ? 'ojo-tachado' : 'check'}

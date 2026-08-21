@@ -1,7 +1,7 @@
 // Componente de arbol jerarquico para la pantalla de catalogos.
 // [data-testid="arbol-catalogos"]
 import type { NombreEntidad } from '@sedea/shared';
-import { BotonIcono } from './BotonIcono';
+import { BotonIcono, BotonCrear, HuecoIcono } from './BotonIcono';
 
 interface ArbolDatos {
   programas: any[];
@@ -65,22 +65,20 @@ export default function ArbolCatalogos({
       <section className="arbol-rama">
         <div className="arbol-encabezado">
           <h3>Programas</h3>
-          <button
-            type="button"
-            className="secundario"
-            data-testid="btn-nuevo-programas"
-            onClick={() => onNuevo('programas')}
-          >
-            Nuevo programa
-          </button>
-          <button
-            type="button"
-            className="secundario"
-            data-testid="btn-nuevo-subprogramas"
-            onClick={() => onNuevo('subprogramas')}
-          >
-            Nuevo subprograma
-          </button>
+          <div className="arbol-encabezado-acciones">
+            <BotonCrear
+              etiquetaCorta="Programa"
+              etiqueta="Nuevo programa"
+              testId="btn-nuevo-programas"
+              onClick={() => onNuevo('programas')}
+            />
+            <BotonCrear
+              etiquetaCorta="Subprograma"
+              etiqueta="Nuevo subprograma"
+              testId="btn-nuevo-subprogramas"
+              onClick={() => onNuevo('subprogramas')}
+            />
+          </div>
         </div>
         {arbol.programas.map((prog) => (
           <NodoPrograma
@@ -96,30 +94,26 @@ export default function ArbolCatalogos({
       <section className="arbol-rama">
         <div className="arbol-encabezado">
           <h3>Componentes</h3>
-          <button
-            type="button"
-            className="secundario"
-            data-testid="btn-nuevo-componentes"
-            onClick={() => onNuevo('componentes')}
-          >
-            Nuevo componente
-          </button>
-          <button
-            type="button"
-            className="secundario"
-            data-testid="btn-nuevo-modalidades"
-            onClick={() => onNuevo('modalidades')}
-          >
-            Nueva modalidad
-          </button>
-          <button
-            type="button"
-            className="secundario"
-            data-testid="btn-nuevo-proyectos"
-            onClick={() => onNuevo('proyectos')}
-          >
-            Nuevo proyecto
-          </button>
+          <div className="arbol-encabezado-acciones">
+            <BotonCrear
+              etiquetaCorta="Componente"
+              etiqueta="Nuevo componente"
+              testId="btn-nuevo-componentes"
+              onClick={() => onNuevo('componentes')}
+            />
+            <BotonCrear
+              etiquetaCorta="Modalidad"
+              etiqueta="Nueva modalidad"
+              testId="btn-nuevo-modalidades"
+              onClick={() => onNuevo('modalidades')}
+            />
+            <BotonCrear
+              etiquetaCorta="Proyecto"
+              etiqueta="Nuevo proyecto"
+              testId="btn-nuevo-proyectos"
+              onClick={() => onNuevo('proyectos')}
+            />
+          </div>
         </div>
         {arbol.componentes.map((comp) => (
           <NodoComponente
@@ -136,14 +130,14 @@ export default function ArbolCatalogos({
       <section className="arbol-rama">
         <div className="arbol-encabezado">
           <h3>Conceptos de apoyo ({arbol.conteos.tipos_apoyo})</h3>
-          <button
-            type="button"
-            className="secundario"
-            data-testid="btn-nuevo-tipos_apoyo"
-            onClick={() => onNuevo('tipos_apoyo')}
-          >
-            Nuevo concepto
-          </button>
+          <div className="arbol-encabezado-acciones">
+            <BotonCrear
+              etiquetaCorta="Concepto"
+              etiqueta="Nuevo concepto"
+              testId="btn-nuevo-tipos_apoyo"
+              onClick={() => onNuevo('tipos_apoyo')}
+            />
+          </div>
         </div>
 
         <div className="campo">
@@ -296,6 +290,7 @@ function NodoPrograma({
             testId={`btn-editar-programas-${programa.id}`}
             onClick={() => onEditar('programas', programa)}
           />
+          <HuecoIcono />
           <BotonIcono
             icono={programa.activo ? 'ojo-tachado' : 'check'}
             etiqueta={programa.activo ? 'Desactivar' : 'Reactivar'}
@@ -354,6 +349,7 @@ function NodoSubprograma({
             testId={`btn-editar-subprogramas-${subprograma.id}`}
             onClick={() => onEditar('subprogramas', subprograma)}
           />
+          <HuecoIcono />
           <BotonIcono
             icono={subprograma.activo ? 'ojo-tachado' : 'check'}
             etiqueta={subprograma.activo ? 'Desactivar' : 'Reactivar'}
@@ -410,6 +406,7 @@ function NodoComponente({
             testId={`btn-editar-componentes-${componente.id}`}
             onClick={() => onEditar('componentes', componente)}
           />
+          <HuecoIcono />
           <BotonIcono
             icono={componente.activo ? 'ojo-tachado' : 'check'}
             etiqueta={componente.activo ? 'Desactivar' : 'Reactivar'}
@@ -480,6 +477,7 @@ function NodoModalidad({
             testId={`btn-editar-modalidades-${modalidad.id}`}
             onClick={() => onEditar('modalidades', modalidad)}
           />
+          <HuecoIcono />
           <BotonIcono
             icono={modalidad.activo ? 'ojo-tachado' : 'check'}
             etiqueta={modalidad.activo ? 'Desactivar' : 'Reactivar'}

@@ -140,6 +140,22 @@ Accesible para los roles `admin` y `editor_datos`. El árbol muestra las ramas d
 programas/subprogramas, componentes/modalidades/proyectos y **conceptos de apoyo**
 (lista paginada con buscador por clave o nombre).
 
+**Cómo se leen los botones del árbol.**
+
+- *Altas:* cada encabezado de rama (Programas, Componentes, Conceptos de apoyo)
+  lleva a su derecha un grupo de botones compactos con el glifo `+` y una
+  etiqueta corta: `+ Programa`, `+ Subprograma`, `+ Componente`, `+ Modalidad`,
+  `+ Proyecto`, `+ Concepto`. El nombre completo ("Nuevo programa"…) sigue en el
+  `aria-label`/`title`, y los `data-testid` (`btn-nuevo-<entidad>`) no cambian.
+  Si el grupo no cabe junto al título, baja entero al renglón siguiente pegado a
+  la derecha, en vez de repartirse desordenado.
+- *Acciones de fila:* siempre las mismas tres ranuras y en el mismo orden —
+  **Editar** (lápiz) · **Duplicar** (dos hojas) · **Desactivar/Reactivar** (ojo
+  tachado / palomita). Las filas que no admiten *Duplicar* dejan la ranura vacía,
+  para que las tres columnas queden alineadas en todo el árbol. Al pasar el
+  cursor (o al llegar con el teclado) cada ícono muestra **su nombre en un
+  tooltip inmediato**, sin esperar al tooltip lento del navegador.
+
 **Duplicar.** Las filas de **proyectos** y de **conceptos de apoyo** tienen un
 botón *Duplicar* (`btn-duplicar-proyectos-<id>` / `btn-duplicar-tipos_apoyo-<id>`)
 junto a *Editar* y *Desactivar*. Al pulsarlo se abre el formulario **en modo alta**

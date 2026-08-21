@@ -246,6 +246,52 @@ button.boton-icono:active:not(:disabled) {
   background: var(--bg-sunk);
 }
 
+/* ---------------------- Tooltip visible del boton de icono ----------------
+   El `title` nativo tarda ~1s en aparecer y muchos usuarios no lo esperan: en
+   /catalogos el boton "Duplicar" existia pero nadie lo encontraba. Este tooltip
+   en CSS puro (sin libreria, A17-8) muestra la MISMA etiqueta al instante en
+   hover y en foco de teclado. Se pinta con ::after sobre data-tooltip, asi que
+   no agrega nodos, no agrega svg y no altera el innerText del boton (contrato
+   de BotonIcono, SPEC 17.4 / criterio 532). */
+
+button.boton-icono[data-tooltip] {
+  position: relative;
+}
+
+button.boton-icono[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 5px);
+  right: 0;
+  z-index: 40;
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev-3);
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  box-shadow: var(--shadow-card);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 90ms ease-out;
+}
+
+button.boton-icono[data-tooltip]:hover:not(:disabled)::after,
+button.boton-icono[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.boton-icono[data-tooltip]::after {
+    transition: none;
+  }
+}
+
 button.boton-icono:disabled {
   background: var(--bg-sunk);
   color: var(--fg-subtle);
@@ -1200,6 +1246,19 @@ input[type='radio'] {
 
   .acciones > * {
     width: 100%;
+  }
+
+  /* ...pero las acciones DENTRO de una fila (tabla o arbol) siguen siendo una
+     fila tambien en movil: apilarlas verticalmente rompia la altura de la fila
+     y desalineaba las columnas de editar/duplicar/desactivar. */
+  .acciones.en-fila,
+  td.acciones {
+    flex-direction: row;
+  }
+
+  .acciones.en-fila > *,
+  td.acciones > * {
+    width: auto;
   }
 
   .lista a {

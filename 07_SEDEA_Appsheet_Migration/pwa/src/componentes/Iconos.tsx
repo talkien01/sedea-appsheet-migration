@@ -232,6 +232,15 @@ export function IconoBasura(props: Props) {
   );
 }
 
+/** Alta de un registro nuevo (botones "+ Nuevo ..." de los encabezados). */
+export function IconoAgregar(props: Props) {
+  return (
+    <Base {...props}>
+      <path d="M12 5v14M5 12h14" />
+    </Base>
+  );
+}
+
 /** Copiar contrasena temporal. */
 export function IconoCopiar(props: Props) {
   return (

@@ -49,10 +49,16 @@
   margin-bottom: var(--espacio-4);
 }
 
+/* Cabecera de rama: titulo a la izquierda, grupo de altas pegado a la derecha.
+   Los botones viven en su propio contenedor (no como hermanos sueltos del h3),
+   porque con `space-between` cada boton se repartia el ancho por su cuenta y la
+   cabecera quedaba desalineada. */
 .arbol-encabezado {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 6px var(--espacio-3);
   margin-bottom: var(--espacio-2);
 }
 
@@ -60,6 +66,37 @@
   margin: 0;
   font-size: 1rem;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+/* El grupo se mantiene en UNA sola linea y como bloque indivisible: si no cabe
+   junto al titulo, baja entero al renglon siguiente (pegado a la derecha) en vez
+   de partirse boton por boton, que era lo que se veia amontonado. */
+.arbol-encabezado-acciones {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* Boton de alta compacto: glifo "+" + etiqueta corta ("Programa"). El nombre
+   accesible completo ("Nuevo programa") lo da el aria-label. */
+.pantalla-catalogos .boton-crear {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pantalla-catalogos .boton-crear svg {
+  flex: 0 0 auto;
 }
 
 .arbol-nodo,
@@ -91,6 +128,8 @@
 
 .arbol-texto {
   flex: 1;
+  min-width: 0;
+  padding-right: var(--espacio-2);
   font-size: 0.9rem;
 }
 
@@ -104,14 +143,31 @@
   color: var(--fg-subtle);
 }
 
+/* Columna de acciones de fila: siempre las mismas tres ranuras y en el mismo
+   orden (editar | duplicar | desactivar). Las filas que no tienen "Duplicar"
+   pintan un hueco, para que las tres columnas caigan alineadas en todo el
+   arbol (programas, subprogramas, componentes, modalidades, proyectos y
+   conceptos de apoyo). */
 .arbol-acciones {
   display: flex;
-  gap: var(--espacio-1);
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
 }
 
-.arbol-acciones button {
-  font-size: 0.75rem;
-  padding: 2px 6px;
+.boton-icono-hueco {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+}
+
+@media (max-width: 767px) {
+  .boton-icono-hueco {
+    width: 44px;
+    height: 44px;
+  }
 }
 
 .arbol-hijos {

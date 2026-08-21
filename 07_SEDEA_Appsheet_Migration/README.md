@@ -849,6 +849,7 @@ desactivan (ver *Administración de usuarios*).
 | POST | `/api/solicitudes` | `ventanilla`, `admin` |
 | GET | `/api/solicitudes` | `ventanilla`, `admin` (aislado por alcance) |
 | GET | `/api/solicitudes/:id` | `ventanilla`, `admin` (aislado por alcance) |
+| GET | `/api/solicitudes/:id/folio-entrega.pdf` | autenticado (PDF A4 con QR del folio) |
 | PATCH | `/api/solicitudes/:id/documentos/:docId` | `ventanilla`, `admin` |
 | POST | `/api/solicitudes/:id/documentos/:docId/archivo` | `ventanilla`, `admin` |
 | GET | `/api/usuarios/:id/alcance` | `admin` |

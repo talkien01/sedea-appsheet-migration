@@ -17,31 +17,50 @@ interface DatosFolioEntrega {
   fecha_emision: string;
 }
 
+// La solicitud es la fuente de verdad: `beneficiarios` es derivado y puede no
+// existir todavia, asi que todos los joins auxiliares son LEFT JOIN.
+// El monto no vive en `tipos_apoyo`: se suma de `solicitud_conceptos`.
 async function obtenerDatosFolio(solicitudId: number): Promise<DatosFolioEntrega | null> {
   const { rows } = await pool.query<DatosFolioEntrega>(
     `SELECT
        s.folio,
-       b.nombre_completo AS beneficiario_nombre,
-       b.curp AS beneficiario_curp,
+       s.nombre_solicitante AS beneficiario_nombre,
+       coalesce(s.curp, '') AS beneficiario_curp,
        p.nombre AS programa_nombre,
        pr.nombre AS proyecto_nombre,
-       ta.nombre AS concepto_nombre,
-       ta.monto_unitario AS monto,
-       b.domicilio || ', ' || b.asentamiento || ', ' || m.nombre || ', ' || r.nombre AS domicilio_completo,
-       r.nombre AS regional_nombre,
-       TO_CHAR(s.fecha_registro, 'DD/MM/YYYY') AS fecha_emision
+       coalesce(cn.conceptos, '') AS concepto_nombre,
+       coalesce(cn.monto, 0)::float8 AS monto,
+       -- El domicilio particular (2.2) es opcional; si viene vacio se usa la
+       -- ubicacion del apoyo (4.1), cuyo municipio es NOT NULL.
+       coalesce(
+         nullif(concat_ws(', ',
+           nullif(concat_ws(' ', s.dom_vialidad, s.dom_localidad), ''),
+           nullif(s.dom_asentamiento, ''),
+           md.nombre,
+           nullif(s.dom_cp, '')
+         ), ''),
+         concat_ws(', ',
+           nullif(s.ubi_localidad, ''),
+           nullif(s.ubi_ejido, ''),
+           mu.nombre
+         )
+       ) AS domicilio_completo,
+       coalesce(r.nombre, '') AS regional_nombre,
+       TO_CHAR(s.recibida_en, 'DD/MM/YYYY') AS fecha_emision
      FROM solicitudes s
-     JOIN beneficiarios b ON b.solicitud_padre_id = s.id OR b.id = (SELECT id FROM beneficiarios WHERE solicitud_padre_id = s.id LIMIT 1)
      JOIN proyectos pr ON pr.id = s.proyecto_id
-     JOIN componentes c ON c.id = pr.componente_id
-     JOIN subprogramas sub ON sub.id = c.subprograma_id
-     JOIN programas p ON p.id = sub.programa_id
-     JOIN solicitud_conceptos sc ON sc.solicitud_id = s.id
-     JOIN tipos_apoyo ta ON ta.id = sc.tipo_apoyo_id
-     JOIN municipios m ON m.id = b.municipio_id
-     JOIN direcciones_regionales r ON r.id = b.regional_id
-     WHERE s.id = $1
-     LIMIT 1`,
+     JOIN programas p ON p.id = s.programa_id
+     LEFT JOIN municipios md ON md.id = s.dom_municipio_id
+     LEFT JOIN municipios mu ON mu.id = s.ubi_municipio_id
+     LEFT JOIN direcciones_regionales r ON r.id = s.regional_id
+     LEFT JOIN LATERAL (
+       SELECT string_agg(ta.nombre, ', ' ORDER BY sc.orden) AS conceptos,
+              sum(sc.monto_total) AS monto
+         FROM solicitud_conceptos sc
+         LEFT JOIN tipos_apoyo ta ON ta.id = sc.tipo_apoyo_id
+        WHERE sc.solicitud_id = s.id
+     ) cn ON TRUE
+     WHERE s.id = $1`,
     [solicitudId]
   );
   return rows[0] || null;
@@ -116,6 +135,13 @@ export async function generarFolioEntregaPdf(solicitudId: number): Promise<Buffe
     { align: 'center' }
   );
 
+  // PDFKit vacia el stream de forma asincrona: hay que esperar el 'end' o el
+  // buffer sale truncado/vacio.
+  const listo = new Promise<void>((resolve, reject) => {
+    doc.on('end', () => resolve());
+    doc.on('error', reject);
+  });
   doc.end();
+  await listo;
   return Buffer.concat(chunks);
 }

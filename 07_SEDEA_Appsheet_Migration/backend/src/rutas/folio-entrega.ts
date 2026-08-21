@@ -1,12 +1,13 @@
 // Endpoint para generar Folio de Entrega con QR (Build 12).
 // GET /api/solicitudes/:id/folio-entrega.pdf
+// El prefijo /api es obligatorio: nginx solo proxea /api/ y /media/.
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { generarFolioEntregaPdf } from '../servicios/folio-entrega.js';
 import { ErrorApi } from '../plugins/errores.js';
 
 export default async function rutasFolioEntrega(app: FastifyInstance): Promise<void> {
   app.get(
-    '/solicitudes/:id/folio-entrega.pdf',
+    '/api/solicitudes/:id/folio-entrega.pdf',
     { preHandler: [app.autenticar] },
     async (peticion, respuesta) => {
       const id = Number((peticion.params as { id: string }).id);

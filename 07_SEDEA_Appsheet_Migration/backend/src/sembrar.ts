@@ -19,7 +19,9 @@ const ORDEN_SEEDS = [
   '001_usuarios_demo.sql',
   '003_beneficiarios_demo.sql',
   '005_ventanilla_catalogos.sql',
-  '006_usuarios_ventanilla_demo.sql'
+  '006_usuarios_ventanilla_demo.sql',
+  // Build 13: usuarios del rol `dictaminador` (dict.test y vent.dict).
+  '007_usuarios_dictamen_demo.sql'
 ];
 
 const SOLO_SI_VACIO = process.argv.includes('--si-vacio');

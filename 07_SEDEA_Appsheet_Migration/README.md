@@ -274,6 +274,8 @@ reutilizan la de los demás.
 | `editor1` | `editor_datos` | Depuración de staging y corrección de datos en producción (perfil de gabinete central, sin Regional asignada) |
 | `ventanilla1` | `ventanilla` | Ventanilla de San Juan del Río (`REG-04`) con **alcance restringido**: 2 municipios y el componente `TR` |
 | `ventanilla2` | `ventanilla` | Ventanilla SEDEA central, **sin restricción** (alcance "todos") |
+| `dict.test` | `dictaminador` | Cola de dictamen a nivel **estatal**. No entra a `/solicitudes` |
+| `vent.dict` | `ventanilla+dictaminador` | Multi-rol: captura en ventanilla **y** dictamina |
 
 > **Advertencia:** estos usuarios existen únicamente para pruebas.
 > **Desactívalos desde `/usuarios` (nunca los borres) antes de operar en
@@ -654,6 +656,66 @@ sale desplazado a la derecha y recortado fuera del área imprimible, y la barra
 lateral se dibuja dentro del PDF. Cada pantalla imprimible agrega en su propio
 bloque `@media print` únicamente lo específico de su documento.
 
+
+---
+
+## Pre-dictaminación con IA y dictamen (`/dictamen`)
+
+Rol nuevo **`dictaminador`** (combinable con `+`, p. ej. `ventanilla+dictaminador`).
+Dictamina a nivel **estatal**: no se le aplica el aislamiento por Dirección Regional.
+
+**Qué hace.** La IA lee **los archivos que ventanilla ya adjuntó documento por
+documento** (el checklist de la solicitud, endpoint E46 de siempre) y emite un
+**pre-dictamen** por solicitud: `positivo`, `negativo` o `error`. La cola de
+`/dictamen` se ordena sola para que el humano revise **primero los negativos**:
+
+    negativo → error → sin pre-dictamen → positivo
+
+Dentro de cada grupo, la solicitud más vieja va primero.
+
+**La IA nunca dictamina sola.** Todo pre-dictamen —positivo o negativo— exige
+que una persona con rol `dictaminador` o `admin` elija un resultado explícito y
+pulse *Confirmar dictamen*. No existe ningún botón que acepte la sugerencia de la
+IA, ni ningún camino de código que copie el veredicto de la IA al dictamen humano.
+Regenerar un pre-dictamen o re-dictaminar **inserta una fila nueva**: el historial
+es append-only y nada se sobrescribe.
+
+**Qué valida (fase 1).** Por cada documento del checklist: si está presente, si es
+legible y —cuando la CURP es visible— si coincide con la capturada. Nada más: no
+evalúa vigencias, montos ni superficies.
+
+**Disparo manual y en lote.** Se seleccionan solicitudes con las casillas de la
+bandeja (máximo **20** por lote) y se pulsa *Pre-dictaminar*. Nunca se dispara solo
+al adjuntar un documento, porque cada corrida cuesta llamadas al modelo.
+
+### Driver de IA
+
+| Variable | Default | Uso |
+|---|---|---|
+| `PREDICTAMEN_DRIVER` | `simulado` | `anthropic` (visión real) o `simulado` |
+| `ANTHROPIC_API_KEY` | *(vacío)* | Solo con driver `anthropic` |
+| `ANTHROPIC_MODEL` | `claude-sonnet-4-5` | Modelo con visión |
+
+El default es **`simulado`**: no toca la red, es determinista y permite instalar,
+probar y correr los tests sin llave de API y sin gastar. Producción se configura
+explícitamente con `PREDICTAMEN_DRIVER=anthropic` y la llave en el `.env` **del
+servidor** (nunca en git). Con driver `anthropic` y sin `ANTHROPIC_API_KEY` el
+arranque **no** falla: el endpoint de pre-dictaminación responde `503
+ia_no_configurada`.
+
+Con el driver real hay **una llamada por documento adjuntado**; los documentos sin
+archivo no cuestan nada (se resuelven en el servidor).
+
+### Datos de prueba
+
+```bash
+# Con el stack arriba: crea/actualiza 3 solicitudes de fixture (idempotente).
+API_URL=http://localhost:3000 npx tsx scripts/fixture-dictamen.ts
+```
+
+Deja una solicitud con todos sus documentos correctos, otra con exactamente un
+documento ilegible y una tercera sin ningún archivo adjunto.
+
 ---
 
 ## Flujo de trabajo en campo
@@ -749,6 +811,11 @@ desactivan (ver *Administración de usuarios*).
 | PATCH | `/api/solicitudes/:id/documentos/:docId` | `ventanilla`, `admin` |
 | POST | `/api/solicitudes/:id/documentos/:docId/archivo` | `ventanilla`, `admin` |
 | GET | `/api/usuarios/:id/alcance` | `admin` |
+| POST | `/api/dictamen/predictaminar` | `dictaminador`, `admin` |
+| GET | `/api/dictamen/bandeja` | `dictaminador`, `admin` |
+| GET | `/api/dictamen/metricas` | `dictaminador`, `admin` |
+| GET | `/api/dictamen/:solicitudId` | `dictaminador`, `admin` |
+| POST | `/api/dictamen/:solicitudId/confirmar` | `dictaminador`, `admin` |
 | PUT | `/api/usuarios/:id/alcance` | `admin` |
 
 **No existe `POST /api/beneficiarios` ni `DELETE /api/beneficiarios/:id`:** no hay

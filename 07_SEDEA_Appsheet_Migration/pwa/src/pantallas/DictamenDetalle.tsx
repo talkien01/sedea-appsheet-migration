@@ -26,14 +26,21 @@ function claveDocumento(doc: {
     : `sd${doc.solicitud_documento_id}`;
 }
 
-/** Precarga del control humano a partir del veredicto de la IA. */
+/**
+ * Precarga del control humano a partir del veredicto de la IA.
+ *
+ * `falta` se reserva a los documentos SIN archivo adjunto: si ventanilla si
+ * adjunto algo y la IA no lo pudo dar por bueno, lo que procede es `ilegible`
+ * (el papel existe, no se puede leer), no `falta`. Precargar NO es confirmar:
+ * el humano puede contradecir esto sin restriccion.
+ */
 function veredictoSugerido(
-  ia: { presente: boolean; legible: boolean } | null
+  ia: { presente: boolean; legible: boolean } | null,
+  archivoUrl: string | null
 ): VeredictoDocumento | '' {
   if (!ia) return '';
-  if (!ia.presente) return 'falta';
-  if (!ia.legible) return 'ilegible';
-  return 'ok';
+  if (ia.presente && ia.legible) return 'ok';
+  return archivoUrl ? 'ilegible' : 'falta';
 }
 
 function chipDetalle(estado: string | null): { texto: string; clase: string } {
@@ -70,7 +77,9 @@ export default function DictamenDetalle() {
       const inicial: Record<string, VeredictoDocumento | ''> = {};
       for (const doc of detalle.documentos) {
         const clave = claveDocumento(doc);
-        inicial[clave] = (doc.humano?.veredicto as VeredictoDocumento) ?? veredictoSugerido(doc.ia);
+        inicial[clave] =
+          (doc.humano?.veredicto as VeredictoDocumento) ??
+          veredictoSugerido(doc.ia, doc.archivo_url);
       }
       setVeredictos(inicial);
 

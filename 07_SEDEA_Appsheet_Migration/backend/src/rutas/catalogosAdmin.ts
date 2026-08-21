@@ -175,6 +175,10 @@ export default async function rutasCatalogosAdmin(app: FastifyInstance): Promise
       throw error404('registro_no_encontrado', 'ID invalido.');
     }
 
+    // F-22 (criterio 487): la existencia se verifica ANTES de validar el payload,
+    // para que un id inexistente responda 404 y no 422 por un nombre corto.
+    await obtenerEntidad(entidad, id);
+
     const datos = validarBody(entidad, peticion.body, true);
     const usuario = peticion.usuario!;
 

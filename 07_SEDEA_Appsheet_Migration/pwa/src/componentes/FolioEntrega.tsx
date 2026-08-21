@@ -1,7 +1,6 @@
 // Vista previa e impresión de Folio de Entrega con QR (Build 12).
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { peticion } from '../api/cliente';
 import { apiSolicitudes } from '../api/solicitudes';
 
 interface DatosFolio {
@@ -15,6 +14,30 @@ interface DatosFolio {
   regional_nombre: string;
 }
 
+/**
+ * Forma real de `detalle.solicitud` (que el API tipa como Record<string, unknown>):
+ * son las columnas de `solicitudes` mas los nombres resueltos por los JOIN de
+ * obtenerSolicitud(). Los nombres deben coincidir con esa consulta — leer campos
+ * inventados (p. ej. `beneficiario_nombre`) devuelve undefined y el folio sale en
+ * blanco sin fallar.
+ */
+interface SolicitudFolio {
+  folio: string;
+  tipo_persona: string;
+  nombre_solicitante: string;
+  razon_social: string | null;
+  curp: string | null;
+  programa_nombre: string | null;
+  proyecto_nombre: string | null;
+  regional_nombre: string | null;
+}
+
+/** En BD varios de estos campos son cadena vacia, no NULL: ambos van a raya. */
+function texto(valor: string | null | undefined): string {
+  const limpio = (valor ?? '').trim();
+  return limpio === '' ? '—' : limpio;
+}
+
 export default function FolioEntrega() {
   const { id } = useParams<{ id: string }>();
   const [datos, setDatos] = useState<DatosFolio | null>(null);
@@ -26,20 +49,29 @@ export default function FolioEntrega() {
     if (!id) return;
     // Obtener datos de la solicitud
     apiSolicitudes.detalle(Number(id))
-      .then(solicitud => {
+      .then(detalle => {
+        const s = detalle.solicitud as unknown as SolicitudFolio;
+        // Mismo criterio que la caratula de expediente: para persona moral o
+        // grupo manda la razon social.
+        const nombre =
+          (s.tipo_persona === 'moral' || s.tipo_persona === 'grupo') && s.razon_social
+            ? s.razon_social
+            : s.nombre_solicitante;
+        // El apoyo se entrega por su valor total (estatal + productor).
+        const concepto = detalle.conceptos[0];
         setDatos({
-          folio: solicitud.solicitud.folio,
-          beneficiario_nombre: solicitud.solicitud.beneficiario_nombre,
-          beneficiario_curp: solicitud.solicitud.beneficiario_curp,
-          programa_nombre: solicitud.solicitud.programa_nombre,
-          proyecto_nombre: solicitud.solicitud.proyecto_nombre,
-          concepto_nombre: solicitud.conceptos[0]?.tipo_apoyo ?? '',
-          monto: solicitud.conceptos[0]?.monto_estatal ?? 0,
-          regional_nombre: solicitud.solicitud.regional_nombre
+          folio: s.folio,
+          beneficiario_nombre: texto(nombre),
+          beneficiario_curp: texto(s.curp),
+          programa_nombre: texto(s.programa_nombre),
+          proyecto_nombre: texto(s.proyecto_nombre),
+          concepto_nombre: texto(concepto?.tipo_apoyo),
+          monto: concepto?.monto_total ?? 0,
+          regional_nombre: texto(s.regional_nombre)
         });
         // Generar QR con el folio
         return import('qrcode').then(QRCode =>
-          QRCode.default.toDataURL(solicitud.solicitud.folio, { width: 200 })
+          QRCode.default.toDataURL(s.folio, { width: 200 })
         );
       })
       .then(setQrDataUrl)
@@ -70,9 +102,9 @@ export default function FolioEntrega() {
 
         <div className="folio-seccion">
           <h3>DATOS DEL BENEFICIARIO</h3>
-          <p><strong>Nombre:</strong> {datos.beneficiario_nombre}</p>
-          <p><strong>CURP:</strong> {datos.beneficiario_curp}</p>
-          <p><strong>Regional:</strong> {datos.regional_nombre}</p>
+          <p><strong>Nombre:</strong> <span data-testid="folio-nombre">{datos.beneficiario_nombre}</span></p>
+          <p><strong>CURP:</strong> <span data-testid="folio-curp">{datos.beneficiario_curp}</span></p>
+          <p><strong>Regional:</strong> <span data-testid="folio-regional">{datos.regional_nombre}</span></p>
         </div>
 
         <div className="folio-seccion">
@@ -80,7 +112,7 @@ export default function FolioEntrega() {
           <p><strong>Programa:</strong> {datos.programa_nombre}</p>
           <p><strong>Proyecto:</strong> {datos.proyecto_nombre}</p>
           <p><strong>Concepto:</strong> {datos.concepto_nombre}</p>
-          <p><strong>Monto:</strong> ${datos.monto.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</p>
+          <p><strong>Monto:</strong> <span data-testid="folio-monto">${datos.monto.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN</span></p>
         </div>
 
         <div className="folio-qr">

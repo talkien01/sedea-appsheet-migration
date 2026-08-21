@@ -9,9 +9,13 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "migrate": "tsx src/migrar.ts",
-    "seed": "tsx src/sembrar.ts"
+    "seed": "tsx src/sembrar.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "migrar": "tsx src/migrar.ts",
+    "sembrar": "tsx src/sembrar.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.1",
     "@fastify/cors": "^9.0.1",
     "@fastify/helmet": "^11.1.1",
     "@fastify/jwt": "^8.0.1",

@@ -42,7 +42,13 @@ const esquemaEnv = z.object({
   MEDIA_DIR: z.string().default('./media'),
   MEDIA_PUBLIC_PATH: z.string().default('/media'),
   MAX_UPLOAD_MB: z.coerce.number().int().positive().default(8),
-  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300)
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+  // Build 13: pre-dictaminacion con IA. Todas con default: ninguna rompe el
+  // arranque si falta (A19-11). El default es `simulado` para poder instalar,
+  // probar y evaluar sin ANTHROPIC_API_KEY y sin gastar.
+  PREDICTAMEN_DRIVER: z.enum(['anthropic', 'simulado']).default('simulado'),
+  ANTHROPIC_API_KEY: z.string().default(''),
+  ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-5')
 });
 
 const parseado = esquemaEnv.safeParse(process.env);
@@ -72,6 +78,9 @@ export const config = {
   maxSubidaBytes: env.MAX_UPLOAD_MB * 1024 * 1024,
   maxSubidaMb: env.MAX_UPLOAD_MB,
   limitePeticiones: env.RATE_LIMIT_MAX,
+  predictamenDriver: env.PREDICTAMEN_DRIVER,
+  anthropicApiKey: env.ANTHROPIC_API_KEY,
+  anthropicModelo: env.ANTHROPIC_MODEL,
   directorioMigraciones: resolverDirectorio('db/migrations'),
   directorioSeeds: resolverDirectorio('db/seeds')
 };

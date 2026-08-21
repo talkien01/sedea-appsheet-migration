@@ -30,6 +30,8 @@ import rutasAlcance from './rutas/alcance.js';
 import rutasCatalogosAdmin from './rutas/catalogosAdmin.js';
 import rutasConfiguracion from './rutas/configuracion.js';
 import rutasFolioEntrega from './rutas/folio-entrega.js';
+// Build 13: pre-dictaminacion con IA y dictamen humano.
+import rutasDictamen from './rutas/dictamen.js';
 
 async function construirApp() {
   const app = Fastify({
@@ -112,6 +114,8 @@ async function construirApp() {
   await app.register(rutasConfiguracion);
   // Build 12: folio de entrega con QR.
   await app.register(rutasFolioEntrega);
+  // Build 13: dictamen (E55-E59).
+  await app.register(rutasDictamen);
 
   return app;
 }

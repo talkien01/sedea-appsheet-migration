@@ -6379,3 +6379,355 @@ Salvo indicación contraria: backend en `http://localhost:3000`, PWA en `http://
 
 **Definición de "terminado" (Build 13):** pasan los **50** criterios nuevos (551–600) **y** siguen
 pasando los 550 anteriores. Total acumulado: **600** criterios.
+# SPEC — Sección 20 (retroactiva): Rediseño de `/catalogos` a pestañas por nivel
+
+> **Cómo se integra este archivo:** su contenido se anexa **al final de `SPEC.md`**, después de
+> `## 19.11 Rubric de evaluación — Build 13 (criterios 551–600)`. No modifica ninguna sección previa.
+> Sigue el mismo formato que §17/§18/§19 (se mantiene como archivo de sección aparte, igual que
+> `SPEC_SECCION_14_JERARQUIA.md`, para no reescribir las 6 382 líneas ya validadas de `SPEC.md`).
+>
+> **Naturaleza de esta sección: RETROACTIVA.** Documenta funcionalidad **ya construida, ya
+> commiteada y ya verificada** (`dd05d03`, `c46668e`, `3806006`). No es un encargo de construcción:
+> es el contrato congelado de lo que existe en el árbol de trabajo, con un rubric que el Evaluator
+> puede correr **hoy** contra el código actual. Cualquier cambio futuro en `/catalogos` debe seguir
+> pasando los criterios 601–641.
+
+---
+
+## 20.1 Objetivo
+
+`/catalogos` presenta los catálogos jerárquicos del programa (programas, subprogramas, componentes,
+modalidades, proyectos y conceptos de apoyo) como **tres pestañas por nivel**, cada una con una
+**tabla a todo el ancho** en la que la jerarquía se expresa como una **columna de texto** (nombre del
+padre) en lugar de sangrías, y con el formulario de alta/edición en **modal** en vez de una columna
+fija. Sustituye al árbol vertical único de Build 10 sin alterar ni un endpoint, ni un campo de datos,
+ni un `data-testid` de acción.
+
+Alcance funcional: **cero**. No hay endpoints nuevos, ni migraciones, ni dependencias npm nuevas, ni
+cambios de permisos. Es un rediseño de presentación con dos correcciones de comportamiento
+(título del modal y condición de carrera en el refetch).
+
+---
+
+## 20.2 Decisiones de producto (tomadas por el usuario, ya aplicadas)
+
+- **D20-1. El layout original fue rechazado por el usuario.** El árbol vertical único con columna del
+  40 % + formulario fijo del 60 % siempre visible desperdiciaba el ancho de pantalla: en 1440 px la
+  mitad derecha mostraba un formulario vacío y la mitad izquierda comprimía claves y nombres largos.
+- **D20-2. Se le presentaron 3 mockups de layout alterno** y el usuario eligió explícitamente la
+  **Opción A — Pestañas por nivel**. Las descartadas fueron: *Opción B, columnas tipo Finder*
+  (navegación en cascada de 3 paneles) y *Opción C, tarjetas + panel lateral*. La elección es
+  definitiva: no se reabre sin instrucción explícita del usuario.
+- **D20-3. La jerarquía se lee, no se dibuja.** En vez de indentación se muestra una columna
+  `Jerarquía` con el texto del padre: `↳ PRG-2026` para un subprograma, `PET → MOD-PEPFO` para un
+  proyecto. Esto libera todo el ancho para clave y nombre y hace la tabla ordenable/filtrable como
+  cualquier otra del sistema.
+- **D20-4. El formulario solo existe mientras se usa.** `FormCatalogo` pasa a modal
+  (`modal-form-catalogo`); al cerrar, desaparece del DOM. El *toast* de éxito vive en la pantalla, no
+  en el formulario, para que sobreviva al cierre del modal.
+- **D20-5. Tres pestañas, no seis.** Los niveles hijos cuelgan de su raíz: subprogramas dentro de
+  "Programas"; modalidades y proyectos dentro de "Componentes". "Conceptos de apoyo" es plano.
+- **D20-6. `/catalogos/documentos` (Reglas de documentación requerida) no se tocó.** Mantiene su
+  layout propio; el rediseño no aplica ahí.
+- **D20-7. Descubribilidad de las acciones de fila.** El usuario no encontraba el botón "Duplicar"
+  porque el `title` nativo del navegador tarda ~1 s en aparecer. Se añadió un tooltip CSS instantáneo
+  (`data-tooltip` + `::after`) sin quitar `title` ni `aria-label`.
+- **D20-8. Ranuras de acción alineadas.** Las filas sin "Duplicar" pintan un `HuecoIcono` (span vacío
+  del ancho de un botón) para que las tres ranuras (editar | duplicar | desactivar) caigan en la misma
+  columna en todas las filas de todas las pestañas.
+- **D20-9. El título del modal usa el singular en español de la entidad**, no el nombre crudo de la
+  tabla: se decía "Nuevo programas" / "Nuevo tipos_apoyo". Ver §20.5.
+- **D20-10. Contrato de `data-testid` congelado.** Todo `data-testid` de acción de Build 10/§18 se
+  preserva tal cual; el rediseño solo **añade** identificadores nuevos (§20.4).
+
+---
+
+## 20.3 Modelo de layout (tal como está implementado)
+
+### 20.3.1 Estructura de la pantalla
+
+```
+[data-testid="pantalla-catalogos"]           .pantalla-catalogos.pantalla-ancha
+├── header.catalogos-header                  h1 + link-reglas-documentos + aviso
+├── [data-testid="toast-exito"]              (condicional, role="status")
+├── [data-testid="error-catalogos"]          (condicional, role="alert")
+├── [data-testid="modal-confirmar-baja"]     (condicional, role="dialog")
+├── .catalogos-layout
+│   └── [data-testid="arbol-catalogos"]      .catalogos-vista   ← testid conservado
+│       ├── .catalogos-pestanas  role="tablist"
+│       │   ├── [data-testid="tab-programas"]     role="tab" + [data-testid="conteo-programas"]
+│       │   ├── [data-testid="tab-componentes"]   role="tab" + [data-testid="conteo-componentes"]
+│       │   └── [data-testid="tab-tipos_apoyo"]   role="tab" + [data-testid="conteo-tipos_apoyo"]
+│       └── [data-testid="panel-<pestaña activa>"]  role="tabpanel"   ← solo se renderiza la activa
+│           ├── .catalogos-barra
+│           │   ├── [data-testid="input-buscar-<pestaña>"]   type="search"
+│           │   ├── .catalogos-barra-altas  → BotonCrear de la pestaña
+│           │   └── [data-testid="toggle-incluir-inactivos"] "Mostrar desactivados"  ← una sola instancia
+│           ├── .tabla-contenedor > table.tabla-catalogos
+│           │   └── tr[data-testid="nodo-<entidad>-<id>"] × N
+│           └── [data-testid="paginacion-tipos_apoyo"]  (solo tipos_apoyo, si total > 20)
+└── [data-testid="modal-form-catalogo"]      (condicional) role="dialog" aria-modal="true"
+    └── .modal.modal-form-catalogo > [data-testid="form-catalogo"]
+```
+
+### 20.3.2 Pestañas y contenido
+
+| Pestaña | `data-testid` | Entidades que lista | Conteo mostrado |
+|---|---|---|---|
+| Programas | `tab-programas` | `programas` + `subprogramas` anidados | `conteos.programas + conteos.subprogramas` |
+| Componentes | `tab-componentes` | `componentes` + `modalidades` + `proyectos` | `conteos.componentes + conteos.modalidades + conteos.proyectos` |
+| Conceptos de apoyo | `tab-tipos_apoyo` | `tipos_apoyo` (plano, paginado) | `conteos.tipos_apoyo` |
+
+Pestaña inicial: **Programas**. Solo se monta el `tabpanel` activo.
+
+### 20.3.3 Columnas de la tabla (idénticas en las tres pestañas)
+
+| # | Columna | Contenido | `data-etiqueta` (móvil) |
+|---|---|---|---|
+| 1 | Clave | `registro.clave` en `.celda-clave` (monoespaciada) | `Clave` |
+| 2 | Nombre | `registro.nombre` en `.celda-nombre`; negritas en nivel 0 | `Nombre` |
+| 3 | Jerarquía | texto del padre o `—` si es raíz | `Jerarquía` |
+| 4 | Estado | `chip-activo` ("Activo") o `chip-inactivo` ("Desactivado") | `Estado` |
+| 5 | Acciones | `.arbol-acciones` con 3 ranuras fijas | `Acciones` |
+
+**Textos de la columna Jerarquía (literales implementados):**
+
+| Fila | Texto |
+|---|---|
+| `programas`, `componentes`, `tipos_apoyo` (raíz) | `—` |
+| `subprogramas` | `↳ <clave del programa>` |
+| `modalidades` | `↳ <clave del componente>` |
+| `proyectos` bajo modalidad | `<clave componente> → <clave modalidad>` |
+| `proyectos` colgados del componente sin modalidad | `<clave componente> → (sin modalidad)` |
+| `proyectos` huérfanos (`proyectos_huerfanos`) | `(sin componente)` |
+
+La rama de proyectos sin modalidad se **hace visible** aquí; el árbol anterior los omitía.
+
+### 20.3.4 Barra de herramientas por pestaña
+
+- **Buscador** `input-buscar-<pestaña>`, `type="search"`, placeholder `Buscar por clave o nombre`,
+  con `<label class="sr-solo">`.
+  - Programas y Componentes: filtro **local** sobre clave o nombre, sin mínimo de caracteres, con
+    estado independiente por pestaña (cambiar de pestaña no arrastra el texto de la otra).
+  - Conceptos de apoyo: filtro **de servidor** (E50), se dispara con **≥ 2 caracteres** y resetea la
+    página a 1.
+- **Botones de alta** (`BotonCrear`: glifo `+` + etiqueta corta visible, `aria-label`/`title`
+  completos). El primero de cada barra va en naranja de marca.
+
+| Pestaña | Botones presentes |
+|---|---|
+| Programas | `btn-nuevo-programas` ("Nuevo programa"), `btn-nuevo-subprogramas` ("Nuevo subprograma") |
+| Componentes | `btn-nuevo-componentes`, `btn-nuevo-modalidades`, `btn-nuevo-proyectos` |
+| Conceptos de apoyo | `btn-nuevo-tipos_apoyo` (etiqueta corta "Nuevo concepto") |
+
+- **`toggle-incluir-inactivos`** ("Mostrar desactivados"): **una sola instancia** en toda la pantalla,
+  compartida por las tres pestañas; su estado vive en `Catalogos.tsx` y re-consulta E49 y E50.
+- Lista vacía → `[data-testid="tabla-vacia"]` con `No hay registros que coincidan.`
+
+### 20.3.5 Responsive
+
+- Escritorio (≥ 768 px): tabla real, columna de acciones `width: 1%`, alineada a la derecha,
+  `white-space: nowrap`.
+- Móvil (≤ 767 px): la tabla se convierte en **tarjetas** con el patrón ya usado en el resto del
+  sistema (`.tabla-contenedor` + `td[data-etiqueta]` renderizado por `::before`); los botones de alta
+  hacen `flex-wrap`, el toggle ocupa su propio renglón (objetivo táctil de 44 px) y `HuecoIcono` pasa
+  de 32 px a 44 px. **Cero desbordamiento horizontal** en 1440 px y en 390 px.
+
+---
+
+## 20.4 Contrato de `data-testid`
+
+### 20.4.1 Preservados sin cambio (Build 10 / §17 / §18) — no pueden renombrarse
+
+`arbol-catalogos`, `pantalla-catalogos`, `nodo-<entidad>-<id>`, `btn-nuevo-<entidad>`,
+`btn-editar-<entidad>-<id>`, `btn-duplicar-<entidad>-<id>`, `btn-desactivar-<entidad>-<id>`,
+`btn-reactivar-<entidad>-<id>`, `chip-inactivo`, `toggle-incluir-inactivos`,
+`modal-confirmar-baja`, `btn-cancelar-baja`, `btn-confirmar-baja`, `texto-hijos-activos`,
+`form-catalogo`, `aviso-duplicado`, `toast-exito`, `error-catalogos`, `link-reglas-documentos`,
+`input-buscar-tipos_apoyo`, `paginacion-tipos_apoyo`, `btn-conceptos-anterior`,
+`btn-conceptos-siguiente`, `aviso-sin-conexion`.
+
+`arbol-catalogos` sigue siendo el contenedor de la vista (varias specs lo usan como señal de
+"catálogos ya cargó"), aunque ya no envuelva un árbol.
+
+### 20.4.2 Nuevos que introduce el rediseño
+
+`tab-programas`, `tab-componentes`, `tab-tipos_apoyo`, `conteo-<clave>`, `panel-<clave>`,
+`input-buscar-programas`, `input-buscar-componentes`, `tabla-vacia`, `chip-activo`,
+`modal-form-catalogo`.
+
+### 20.4.3 Contrato de los botones de acción de fila
+
+Cada fila renderiza **exactamente 3 ranuras** en este orden: **editar | duplicar | desactivar-o-reactivar**.
+
+- `BotonIcono` produce: 1 `svg`, `aria-label` = `title` = `data-tooltip` = la etiqueta, `.sr-solo`
+  con el texto, e `innerText.trim() === ''`.
+- Duplicar existe **solo** en `proyectos` y `tipos_apoyo` (§18, A18-1). En el resto la ranura la
+  ocupa `<span class="boton-icono-hueco" aria-hidden="true">`, que **no** es botón y **no** lleva
+  `data-testid`.
+- Etiquetas: `Editar`, `Duplicar`, `Desactivar` (tono `peligro`) / `Reactivar` (tono `neutro`).
+
+---
+
+## 20.5 Correcciones de comportamiento incluidas (`3806006`)
+
+### 20.5.1 Título del modal en singular por entidad
+
+`FormCatalogo` deriva el título de un mapa `ETIQUETAS_SINGULARES` (nombre singular + artículo del
+género correcto), nunca del nombre de la tabla:
+
+| Entidad | Alta | Edición | Duplicado |
+|---|---|---|---|
+| `programas` | Nuevo programa | Editar programa | Duplicar programa |
+| `subprogramas` | Nuevo subprograma | Editar subprograma | — |
+| `componentes` | Nuevo componente | Editar componente | — |
+| `modalidades` | **Nueva** modalidad | Editar modalidad | — |
+| `proyectos` | Nuevo proyecto | Editar proyecto | Duplicar proyecto |
+| `tipos_apoyo` | Nuevo concepto de apoyo | Editar concepto de apoyo | Duplicar concepto de apoyo |
+| `documentos_requeridos` | **Nueva** regla de documentos | Editar regla de documentos | — |
+
+El modo duplicado usa el prefijo `Duplicar` (reusa `modo='alta'`, pero se nombra por lo que es) y
+mantiene el `aviso-duplicado` de §18.
+
+### 20.5.2 Guard de orden en los refetch (condición de carrera)
+
+Síntoma: desactivar un registro y marcar "Mostrar desactivados" en menos de ~1 s podía dejar que la
+respuesta HTTP vieja resolviera al final y pisara la lista fresca, desincronizando la pantalla.
+
+Solución implementada en `Catalogos.tsx`: dos tokens crecientes (`tokenArbol`, `tokenConceptos`, ambos
+`useRef<number>`). Cada refetch toma `++token.current` al empezar y, al resolver, **descarta su
+resultado** si `token !== token.current`. El guard cubre las tres salidas: éxito, error y `finally`
+(solo la petición vigente apaga el spinner `cargando`). Aplica a `cargarArbol` (E49) y
+`cargarConceptos` (E50).
+
+---
+
+## 20.6 Archivos tocados
+
+| Archivo | Acción |
+|---|---|
+| `pwa/src/componentes/ArbolCatalogos.tsx` | REESCRITO: pestañas + tabla plana (`FilaCatalogo`); desaparecen los componentes `Nodo*` del árbol vertical |
+| `pwa/src/pantallas/Catalogos.tsx` | MODIF: `FormCatalogo` movido a `modal-form-catalogo`; tokens de orden `tokenArbol`/`tokenConceptos`; clase `pantalla-ancha` |
+| `pwa/src/componentes/FormCatalogo.tsx` | MODIF: mapa `ETIQUETAS_SINGULARES` y cálculo del título (alta / edición / duplicado) |
+| `pwa/src/styles/catalogos.css` | MODIF: `.catalogos-pestanas`, `.catalogos-panel-pestana`, `.catalogos-barra*`, `.tabla-catalogos`, `.celda-*`, `.modal-form-catalogo`, `.boton-icono-hueco`, media queries ≤ 767 px |
+| `pwa/src/styles/componentes.css` | MODIF: tooltip CSS `button.boton-icono[data-tooltip]::after` (hover + `focus-visible`, sin retardo) |
+| `pwa/src/componentes/BotonIcono.tsx` | Reutilizado; exporta `BotonIcono`, `HuecoIcono`, `BotonCrear`. Su contrato (§17.4) **no cambia** |
+| `pwa/src/pantallas/CatalogosDocumentos.tsx` y su CSS | **sin cambios** |
+| `backend/**`, `db/**`, `packages/shared/**`, `*/package.json`, `docker-compose.yml` | **sin cambios** |
+
+Dependencias npm: **cero altas, cero bajas, cero cambios de versión**. Comandos sin cambios
+(`cd pwa && npm run dev | npm run typecheck | npm run build`).
+
+---
+
+## 20.7 Assumptions de la sección 20 (continúa la numeración de §19)
+
+- **A20-1.** Tres pestañas y no una por entidad: seis pestañas volverían a fragmentar la lectura y
+  obligarían a saltar de pestaña para entender de quién cuelga un proyecto.
+- **A20-2.** Solo se monta el `tabpanel` activo (no se ocultan con CSS): evita renderizar cientos de
+  filas invisibles y hace que `page.$$('[data-testid^="nodo-"]')` cuente solo lo visible.
+- **A20-3.** Los conteos de las pestañas vienen de `conteos` de E49 (no de las filas renderizadas):
+  reflejan el catálogo completo, así que **pueden ser mayores** que el número de filas cuando hay un
+  filtro de búsqueda activo o cuando `tipos_apoyo` está paginado.
+- **A20-4.** El buscador de Programas y Componentes filtra en cliente (los datos ya vienen completos
+  en E49) y el de Conceptos en servidor (E50 está paginado). Se asume esa asimetría a propósito.
+- **A20-5.** No hay ordenamiento por columna. El orden es el que devuelve el backend (padre seguido de
+  sus hijos); ordenar por clave rompería la lectura de la jerarquía.
+- **A20-6.** No hay selección múltiple ni acciones en lote: fuera del alcance del rediseño.
+- **A20-7.** El toggle "Mostrar desactivados" es global y no por pestaña: es un modo de trabajo del
+  usuario, no una preferencia de vista.
+- **A20-8.** El modal no atrapa el foco con una librería (no se añadió dependencia); usa
+  `role="dialog"` + `aria-modal="true"` y se cierra con el botón Cancelar, igual que
+  `modal-confirmar-baja`, que ya existía.
+- **A20-9.** El tooltip CSS **no sustituye** a `title`: se conservan `title` y `aria-label` para
+  lectores de pantalla y para el resto de las specs que buscan por nombre accesible.
+- **A20-10.** `HuecoIcono` es un `span` con `aria-hidden`, no un botón deshabilitado: un botón
+  deshabilitado aparecería en el árbol de accesibilidad y sugeriría una acción inexistente.
+- **A20-11.** El guard de orden se resuelve con tokens en `useRef` y no con `AbortController`: no
+  hace falta cancelar la petición en red, basta con ignorar la respuesta obsoleta, y así no se
+  ensucia la consola con errores de aborto.
+- **A20-12.** Se conserva el `data-testid="arbol-catalogos"` pese a que ya no hay árbol: renombrarlo
+  rompería specs de builds anteriores sin ganancia funcional.
+
+---
+
+## 20.8 Rubric de evaluación — Sección 20 (criterios 601–641)
+
+Salvo indicación contraria: PWA en `http://localhost:5173`, backend en `http://localhost:3000`,
+Playwright autenticado como `admin` en `/catalogos`, viewport de escritorio **1440×900**.
+"E49" = `GET /api/admin/catalogos/arbol`; "E50" = `GET /api/admin/catalogos/<entidad>`.
+Este rubric se verifica contra el código **ya construido**; no describe trabajo pendiente.
+
+### Pestañas, conteos y sustitución del árbol (601–608)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 601 | `/catalogos` renderiza `[data-testid="pantalla-catalogos"]` y, dentro, `[data-testid="arbol-catalogos"]` con la clase `catalogos-vista`. | Playwright |
+| 602 | Existen exactamente **3** elementos `[role="tab"]`, con `data-testid` `tab-programas`, `tab-componentes` y `tab-tipos_apoyo`, y sus textos contienen `Programas`, `Componentes` y `Conceptos de apoyo` respectivamente. | Playwright |
+| 603 | Cada pestaña contiene un `[data-testid="conteo-<clave>"]` cuyo texto casa `/^\d+$/`. | Playwright |
+| 604 | Al cargar, `tab-programas` tiene `aria-selected="true"`, las otras dos `"false"`, y `[data-testid="panel-programas"]` es visible con `role="tabpanel"` y `aria-labelledby="tab-programas"`. | Playwright |
+| 605 | Al pulsar `tab-componentes`: `tab-componentes` queda con `aria-selected="true"`, `panel-componentes` es visible y `panel-programas` **no existe** en el DOM (solo se monta el panel activo). | Playwright |
+| 606 | `conteo-componentes` es igual a `conteos.componentes + conteos.modalidades + conteos.proyectos` de la respuesta de E49 con los mismos parámetros. | Playwright + curl con Bearer |
+| 607 | `conteo-programas` es igual a `conteos.programas + conteos.subprogramas`, y `conteo-tipos_apoyo` igual a `conteos.tipos_apoyo` de esa misma respuesta. | Playwright + curl |
+| 608 | El árbol vertical desapareció del código: `grep -c "function Nodo" pwa/src/componentes/ArbolCatalogos.tsx` devuelve **0**, y el archivo sí contiene `function FilaCatalogo`. | grep |
+
+### Tabla ancha y columna Jerarquía (609–616)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 609 | En cada una de las 3 pestañas hay exactamente **1** `table.tabla-catalogos` dentro de un `.tabla-contenedor`. | Playwright, recorriendo las 3 pestañas |
+| 610 | Los `th` de esa tabla son, en orden, `Clave`, `Nombre`, `Jerarquía`, `Estado`, `Acciones`, y el último tiene la clase `col-acciones`. | Playwright, `$$eval` sobre `thead th` |
+| 611 | En la pestaña Programas, por cada programa de E49 existe una fila `[data-testid="nodo-programas-<id>"]`, y por cada subprograma suyo una fila `[data-testid="nodo-subprogramas-<id>"]`. | Playwright + curl |
+| 612 | En una fila de subprograma, la celda `td[data-etiqueta="Jerarquía"]` tiene el texto `↳ <clave del programa padre>`. | Playwright + curl para conocer la clave del padre |
+| 613 | En la pestaña Componentes, una fila `nodo-proyectos-<id>` colgada de una modalidad muestra en Jerarquía el texto `<clave componente> → <clave modalidad>` (contiene el carácter `→`). | Playwright + curl |
+| 614 | Las filas raíz (`nodo-programas-*`, `nodo-componentes-*` y todas las de la pestaña Conceptos de apoyo) muestran `—` en la celda de Jerarquía. | Playwright |
+| 615 | Los literales de jerarquía degradada existen en el código: `grep -c "(sin modalidad)" pwa/src/componentes/ArbolCatalogos.tsx` ≥ 1 y `grep -c "(sin componente)" …` ≥ 1; y si E49 devuelve algún elemento en `proyectos_huerfanos`, su fila muestra `(sin componente)`. | grep + Playwright/curt |
+| 616 | Toda `td` de toda fila tiene atributo `data-etiqueta`, con los valores `Clave`, `Nombre`, `Jerarquía`, `Estado`, `Acciones`. | Playwright, `$$eval` sobre la primera fila de cada pestaña |
+
+### Estado, buscadores y barra de herramientas (617–624)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 617 | Con el toggle apagado, toda fila visible tiene `[data-testid="chip-activo"]` con texto `Activo` y **0** `chip-inactivo` en la página. | Playwright |
+| 618 | En toda la pantalla hay exactamente **1** `[data-testid="toggle-incluir-inactivos"]`, y su etiqueta contiene el texto `Mostrar desactivados`. | Playwright, `page.$$` |
+| 619 | Marcando el toggle, aparece ≥ 1 `[data-testid="chip-inactivo"]` con texto `Desactivado`, y su `tr` tiene la clase `inactivo` (siempre que exista al menos un registro dado de baja; si no existe, se crea uno desactivando cualquier fila antes de la comprobación). | Playwright |
+| 620 | En la pestaña Programas existen exactamente `btn-nuevo-programas` y `btn-nuevo-subprogramas`, y **0** elementos casan `btn-nuevo-componentes`, `btn-nuevo-modalidades`, `btn-nuevo-proyectos` y `btn-nuevo-tipos_apoyo`. | Playwright |
+| 621 | En la pestaña Componentes existen exactamente `btn-nuevo-componentes`, `btn-nuevo-modalidades` y `btn-nuevo-proyectos`; en la pestaña Conceptos de apoyo existe exactamente `btn-nuevo-tipos_apoyo`. | Playwright |
+| 622 | Cada botón de alta tiene `aria-label` con el texto largo (`Nuevo programa`, `Nueva modalidad`, …), `title` idéntico al `aria-label`, y contiene un `svg`. | Playwright |
+| 623 | En Programas, escribiendo en `[data-testid="input-buscar-programas"]` la clave completa de un programa P, el número de filas se reduce y `nodo-programas-<id de P>` sigue visible; al borrar el texto, el número de filas vuelve al inicial. Con un texto sin coincidencias aparece `[data-testid="tabla-vacia"]` con el texto `No hay registros que coincidan.`. | Playwright |
+| 624 | El texto del buscador es independiente por pestaña: escribiendo en `input-buscar-programas` y cambiando a Componentes, `input-buscar-componentes` tiene `value === ''`; al volver a Programas, el texto anterior sigue ahí. | Playwright |
+
+### Modal del formulario y títulos en singular (625–631)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 625 | Al cargar `/catalogos` **no** existen en el DOM `[data-testid="modal-form-catalogo"]` ni `[data-testid="form-catalogo"]`. | Playwright |
+| 626 | Al pulsar `btn-nuevo-programas` aparece `[data-testid="modal-form-catalogo"]` con `role="dialog"` y `aria-modal="true"`, y contiene un `[data-testid="form-catalogo"]`. | Playwright |
+| 627 | Pulsando el botón de cancelar del formulario, ambos elementos desaparecen del DOM (`count === 0`). | Playwright |
+| 628 | El `h2` del modal en modo alta es exactamente: `Nuevo programa`, `Nuevo subprograma`, `Nuevo componente`, `Nueva modalidad`, `Nuevo proyecto` y `Nuevo concepto de apoyo` según el botón de alta pulsado (6 comprobaciones). | Playwright, recorriendo los 6 botones |
+| 629 | Ningún `h2` del formulario contiene un nombre crudo de tabla: para las 6 entidades, el texto del `h2` **no** casa `/programas|subprogramas|componentes|modalidades|proyectos|tipos_apoyo/`. | Playwright |
+| 630 | Pulsando `btn-editar-programas-<id>` el `h2` es `Editar programa`; pulsando `btn-editar-modalidades-<id>` es `Editar modalidad`. | Playwright |
+| 631 | Pulsando `btn-duplicar-proyectos-<id>` el `h2` es `Duplicar proyecto` y `[data-testid="aviso-duplicado"]` es visible; pulsando `btn-duplicar-tipos_apoyo-<id>` el `h2` es `Duplicar concepto de apoyo`. | Playwright |
+
+### Acciones de fila preservadas (632–637)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 632 | Toda fila de toda pestaña contiene un `.arbol-acciones` con exactamente **3** hijos directos, y el primero es `btn-editar-<entidad>-<id>` y el último es `btn-desactivar-…` o `btn-reactivar-…`. | Playwright, `$$eval` sobre `.arbol-acciones` |
+| 633 | En filas de `programas`, `subprogramas`, `componentes` y `modalidades`, la ranura central es un `span.boton-icono-hueco` con `aria-hidden="true"` y sin `data-testid`; en filas de `proyectos` y `tipos_apoyo` es un `button[data-testid^="btn-duplicar-"]`. | Playwright |
+| 634 | Todo `button.boton-icono` de la tabla cumple el contrato §17.4: exactamente 1 `svg`, `aria-label === title === data-tooltip`, e `innerText.trim() === ''`. | Playwright |
+| 635 | Pulsando `btn-desactivar-<entidad>-<id>` aparece `[data-testid="modal-confirmar-baja"]`; al pulsar `btn-confirmar-baja` la fila desaparece de la tabla (toggle apagado) y, al marcar el toggle, reaparece con `chip-inactivo` y con `btn-reactivar-<entidad>-<id>`. | Playwright |
+| 636 | Creando un registro desde el modal y guardando, el modal desaparece y `[data-testid="toast-exito"]` (con `role="status"`) queda visible con el texto `Registro creado correctamente.`; la fila nueva aparece en la tabla de su pestaña. | Playwright |
+| 637 | Editando un registro existente y guardando, `toast-exito` muestra `Registro actualizado correctamente.` y la celda Nombre de esa fila refleja el valor nuevo. | Playwright |
+
+### Tooltip, responsive, aislamiento y carrera (638–641)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 638 | El tooltip CSS existe y es instantáneo: `componentes.css` contiene una regla `button.boton-icono[data-tooltip]::after` con `content: attr(data-tooltip)` que se activa en `:hover` y en `:focus-visible`; y tras `hover` sobre un `btn-duplicar-proyectos-<id>`, `getComputedStyle(el, '::after')` devuelve `content` distinto de `none` y `opacity === '1'` en **≤ 300 ms**. | grep + Playwright |
+| 639 | Cero desbordamiento horizontal: en 1440×900 y en 390×844, y en las **tres** pestañas, `document.scrollingElement.scrollWidth <= document.scrollingElement.clientWidth + 1`. | Playwright (6 mediciones) |
+| 640 | En 390×844 la tabla se lee como tarjetas: para la primera fila, `getComputedStyle(td, '::before').content` es distinto de `'none'` en las celdas con `data-etiqueta`; y todo `button.boton-icono` visible mide ≥ 44×44 px según `boundingBox()`. | Playwright |
+| 641 | (a) `/catalogos/documentos` no fue rediseñada: al seguir `[data-testid="link-reglas-documentos"]`, la URL termina en `/catalogos/documentos` y en esa página existen **0** elementos `[data-testid="tab-programas"]` y **0** `table.tabla-catalogos`. (b) Guard de carrera: interceptando E49 para retrasar **1500 ms** la respuesta de la petición disparada por `btn-confirmar-baja` y dejando pasar sin retraso la que dispara el toggle marcado ~300 ms después, el estado final de la tabla corresponde a `incluir_inactivos=true` (la fila desactivada es visible con `chip-inactivo`) y no queda spinner `Cargando catálogos…`; además `grep -c "tokenArbol" pwa/src/pantallas/Catalogos.tsx` ≥ 3. (c) `cd pwa && npm run typecheck && npm run build` terminan con código 0. | Playwright con `page.route` + grep + CLI |
+
+**Definición de "terminado" (Sección 20):** pasan los **41** criterios (601–641) **y** siguen pasando
+los 600 anteriores. Total acumulado: **641** criterios.

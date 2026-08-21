@@ -8,8 +8,18 @@ import type { Rol } from './dto.js';
 /** Roles que pueden administrar cuentas (D15). */
 export const ROLES_ADMIN_USUARIOS = ['admin', 'editor_datos'] as const;
 
-/** Los 5 roles del sistema, en el orden en que se muestran en los select. */
-export const ROLES_USUARIO = ['capturista', 'auditor', 'editor_datos', 'ventanilla', 'admin'] as const;
+/**
+ * Los roles del sistema, en el orden en que se muestran en los select.
+ * Build 13: se inserta `dictaminador` antes de `admin`, que va siempre al final.
+ */
+export const ROLES_USUARIO = [
+  'capturista',
+  'auditor',
+  'editor_datos',
+  'ventanilla',
+  'dictaminador',
+  'admin'
+] as const;
 
 /** Etiquetas en espanol de cada rol (UI y bitacora legible). */
 export const ETIQUETAS_ROL: Record<string, string> = {
@@ -17,6 +27,7 @@ export const ETIQUETAS_ROL: Record<string, string> = {
   auditor: 'Auditor',
   editor_datos: 'Editor de datos',
   ventanilla: 'Ventanilla',
+  dictaminador: 'Dictaminador',
   admin: 'Administrador'
 };
 
@@ -125,9 +136,9 @@ const campoRol = z.string().refine(
   (val) => {
     if (!val || typeof val !== 'string') return false;
     const roles = val.split('+');
-    // Cada rol individual debe ser válido
-    const rolesValidos = ['capturista', 'auditor', 'admin', 'editor_datos', 'ventanilla'];
-    return roles.every(r => rolesValidos.includes(r));
+    // Cada rol individual debe ser válido. `dictaminador` es aceptable en
+    // cualquier posición de la combinación (D19-2).
+    return roles.every((r) => (ROLES_USUARIO as readonly string[]).includes(r));
   },
   { message: 'Rol inválido. Usa roles válidos separados por "+" (ej. "capturista+ventanilla")' }
 );

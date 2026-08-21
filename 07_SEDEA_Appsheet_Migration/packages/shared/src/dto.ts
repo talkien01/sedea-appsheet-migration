@@ -132,3 +132,118 @@ export interface ErrorApi {
 
 /** Estado de la cola offline (vive solo en IndexedDB). */
 export type EstadoCapturaLocal = 'pendiente' | 'sincronizando' | 'sincronizada' | 'error';
+
+// ---------------------------------------------------------------------------
+// Build 13: pre-dictaminacion con IA y dictamen humano (SPEC seccion 19).
+// ---------------------------------------------------------------------------
+
+/** Estado global del pre-dictamen de IA. `error` no es un veredicto (A19-5). */
+export type EstadoPredictamen = 'positivo' | 'negativo' | 'error';
+
+/** Veredicto humano por documento en el detalle del dictamen. */
+export type VeredictoDocumento = 'ok' | 'falta' | 'ilegible';
+
+/** Un objeto por cada fila de `solicitud_documentos` de la solicitud. */
+export interface DetallePredictamenDocumento {
+  solicitud_documento_id: number;
+  documento_requerido_id: number | null;
+  requisito: string;
+  archivo_url: string | null;
+  presente: boolean;
+  legible: boolean;
+  curp_coincide: boolean | null;
+  curp_leida: string | null;
+  observacion: string;
+}
+
+export interface Predictamen {
+  id: number;
+  estado: EstadoPredictamen;
+  resumen: string | null;
+  generado_en: string;
+  modelo_usado: string;
+  documentos_con_problema?: number;
+}
+
+export interface DictamenHumano {
+  id: number;
+  resultado: 'positivo' | 'negativo';
+  dictaminado_en: string;
+  dictaminado_por_nombre?: string | null;
+}
+
+/** Fila de la bandeja de dictamen (E56). No existe `tiene_expediente`. */
+export interface FilaBandejaDictamen {
+  solicitud_id: number;
+  folio: string;
+  solicitante: string;
+  recibida_en: string;
+  documentos_total: number;
+  documentos_con_archivo: number;
+  predictamen: Predictamen | null;
+  dictamen: DictamenHumano | null;
+}
+
+export interface RespuestaBandejaDictamen {
+  total: number;
+  pagina: number;
+  por_pagina: number;
+  filas: FilaBandejaDictamen[];
+}
+
+/** Documento tal como lo devuelve el detalle E57. */
+export interface DocumentoDictamen {
+  solicitud_documento_id: number;
+  documento_requerido_id: number | null;
+  requisito: string;
+  recibido: boolean;
+  archivo_url: string | null;
+  archivo_nombre: string | null;
+  ia: {
+    presente: boolean;
+    legible: boolean;
+    curp_coincide: boolean | null;
+    curp_leida: string | null;
+    observacion: string;
+  } | null;
+  humano: { veredicto: VeredictoDocumento } | null;
+}
+
+export interface RespuestaDetalleDictamen {
+  solicitud: {
+    id: number;
+    folio: string;
+    solicitante: string;
+    curp: string | null;
+    tipo_persona: string;
+    componente: string | null;
+    recibida_en: string;
+  };
+  documentos: DocumentoDictamen[];
+  predictamen: Predictamen | null;
+  dictamen: (DictamenHumano & { nota: string | null; coincide_con_ia: boolean | null }) | null;
+  historial_predictamenes: Array<{
+    id: number;
+    estado: EstadoPredictamen;
+    generado_en: string;
+    modelo_usado: string;
+  }>;
+}
+
+export interface ResultadoPredictaminar {
+  solicitud_id: number;
+  predictamen_id: number;
+  estado: EstadoPredictamen;
+  resumen: string | null;
+  documentos_evaluados: number;
+  documentos_con_archivo: number;
+}
+
+export interface MetricasDictamen {
+  pendientes: number;
+  negativos: number;
+  positivos: number;
+  sin_predictamen: number;
+  dictaminadas: number;
+  coincidencia_ia: { total: number; coinciden: number; porcentaje: number };
+}

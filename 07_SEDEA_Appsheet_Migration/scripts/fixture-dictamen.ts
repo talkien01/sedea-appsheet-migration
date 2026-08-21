@@ -123,10 +123,9 @@ interface DocumentoFila {
 }
 
 async function documentos(solicitudId: number): Promise<DocumentoFila[]> {
-  const datos = await api<{ data?: DocumentoFila[]; documentos?: DocumentoFila[] }>(
-    `/api/solicitudes/${solicitudId}/documentos`
-  );
-  return datos.documentos ?? datos.data ?? [];
+  // El checklist viaja dentro del detalle de la solicitud (E44).
+  const datos = await api<{ documentos: DocumentoFila[] }>(`/api/solicitudes/${solicitudId}`);
+  return datos.documentos ?? [];
 }
 
 /** Sube un archivo a un documento con E46 (endpoint ya existente, no se toca). */

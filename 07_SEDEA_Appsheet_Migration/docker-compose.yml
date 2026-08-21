@@ -39,6 +39,11 @@ services:
       MEDIA_PUBLIC_PATH: /media
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-8}
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-300}
+      # Build 13: pre-dictaminacion con IA. `simulado` no toca la red ni gasta
+      # API; produccion se configura explicitamente con `anthropic`.
+      PREDICTAMEN_DRIVER: ${PREDICTAMEN_DRIVER:-simulado}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-5}
       SEED_ADMIN_USER: ${SEED_ADMIN_USER:-admin}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-cambiame123}
     ports:

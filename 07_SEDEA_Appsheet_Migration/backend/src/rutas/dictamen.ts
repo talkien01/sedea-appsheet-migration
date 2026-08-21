@@ -5,7 +5,7 @@
 //    soportado por requiereRol).
 //  - El dictaminador ve TODAS las regionales: aqui no se aplica
 //    regionalForzada ni leerAlcance (A19-6).
-//  - NUNCA hay auto-aprobacion (D19-8): el unico camino que escribe en
+//  - La IA NUNCA aprueba sola (D19-8): el unico camino que escribe en
 //    `dictamenes` es E58, con `resultado` explicito de un humano autenticado.
 //  - No existe ningun endpoint de expediente: los archivos se suben con E46 y
 //    se leen desde /media/** (servido con token por server.ts).

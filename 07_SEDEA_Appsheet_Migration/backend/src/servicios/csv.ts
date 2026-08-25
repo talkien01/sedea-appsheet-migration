@@ -11,6 +11,15 @@ const BOM = '\uFEFF';
  */
 const INICIO_FORMULA = /^[=+\-@\t\r]/;
 
+/**
+ * Numero puro (entero o decimal, con signo opcional) y NADA mas. Excel nunca
+ * evalua una celda asi como formula, la lee como numero. Excluirlo del
+ * apostrofo evita romper columnas numericas legitimas que empiezan con `-`
+ * (p.ej. la longitud `-100.38` del export de auditoria), sin bajar la
+ * proteccion: `-100.38x` o `-CMD|calc` NO son numeros puros y siguen prefijados.
+ */
+const NUMERO_PURO = /^-?\d+(\.\d+)?$/;
+
 function escapar(valor: unknown): string {
   if (valor === null || valor === undefined) return '';
   let texto = String(valor);
@@ -18,7 +27,7 @@ function escapar(valor: unknown): string {
   // que Excel muestre la celda como texto literal en vez de evaluarla. Va
   // ANTES del escape de comillas para que un valor con comillas y formula
   // quede correctamente entrecomillado.
-  if (INICIO_FORMULA.test(texto)) {
+  if (INICIO_FORMULA.test(texto) && !NUMERO_PURO.test(texto)) {
     texto = `'${texto}`;
   }
   if (/[",\n\r]/.test(texto)) {

@@ -18,12 +18,36 @@ function celdas(valores: unknown[]): string {
 
 test('prefija con apostrofo las celdas que Excel evaluaria como formula', () => {
   assert.equal(celdas(['=1+1']), "'=1+1");
-  assert.equal(celdas(['+1']), "'+1");
-  assert.equal(celdas(['-1']), "'-1");
+  assert.equal(celdas(['+1x']), "'+1x");
+  assert.equal(celdas(['-1x']), "'-1x");
   assert.equal(celdas(['@SUM(A1)']), "'@SUM(A1)");
   assert.equal(celdas(['\tx']), "'\tx");
   // El CR obliga ademas a entrecomillar, como ya ocurria antes del fix.
   assert.equal(celdas(['\rx']), '"\'\rx"');
+});
+
+test('los numeros puros NO llevan apostrofo (no se rompen columnas numericas)', () => {
+  // Un numero puro jamas se evalua como formula en Excel.
+  assert.equal(celdas(['-100.38']), '-100.38'); // longitud del export de auditoria
+  assert.equal(celdas(['-1']), '-1');
+  assert.equal(celdas(['-0.5']), '-0.5');
+  assert.equal(celdas(['20.59']), '20.59'); // latitud
+  assert.equal(celdas(['123']), '123');
+  assert.equal(celdas([-100.38]), '-100.38'); // llega como number, no string
+  assert.equal(celdas([-1]), '-1');
+});
+
+test('lo que solo PARECE numero sigue prefijado', () => {
+  assert.equal(celdas(['-100.38x']), "'-100.38x");
+  assert.equal(celdas(['-CMD|calc']), "'-CMD|calc");
+  assert.equal(celdas(['-1-1']), "'-1-1");
+  assert.equal(celdas(['-1.2.3']), "'-1.2.3");
+  assert.equal(celdas(['+1']), "'+1"); // el `+` no forma parte de NUMERO_PURO
+  assert.equal(celdas(['=1']), "'=1");
+  assert.equal(celdas([' -1']), ' -1'); // no empieza con caracter de formula
+  // Payload clasico de ejecucion de comandos con guion inicial.
+  const dde = '-2+3+cmd|\' /C calc\'!A0';
+  assert.ok(celdas([dde]).includes("'-2+3+cmd"), 'DDE debe quedar prefijado');
 });
 
 test('neutraliza el ataque real de exfiltracion via HYPERLINK', () => {

@@ -18,7 +18,9 @@ export type AccionAuditoria =
   | 'usuario_password_reset'
   | 'usuario_activado'
   | 'usuario_desactivado'
-  | 'password_cambiado';
+  | 'password_cambiado'
+  // Operacion destructiva: vaciado de todos los datos capturados.
+  | 'reiniciar_datos_prueba';
 
 interface EntradaBitacora {
   usuarioId?: number | null;

@@ -34,6 +34,8 @@ import rutasFolioEntrega from './rutas/folio-entrega.js';
 import rutasDictamen from './rutas/dictamen.js';
 // E60: traspaso celular -> PC para el escaneo de la Constancia CURP.
 import rutasEscaneoCurp from './rutas/escaneoCurp.js';
+// Administracion del sistema: reinicio de datos de prueba (solo admin).
+import rutasAdmin from './rutas/admin.js';
 
 async function construirApp() {
   const app = Fastify({
@@ -120,6 +122,8 @@ async function construirApp() {
   await app.register(rutasDictamen);
   // E60: sesiones de escaneo con celular vinculado.
   await app.register(rutasEscaneoCurp);
+  // Reinicio de datos de prueba (solo admin estricto).
+  await app.register(rutasAdmin);
 
   return app;
 }

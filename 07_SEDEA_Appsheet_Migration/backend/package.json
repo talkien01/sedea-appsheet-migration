@@ -12,7 +12,8 @@
     "seed": "tsx src/sembrar.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "migrar": "tsx src/migrar.ts",
-    "sembrar": "tsx src/sembrar.ts"
+    "sembrar": "tsx src/sembrar.ts",
+    "generar-sql-reinicio": "tsx src/generarSqlReinicio.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.1",

@@ -29,7 +29,8 @@ import type {
   DatosCurpQr,
   EstadoSesionEscaneoRespuesta,
   ResultadoEscaneoMovilCuerpo,
-  SesionEscaneoCreada
+  SesionEscaneoCreada,
+  ResultadoReinicioDatos
 } from '@sedea/shared';
 import { obtenerSesion } from '../db/repositorios';
 
@@ -336,6 +337,18 @@ export const api = {
     return peticion<RespuestaResetPassword>(`/usuarios/${id}/reset-password`, {
       method: 'POST',
       body: JSON.stringify(cuerpo)
+    });
+  },
+
+  /**
+   * OPERACION DESTRUCTIVA E IRREVERSIBLE. Vacia todos los datos capturados.
+   * Solo rol admin. La frase debe ser exactamente FRASE_CONFIRMACION_REINICIO:
+   * el backend la vuelve a validar, este cliente no es el unico candado.
+   */
+  async reiniciarDatosPrueba(confirmacion: string): Promise<ResultadoReinicioDatos> {
+    return peticion<ResultadoReinicioDatos>('/admin/reiniciar-datos-prueba', {
+      method: 'POST',
+      body: JSON.stringify({ confirmacion })
     });
   },
 

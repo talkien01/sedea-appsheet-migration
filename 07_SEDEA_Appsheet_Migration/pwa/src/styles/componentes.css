@@ -1535,3 +1535,23 @@ input[type='radio'] {
 .bloque-carga-lote > h2 {
   margin: 0 0 4px;
 }
+
+/* ---------------------------------------------------------------------
+   Zona de peligro (pantalla de Usuarios, solo admin).
+   Operaciones irreversibles. El borde rojo grueso y el fondo de alerta son
+   deliberados: esta seccion NO debe parecerse al resto de la pantalla, para
+   que nadie la confunda con un control normal de administracion.
+   --------------------------------------------------------------------- */
+.zona-peligro {
+  margin-top: 32px;
+  border: 2px solid var(--peligro);
+  background: var(--peligro-bg);
+}
+
+.zona-peligro > h2 {
+  color: var(--peligro);
+}
+
+.zona-peligro ul {
+  margin: 8px 0 0 20px;
+}

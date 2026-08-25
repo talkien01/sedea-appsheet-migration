@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AYUDA_PASSWORD_MANUAL,
   ETIQUETAS_ROL,
+  FRASE_CONFIRMACION_REINICIO,
   ROLES_USUARIO,
   type ModoPassword,
   type ResultadoFilaLoteUsuario,
@@ -19,7 +20,9 @@ import type { ValoresAlcance } from '../componentes/BloqueAlcance';
 import { apiSolicitudes } from '../api/solicitudes';
 import ModalPasswordTemporal from '../componentes/ModalPasswordTemporal';
 import ModalResetPassword from '../componentes/ModalResetPassword';
+import ModalReiniciarDatos from '../componentes/ModalReiniciarDatos';
 import { BotonIcono } from '../componentes/BotonIcono';
+import type { ResultadoReinicioDatos } from '@sedea/shared';
 
 interface RegionalOpcion {
   id: number;
@@ -79,6 +82,13 @@ export default function Usuarios() {
   // casos el usuario debe cambiarla en su primer inicio de sesion.
   const [usarPasswordComunLote, setUsarPasswordComunLote] = useState(false);
   const [passwordComunLote, setPasswordComunLote] = useState('');
+
+  // Zona de peligro: reinicio de datos de prueba (solo admin). El resultado se
+  // conserva en pantalla como evidencia de cuantas filas se borraron.
+  const [modalReinicioAbierto, setModalReinicioAbierto] = useState(false);
+  const [reiniciando, setReiniciando] = useState(false);
+  const [errorReinicio, setErrorReinicio] = useState<string | null>(null);
+  const [resultadoReinicio, setResultadoReinicio] = useState<ResultadoReinicioDatos | null>(null);
 
   // Reseteo: fila elegida, estado de envio y error de la API (11.6.3).
   const [reseteando, setReseteando] = useState<UsuarioAdmin | null>(null);
@@ -311,6 +321,24 @@ export default function Usuarios() {
       setErrorReset((fallo as Error).message);
     } finally {
       setEnviandoReset(false);
+    }
+  };
+
+  /**
+   * Zona de peligro. El modal ya exigio la frase exacta; aqui se vuelve a
+   * mandar al backend, que la valida por su cuenta antes de borrar nada.
+   */
+  const confirmarReinicio = async () => {
+    setReiniciando(true);
+    setErrorReinicio(null);
+    try {
+      const respuesta = await api.reiniciarDatosPrueba(FRASE_CONFIRMACION_REINICIO);
+      setResultadoReinicio(respuesta);
+      setModalReinicioAbierto(false);
+    } catch (fallo) {
+      setErrorReinicio((fallo as Error).message);
+    } finally {
+      setReiniciando(false);
     }
   };
 
@@ -692,6 +720,88 @@ export default function Usuarios() {
           </>
         )}
       </section>
+
+      {/*
+        ZONA DE PELIGRO. Va al final de la pantalla, visualmente separada del
+        resto y solo para rol admin ESTRICTO (editor_datos administra usuarios
+        pero NO puede vaciar el padron). Ocultarla no es la seguridad real: el
+        backend rechaza la peticion de cualquier otro rol con 403.
+      */}
+      {perfil?.rol.split('+').includes('admin') && (
+        <section className="tarjeta zona-peligro" data-testid="zona-peligro-sistema">
+          <h2>Zona de peligro</h2>
+          <p className="dato">
+            Operaciones irreversibles sobre la base de datos. Solo para dejar el
+            sistema limpio antes de arrancar con datos reales.
+          </p>
+
+          <div className="mensaje error" role="alert">
+            <strong>Reiniciar datos de prueba</strong> borra para siempre todo el
+            padrón capturado, las capturas de campo, las solicitudes de
+            ventanilla con sus documentos y conceptos, los pre-dictámenes y
+            dictámenes, y reinicia el contador de folios. El catálogo del sistema
+            (usuarios, regionales, municipios, programas, componentes, proyectos)
+            no se toca. No hay forma de deshacerlo.
+          </div>
+
+          <div className="acciones">
+            <button
+              type="button"
+              className="peligro"
+              data-testid="btn-reiniciar-datos-prueba"
+              disabled={!enLinea}
+              onClick={() => {
+                setErrorReinicio(null);
+                setResultadoReinicio(null);
+                setModalReinicioAbierto(true);
+              }}
+            >
+              Reiniciar datos de prueba
+            </button>
+          </div>
+
+          {/* Evidencia post-borrado: cuantas filas tenia cada tabla. */}
+          {resultadoReinicio && (
+            <div data-testid="resultado-reinicio">
+              <div className="mensaje exito" role="status">
+                Datos reiniciados por {resultadoReinicio.ejecutado_por}. Se
+                borraron {resultadoReinicio.total_filas_borradas} filas en total.
+                Los archivos de <span className="mono">/media</span> siguen en el
+                servidor y se limpian aparte.
+              </div>
+              <div className="tabla-contenedor">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Tabla</th>
+                      <th>Filas borradas</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(resultadoReinicio.filas_borradas).map(([tabla, filas]) => (
+                      <tr key={tabla} data-testid="fila-reinicio">
+                        <td data-etiqueta="Tabla" className="mono">
+                          {tabla}
+                        </td>
+                        <td data-etiqueta="Filas borradas">{filas}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {modalReinicioAbierto && (
+        <ModalReiniciarDatos
+          ejecutando={reiniciando}
+          errorApi={errorReinicio}
+          alConfirmar={() => void confirmarReinicio()}
+          alCancelar={() => setModalReinicioAbierto(false)}
+        />
+      )}
 
       {formAbierto && (
         <FormUsuario

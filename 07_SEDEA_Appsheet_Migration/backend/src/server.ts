@@ -32,6 +32,8 @@ import rutasConfiguracion from './rutas/configuracion.js';
 import rutasFolioEntrega from './rutas/folio-entrega.js';
 // Build 13: pre-dictaminacion con IA y dictamen humano.
 import rutasDictamen from './rutas/dictamen.js';
+// E60: traspaso celular -> PC para el escaneo de la Constancia CURP.
+import rutasEscaneoCurp from './rutas/escaneoCurp.js';
 
 async function construirApp() {
   const app = Fastify({
@@ -116,6 +118,8 @@ async function construirApp() {
   await app.register(rutasFolioEntrega);
   // Build 13: dictamen (E55-E59).
   await app.register(rutasDictamen);
+  // E60: sesiones de escaneo con celular vinculado.
+  await app.register(rutasEscaneoCurp);
 
   return app;
 }

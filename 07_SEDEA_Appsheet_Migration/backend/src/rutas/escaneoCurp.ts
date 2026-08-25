@@ -1,0 +1,152 @@
+// E60: traspaso celular -> PC para el escaneo de la Constancia CURP.
+//
+// El equipo de ventanilla es un escritorio sin camara util. El capturista abre
+// una sesion, la pantalla la pinta como QR, el capturista la abre con su
+// celular y escanea ahi la Constancia. El celular manda el texto crudo del QR;
+// este modulo lo parsea con el MISMO parser que usa la PWA (@sedea/shared) y lo
+// deja en el buzon para que el escritorio lo recoja sondeando.
+//
+// Modelo de confianza: el celular NO se autentica. El token de la sesion es la
+// credencial, y por eso:
+//   - lo genera el servidor con 24 bytes aleatorios (no es adivinable),
+//     - vive 10 minutos,
+//   - es de un solo uso: en cuanto llega un resultado la sesion se cierra,
+//   - solo el usuario que la creo puede sondearla.
+// Lo peor que puede hacer quien robe un token es meter una CURP en la pantalla
+// de otro capturista, que la ve antes de guardar. No da acceso a nada mas.
+import { randomBytes } from 'node:crypto';
+import type { FastifyInstance } from 'fastify';
+import {
+  MINUTOS_VIGENCIA_ESCANEO,
+  parsearQrCurp,
+  type DatosCurpQr,
+  type EstadoSesionEscaneoRespuesta,
+  type SesionEscaneoCreada
+} from '@sedea/shared';
+import { consultarUna } from '../db/pool.js';
+import { ErrorApi } from '../plugins/errores.js';
+
+/** Mismos roles que pueden capturar una solicitud en ventanilla. */
+const ROLES_VENTANILLA = ['ventanilla', 'capturista', 'admin'] as const;
+
+interface FilaSesion {
+  id: number;
+  token: string;
+  creada_por: number;
+  estado: 'pendiente' | 'completada';
+  datos: DatosCurpQr | null;
+  expira_en: string;
+}
+
+/** Token opaco de 24 bytes en base64url: 192 bits, no adivinable. */
+function generarToken(): string {
+  return randomBytes(24).toString('base64url');
+}
+
+function estaVencida(fila: FilaSesion): boolean {
+  return new Date(fila.expira_en).getTime() <= Date.now();
+}
+
+export default async function rutasEscaneoCurp(app: FastifyInstance): Promise<void> {
+  const protegida = {
+    preHandler: [app.autenticar, app.requiereRol(...ROLES_VENTANILLA)]
+  };
+
+  // --- E60.1 Abrir la sesion (escritorio, autenticado) ----------------------
+  app.post('/api/escaneo-curp/sesiones', protegida, async (peticion) => {
+    const usuarioId = peticion.usuario!.id;
+    const expiraEn = new Date(Date.now() + MINUTOS_VIGENCIA_ESCANEO * 60_000);
+
+    const fila = await consultarUna<{ token: string; expira_en: string }>(
+      `INSERT INTO sesiones_escaneo_curp (token, creada_por, expira_en)
+       VALUES ($1, $2, $3)
+       RETURNING token, expira_en`,
+      [generarToken(), usuarioId, expiraEn]
+    );
+
+    const respuesta: SesionEscaneoCreada = {
+      token: fila!.token,
+      expira_en: new Date(fila!.expira_en).toISOString()
+    };
+    return respuesta;
+  });
+
+  // --- E60.2 Sondear la sesion (escritorio, autenticado) --------------------
+  app.get('/api/escaneo-curp/sesiones/:token', protegida, async (peticion) => {
+    const { token } = peticion.params as { token: string };
+    const fila = await consultarUna<FilaSesion>(
+      `SELECT id, token, creada_por, estado, datos, expira_en
+         FROM sesiones_escaneo_curp
+        WHERE token = $1`,
+      [token]
+    );
+
+    // Un token inexistente y un token ajeno responden igual a proposito: quien
+    // sondea a ciegas no puede distinguir "no existe" de "no es tuyo".
+    if (!fila || fila.creada_por !== peticion.usuario!.id) {
+      throw new ErrorApi(404, 'no_encontrado', 'Sesión de escaneo no encontrada.');
+    }
+
+    const vencida = fila.estado !== 'completada' && estaVencida(fila);
+    const respuesta: EstadoSesionEscaneoRespuesta = {
+      estado: vencida ? 'expirada' : fila.estado,
+      expira_en: new Date(fila.expira_en).toISOString(),
+      datos: fila.estado === 'completada' ? fila.datos : null
+    };
+    return respuesta;
+  });
+
+  // --- E60.3 Entregar el resultado (celular, PUBLICO) -----------------------
+  // Sin `autenticar`: el celular no tiene sesion. El token es la credencial.
+  app.post('/api/escaneo-curp/sesiones/:token/resultado', async (peticion) => {
+    const { token } = peticion.params as { token: string };
+    const cuerpo = peticion.body as { texto_qr?: unknown } | undefined;
+    const texto = typeof cuerpo?.texto_qr === 'string' ? cuerpo.texto_qr : '';
+
+    if (!texto) {
+      throw new ErrorApi(422, 'validacion', 'Falta el texto del código QR.');
+    }
+
+    const fila = await consultarUna<FilaSesion>(
+      `SELECT id, token, creada_por, estado, datos, expira_en
+         FROM sesiones_escaneo_curp
+        WHERE token = $1`,
+      [token]
+    );
+    if (!fila) {
+      throw new ErrorApi(404, 'no_encontrado', 'Sesión de escaneo no encontrada.');
+    }
+    if (fila.estado === 'completada') {
+      throw new ErrorApi(409, 'sesion_usada', 'Esta sesión de escaneo ya se usó.');
+    }
+    if (estaVencida(fila)) {
+      throw new ErrorApi(410, 'sesion_expirada', 'La sesión de escaneo expiró. Vuelve a generar el código en la computadora.');
+    }
+
+    // El celular manda texto crudo; el criterio de validez es el del parser
+    // compartido, igual que en el escaneo directo desde la PWA.
+    const datos = parsearQrCurp(texto);
+    if (!datos) {
+      throw new ErrorApi(
+        422,
+        'qr_invalido',
+        'No se pudo leer el CURP, intenta de nuevo o captura los datos manualmente'
+      );
+    }
+
+    // Cierre de un solo uso. El WHERE repite estado/expiracion para que dos
+    // envios simultaneos no puedan sobrescribirse: solo uno afecta la fila.
+    const cerrada = await consultarUna<{ id: number }>(
+      `UPDATE sesiones_escaneo_curp
+          SET estado = 'completada', datos = $2, completada_en = now()
+        WHERE id = $1 AND estado = 'pendiente' AND expira_en > now()
+        RETURNING id`,
+      [fila.id, JSON.stringify(datos)]
+    );
+    if (!cerrada) {
+      throw new ErrorApi(409, 'sesion_usada', 'Esta sesión de escaneo ya se usó.');
+    }
+
+    return { ok: true as const, datos };
+  });
+}

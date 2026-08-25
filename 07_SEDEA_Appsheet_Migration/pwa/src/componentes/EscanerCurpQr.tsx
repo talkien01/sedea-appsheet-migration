@@ -7,7 +7,7 @@
 // pantalla avisa y el capturista sigue con la captura manual de siempre.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
-import { parsearQrCurp, type DatosCurpQr } from './curpQr';
+import { parsearQrCurp, type DatosCurpQr } from '@sedea/shared';
 
 interface Props {
   onDatos: (datos: DatosCurpQr) => void;

@@ -9,3 +9,5 @@ export * from './solicitudes.js';
 export * from './declaraciones.js';
 // Build 10: administracion de catalogos jerarquicos.
 export * from './catalogos.js';
+// Escaneo del QR de la Constancia CURP y traspaso celular -> PC (E60).
+export * from './curpQr.js';

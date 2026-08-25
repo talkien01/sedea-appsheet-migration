@@ -1,5 +1,10 @@
 // Parseo del texto que trae el codigo QR de la Constancia CURP (RENAPO).
 //
+// Vive en @sedea/shared porque lo usan los dos lados: la PWA cuando decodifica
+// con la camara del propio equipo, y el backend cuando el celular vinculado
+// manda el texto crudo del QR (E60). Una sola implementacion, un solo criterio
+// de validez.
+//
 // Formato real confirmado con una constancia de muestra, campos separados por
 // `|` y con espacios/comas sobrantes en algunos de ellos:
 //
@@ -73,4 +78,52 @@ export function parsearQrCurp(texto: string): DatosCurpQr | null {
     sexo: aSexo(campos[5]),
     fecha_nacimiento: aFechaIso(campos[6])
   };
+}
+
+// ============================================================================
+// E60: sesion de escaneo con celular vinculado
+// ============================================================================
+//
+// El equipo de ventanilla suele ser un escritorio sin camara util. En vez de
+// pedirle al capturista que teclee 18 caracteres, abre una sesion efimera, la
+// muestra como QR en pantalla, el capturista la abre con su celular y escanea
+// ahi la Constancia. El celular manda SOLO el texto del QR; el servidor lo
+// parsea y el navegador de escritorio lo recoge.
+//
+// El celular NO se autentica: el token de la sesion es la credencial, por eso
+// es aleatorio, de un solo uso y de vida corta.
+
+/** Minutos de vida de una sesion desde que se crea. */
+export const MINUTOS_VIGENCIA_ESCANEO = 10;
+
+/**
+ * Estado de la sesion visto por el escritorio.
+ * - `pendiente`: creada, el celular todavia no manda nada.
+ * - `completada`: el celular mando un QR valido; `datos` ya viene lleno.
+ * - `expirada`: se agoto la vigencia sin resultado.
+ */
+export type EstadoSesionEscaneo = 'pendiente' | 'completada' | 'expirada';
+
+/** Respuesta de POST /api/escaneo-curp/sesiones. */
+export interface SesionEscaneoCreada {
+  token: string;
+  expira_en: string;
+}
+
+/** Respuesta de GET /api/escaneo-curp/sesiones/:token (sondeo del escritorio). */
+export interface EstadoSesionEscaneoRespuesta {
+  estado: EstadoSesionEscaneo;
+  expira_en: string;
+  /** Solo viene con estado `completada`. */
+  datos: DatosCurpQr | null;
+}
+
+/**
+ * Cuerpo de POST /api/escaneo-curp/sesiones/:token/resultado (lo manda el
+ * celular). Va el texto crudo del QR, no los campos ya parseados: asi el
+ * criterio de validez vive en un solo lugar y el celular no puede inventar
+ * una CURP que el parser habria rechazado.
+ */
+export interface ResultadoEscaneoMovilCuerpo {
+  texto_qr: string;
 }

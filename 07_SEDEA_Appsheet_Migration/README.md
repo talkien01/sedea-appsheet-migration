@@ -477,6 +477,95 @@ caracteres con una letra y un número, y que sea **distinta de la vigente**
 
 ---
 
+## Reiniciar datos de prueba
+
+> **IRREVERSIBLE.** Borra para siempre todo lo capturado. No hay papelera, no es
+> un borrado lógico y no se puede deshacer. Está pensado para una sola cosa:
+> dejar la base limpia después de las pruebas, justo antes de arrancar con los
+> datos reales. Si no tienes respaldo, no lo corras.
+
+**Qué borra** (12 tablas, todo lo capturado):
+
+`dictamenes`, `predictamenes_ia`, `solicitud_documentos`, `solicitud_conceptos`,
+`solicitudes`, `capturas`, `staging_beneficiarios`, `staging_catalogos`,
+`importaciones`, `beneficiarios`, `sesiones_escaneo_curp`, `solicitud_folios`.
+
+**Qué NO toca** (el catálogo del sistema queda intacto):
+
+`usuarios`, `direcciones_regionales`, `municipios`, `componentes`, `programas`,
+`subprogramas`, `modalidades`, `proyectos`, `tipos_apoyo`,
+`documentos_requeridos`, `ventanillas`, `catalogos`, `configuracion_plazos` y
+`auditoria_log` (la bitácora se conserva: ahí queda el rastro del reinicio).
+
+Vaciar `solicitud_folios` reinicia el contador de consecutivos, así que la
+siguiente solicitud real vuelve a generar el folio `-0001-` para cada
+combinación proyecto/regional/municipio/año.
+
+### Vía 1 — Botón en la app (solo `admin`)
+
+*Usuarios* → al final de la pantalla, la **Zona de peligro** → **Reiniciar datos
+de prueba**. El modal exige teclear la frase exacta `BORRAR TODOS LOS DATOS`
+(en mayúsculas) para habilitar el botón de confirmar. Al terminar muestra
+cuántas filas se borraron de cada tabla.
+
+La sección solo aparece para rol `admin`; `editor_datos` administra usuarios
+pero no puede ejecutar esta operación. El backend no confía en el frontend:
+`POST /api/admin/reiniciar-datos-prueba` exige rol `admin` estricto y que el
+body repita la frase (`{"confirmacion":"BORRAR TODOS LOS DATOS"}`), o responde
+403 / 422 sin borrar nada.
+
+### Vía 2 — Script SQL manual (sin esperar el deploy)
+
+```bash
+docker compose exec -T db psql -U sedea -d sedea -v ON_ERROR_STOP=1 \
+  < scripts/reiniciar_datos_prueba.sql
+```
+
+Hace exactamente lo mismo, en el mismo orden, e imprime al final los conteos de
+verificación (las 12 tablas en 0 y el catálogo intacto). Es idempotente:
+correrlo dos veces deja el mismo estado.
+
+El `.sql` es un **archivo generado** desde `packages/shared/src/reinicio.ts`, la
+misma fuente que usa el endpoint, para que el script manual y el botón no se
+puedan desincronizar. Si se agrega una tabla de datos capturados al esquema, se
+agrega ahí y se regenera:
+
+```bash
+npm run generar-sql-reinicio -w backend
+```
+
+### Paso 3 (MANUAL Y APARTE) — limpiar los archivos de `/media`
+
+Ni el botón ni el script borran los archivos físicos. Tras el TRUNCATE, las
+fotos de evidencia y los documentos escaneados quedan huérfanos en el volumen
+`media` (montado en `/app/media` del contenedor `backend`, ver
+`MEDIA_DIR` en `docker-compose.yml`).
+
+Esto es deliberado: exponer un `rm -rf` sobre un contenedor de producción detrás
+de un endpoint HTTP es un riesgo que no vale la pena para algo que se hace una
+sola vez. Se limpia a mano:
+
+```bash
+# 1. Revisar QUÉ se va a borrar antes de borrar nada.
+docker compose exec backend sh -c 'du -sh /app/media/* 2>/dev/null; find /app/media -type f | wc -l'
+
+# 2. Borrar el contenido, conservando el directorio raíz /app/media
+#    (el backend lo necesita montado para poder seguir escribiendo).
+docker compose exec backend sh -c 'find /app/media -mindepth 1 -delete'
+
+# 3. Verificar que quedó vacío.
+docker compose exec backend sh -c 'find /app/media -mindepth 1 | wc -l'   # -> 0
+```
+
+Estructura que se limpia: `/app/media/AAAA/MM/` (fotos de capturas de campo) y
+`/app/media/solicitudes/AAAA/MM/` (documentos de las solicitudes de ventanilla).
+
+Si el despliegue no usa `docker compose` sino EasyPanel u otro orquestador,
+sustituye `docker compose exec backend` por `docker exec <nombre-del-contenedor>`
+y usa el mismo `find ... -mindepth 1 -delete`.
+
+---
+
 ## Ventanilla: captura de Solicitudes de Apoyo
 
 Hasta el build 5 la única forma de dar de alta beneficiarios era la importación

@@ -271,3 +271,13 @@ export function IconoOjo(props: Props) {
     </Base>
   );
 }
+
+/** Regresar / restaurar: flecha curva hacia atras. */
+export function IconoRegresar(props: Props) {
+  return (
+    <Base {...props}>
+      <path d="M9 7l-5 5 5 5" />
+      <path d="M20 12H5" />
+    </Base>
+  );
+}

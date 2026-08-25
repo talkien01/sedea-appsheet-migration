@@ -344,6 +344,20 @@ export const api = {
     });
   },
 
+  /** Eliminación lógica de usuario (papelera). Solo admin. */
+  async eliminarUsuario(id: number): Promise<{ ok: true; usuario: { id: number; usuario: string; eliminado: boolean } }> {
+    return peticion(`/usuarios/${id}/eliminar`, {
+      method: 'POST'
+    });
+  },
+
+  /** Restaurar usuario desde papelera. Solo admin. */
+  async restaurarUsuario(id: number): Promise<{ ok: true; usuario: { id: number; usuario: string; eliminado: boolean } }> {
+    return peticion(`/usuarios/${id}/restaurar`, {
+      method: 'POST'
+    });
+  },
+
   /**
    * Cambio de la propia contrasena (11.4). En el flujo obligatorio se llama
    * SIN `password_actual`: el body ni siquiera incluye la clave (D25).

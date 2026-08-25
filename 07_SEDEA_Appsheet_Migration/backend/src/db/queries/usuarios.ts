@@ -8,17 +8,19 @@ import { consultar, consultarUna, pool } from '../pool.js';
 /** Proyeccion publica de un usuario, con Regional y conteo de capturas. */
 const SELECT_USUARIO = `
   SELECT u.id, u.usuario, u.nombre_completo, u.rol, u.regional_id,
-         r.nombre AS regional, u.activo, u.debe_cambiar_password,
+         r.nombre AS regional, u.activo, u.eliminado, u.debe_cambiar_password,
          u.creado_en, u.actualizado_en, u.password_actualizado_en,
          (SELECT count(*)::int FROM capturas c WHERE c.usuario_id = u.id) AS capturas
     FROM usuarios u
     LEFT JOIN direcciones_regionales r ON r.id = u.regional_id
+   WHERE u.eliminado = FALSE
 `;
 
 export interface FiltrosUsuarios {
   rol?: string | null;
   regional_id?: number | null;
   activo?: boolean | null;
+  eliminado?: boolean | null;
   q?: string | null;
   page: number;
   page_size: number;
@@ -43,6 +45,15 @@ export async function listarUsuarios(
     parametros.push(filtros.activo);
     condiciones.push(`u.activo = $${parametros.length}`);
   }
+  // Filtro para papelera: eliminado=true (solo admin)
+  if (filtros.eliminado === true) {
+    // Si se piden eliminados, no filtrar por WHERE de SELECT_USUARIO
+    condiciones.push(`u.eliminado = TRUE`);
+  } else if (filtros.eliminado === false) {
+    condiciones.push(`u.eliminado = FALSE`);
+  }
+  // Si eliminado es undefined/null, se usa el WHERE por defecto de SELECT_USUARIO
+
   if (filtros.q && filtros.q.trim().length >= 2) {
     parametros.push(`%${filtros.q.trim()}%`);
     const i = parametros.length;
@@ -53,16 +64,26 @@ export async function listarUsuarios(
   }
 
   const where = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
+  // Para eliminados, usar FROM directo sin WHERE predefinido
+  const sqlBase = filtros.eliminado === true
+    ? `SELECT u.id, u.usuario, u.nombre_completo, u.rol, u.regional_id,
+             r.nombre AS regional, u.activo, u.eliminado, u.debe_cambiar_password,
+             u.creado_en, u.actualizado_en, u.password_actualizado_en,
+             (SELECT count(*)::int FROM capturas c WHERE c.usuario_id = u.id) AS capturas
+       FROM usuarios u
+       LEFT JOIN direcciones_regionales r ON r.id = u.regional_id`
+    : SELECT_USUARIO;
+
   const totalFila = await consultarUna<{ total: number }>(
-    `SELECT count(*)::int AS total FROM usuarios u ${where}`,
+    `SELECT count(*)::int AS total FROM (${sqlBase}) _ ${where}`,
     parametros
   );
   const total = totalFila?.total ?? 0;
   const desplazamiento = (filtros.page - 1) * filtros.page_size;
 
   const data = await consultar<UsuarioAdmin>(
-    `${SELECT_USUARIO} ${where}
-      ORDER BY u.activo DESC, u.nombre_completo ASC
+    `${sqlBase} ${where}
+      ORDER BY u.eliminado ASC, u.activo DESC, u.nombre_completo ASC
       LIMIT ${filtros.page_size} OFFSET ${desplazamiento}`,
     parametros
   );
@@ -80,14 +101,14 @@ export async function obtenerUsuarioAdmin(
   return (rows[0] as UsuarioAdmin) ?? null;
 }
 
-/** Fila cruda (incluye rol y activo) para las validaciones de negocio. */
+/** Fila cruda (incluye rol, activo y eliminado) para las validaciones de negocio. */
 export async function obtenerFilaUsuario(
   id: number,
   cliente?: PoolClient
-): Promise<{ id: number; usuario: string; rol: string; regional_id: number | null; activo: boolean; nombre_completo: string } | null> {
+): Promise<{ id: number; usuario: string; rol: string; regional_id: number | null; activo: boolean; eliminado: boolean; nombre_completo: string } | null> {
   const ejecutor = cliente ?? pool;
   const { rows } = await ejecutor.query(
-    `SELECT id, usuario, nombre_completo, rol, regional_id, activo FROM usuarios WHERE id = $1`,
+    `SELECT id, usuario, nombre_completo, rol, regional_id, activo, eliminado FROM usuarios WHERE id = $1`,
     [id]
   );
   return rows[0] ?? null;
@@ -214,6 +235,18 @@ export async function actualizarActivo(
     id,
     activo
   ]);
+}
+
+/** E38b - Eliminación lógica: marca usuario como eliminado (solo admin). */
+export async function marcarEliminado(
+  cliente: PoolClient,
+  id: number,
+  eliminado: boolean
+): Promise<void> {
+  await cliente.query(
+    `UPDATE usuarios SET eliminado = $2, activo = FALSE, actualizado_en = now() WHERE id = $1`,
+    [id, eliminado]
+  );
 }
 
 /** Hash actual de un usuario (solo para comparar en el cambio propio). */

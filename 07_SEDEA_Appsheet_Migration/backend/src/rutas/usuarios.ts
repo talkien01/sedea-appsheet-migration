@@ -20,6 +20,7 @@ import {
   existeNombreUsuario,
   insertarUsuario,
   listarUsuarios,
+  marcarEliminado,
   obtenerFilaUsuario,
   obtenerMunicipiosDeRegional,
   obtenerUsuarioAdmin,
@@ -408,6 +409,99 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
     }
   );
 
+  // E38b - Eliminación lógica (papelera): solo admin.
+  // Marca un usuario como eliminado: no puede login, no aparece en listados
+  // normales, pero conserva su historial de capturas y auditoría.
+  app.post<{ Params: { id: string } }>(
+    '/api/usuarios/:id/eliminar',
+    protegida,
+    async (peticion, respuesta) => {
+      const actor = peticion.usuario!;
+      const id = Number(peticion.params.id);
+
+      // Solo admin puede eliminar (D15).
+      if (!actor.rol.split('+').includes('admin')) {
+        throw error403('rol_no_autorizado', 'Solo los administradores pueden eliminar usuarios.');
+      }
+
+      const actual = await obtenerFilaUsuario(id);
+      if (!actual) throw error404('no_encontrado', 'El usuario no existe.');
+      if (actual.eliminado) {
+        throw error409('ya_eliminado', 'Este usuario ya está eliminado.');
+      }
+      if (id === actor.id) {
+        throw error409('auto_eliminacion', 'No puedes eliminarte a ti mismo.');
+      }
+
+      await enTransaccion(async (cliente) => {
+        // Si es admin, verificar que quede al menos otro admin activo.
+        if (actual.rol === 'admin') {
+          await exigirQuedaOtroAdmin(cliente, id, actual.rol);
+        }
+        await marcarEliminado(cliente, id, true);
+        await bitacoraEnTransaccion(cliente, {
+          usuarioId: actor.id,
+          accion: 'usuario_eliminado',
+          entidad: 'usuario',
+          entidadId: id,
+          detalle: {
+            usuario: actual.usuario,
+            eliminado_por_rol: actor.rol
+          },
+          ip: peticion.ip,
+          userAgent: (peticion.headers['user-agent'] as string | undefined)?.slice(0, 300) ?? null
+        });
+      });
+
+      return respuesta.status(200).send({
+        ok: true,
+        usuario: { id, usuario: actual.usuario, eliminado: true }
+      });
+    }
+  );
+
+  // E38c - Restaurar desde papelera: solo admin.
+  app.post<{ Params: { id: string } }>(
+    '/api/usuarios/:id/restaurar',
+    protegida,
+    async (peticion, respuesta) => {
+      const actor = peticion.usuario!;
+      const id = Number(peticion.params.id);
+
+      // Solo admin puede restaurar.
+      if (!actor.rol.split('+').includes('admin')) {
+        throw error403('rol_no_autorizado', 'Solo los administradores pueden restaurar usuarios.');
+      }
+
+      const actual = await obtenerFilaUsuario(id);
+      if (!actual) throw error404('no_encontrado', 'El usuario no existe.');
+      if (!actual.eliminado) {
+        throw error409('no_eliminado', 'Este usuario no está eliminado.');
+      }
+
+      await enTransaccion(async (cliente) => {
+        await marcarEliminado(cliente, id, false);
+        await bitacoraEnTransaccion(cliente, {
+          usuarioId: actor.id,
+          accion: 'usuario_restaurado',
+          entidad: 'usuario',
+          entidadId: id,
+          detalle: {
+            usuario: actual.usuario,
+            restaurado_por_rol: actor.rol
+          },
+          ip: peticion.ip,
+          userAgent: (peticion.headers['user-agent'] as string | undefined)?.slice(0, 300) ?? null
+        });
+      });
+
+      return respuesta.status(200).send({
+        ok: true,
+        usuario: { id, usuario: actual.usuario, eliminado: false }
+      });
+    }
+  );
+
   // Nota: no se registra ninguna ruta DELETE /api/usuarios/:id (D16).
-  // Fastify responde 404 a esa peticion con el manejador global.
+  // La eliminación permanente solo es posible via SQL directo, no desde la API.
 }

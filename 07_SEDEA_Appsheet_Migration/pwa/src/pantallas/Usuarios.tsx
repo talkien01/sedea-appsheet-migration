@@ -49,6 +49,7 @@ export default function Usuarios() {
   const [filtroRol, setFiltroRol] = useState('');
   const [filtroRegional, setFiltroRegional] = useState('');
   const [filtroActivo, setFiltroActivo] = useState('');
+  const [enPapelera, setEnPapelera] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [busquedaAplicada, setBusquedaAplicada] = useState('');
 
@@ -92,6 +93,8 @@ export default function Usuarios() {
       if (filtroRol) parametros.set('rol', filtroRol);
       if (filtroRegional) parametros.set('regional_id', filtroRegional);
       if (filtroActivo) parametros.set('activo', filtroActivo);
+      // Si estamos en papelera, pedir solo eliminados
+      if (enPapelera) parametros.set('eliminado', 'true');
       if (busquedaAplicada.length >= 2) parametros.set('q', busquedaAplicada);
       const pagina = await api.usuarios(parametros);
       setFilas(pagina.data);
@@ -104,7 +107,7 @@ export default function Usuarios() {
     } finally {
       setCargando(false);
     }
-  }, [filtroRol, filtroRegional, filtroActivo, busquedaAplicada]);
+  }, [filtroRol, filtroRegional, filtroActivo, enPapelera, busquedaAplicada]);
 
   useEffect(() => {
     void cargar();
@@ -318,6 +321,34 @@ export default function Usuarios() {
     }
   };
 
+  const eliminarUsuario = async (fila: UsuarioAdmin) => {
+    const confirmado = window.confirm(
+      `¿Eliminar a ${fila.nombre_completo}? El usuario irá a la papelera y conservará su historial, pero no podrá iniciar sesión.`
+    );
+    if (!confirmado) return;
+    setError(null);
+    try {
+      await api.eliminarUsuario(fila.id);
+      await cargar();
+    } catch (fallo) {
+      setError((fallo as Error).message);
+    }
+  };
+
+  const restaurarUsuario = async (fila: UsuarioAdmin) => {
+    const confirmado = window.confirm(
+      `¿Restaurar a ${fila.nombre_completo}? El usuario volverá a la lista activa.`
+    );
+    if (!confirmado) return;
+    setError(null);
+    try {
+      await api.restaurarUsuario(fila.id);
+      await cargar();
+    } catch (fallo) {
+      setError((fallo as Error).message);
+    }
+  };
+
   if (!enLinea) {
     return (
       <div className="tarjeta">
@@ -332,11 +363,24 @@ export default function Usuarios() {
       <h1>Administración de usuarios</h1>
 
       <div className="mensaje aviso" role="status">
-        Las bajas se hacen desactivando la cuenta: el historial de capturas y auditoría se
-        conserva. Ningún usuario se elimina.
+        {enPapelera
+          ? 'Papelera: usuarios eliminados. Restaurar para volver a la lista activa o eliminar permanentemente (solo admin, via SQL).'
+          : 'Las bajas se hacen desactivando o eliminando la cuenta: el historial de capturas y auditoría se conserva.'}
       </div>
 
       <div className="filtros">
+        <button
+          type="button"
+          className={enPapelera ? 'secundario activo' : 'secundario'}
+          data-testid="btn-toggle-papelera"
+          onClick={() => {
+            setEnPapelera(!enPapelera);
+            setFiltroActivo('');
+          }}
+        >
+          {enPapelera ? '🗑️ Papelera' : 'Ver Papelera'}
+        </button>
+
         <select
           data-testid="select-filtro-rol"
           value={filtroRol}
@@ -417,21 +461,27 @@ export default function Usuarios() {
             </thead>
             <tbody>
               {filas.map((fila) => (
-                <tr key={fila.id} data-testid="fila-usuario">
+                <tr key={fila.id} data-testid="fila-usuario" className={fila.eliminado ? 'eliminada' : ''}>
                   <td data-etiqueta="Usuario" className="mono">{fila.usuario}</td>
                   <td data-etiqueta="Nombre completo" className="celda-texto">{fila.nombre_completo}</td>
                   <td data-etiqueta="Rol">{ETIQUETAS_ROL[fila.rol] ?? fila.rol}</td>
                   <td data-etiqueta="Regional">{fila.regional ?? '—'}</td>
                   <td data-etiqueta="Estado">
-                    <span
-                      className={`badge ${fila.activo ? 'capturado' : 'pendiente'}`}
-                      data-testid="badge-estado-usuario"
-                    >
-                      {fila.activo ? 'Activo' : 'Inactivo'}
-                    </span>
+                    {fila.eliminado ? (
+                      <span className="badge alerta-alta" data-testid="badge-eliminado">
+                        Eliminado
+                      </span>
+                    ) : (
+                      <span
+                        className={`badge ${fila.activo ? 'capturado' : 'pendiente'}`}
+                        data-testid="badge-estado-usuario"
+                      >
+                        {fila.activo ? 'Activo' : 'Inactivo'}
+                      </span>
+                    )}
                   </td>
                   <td data-etiqueta="Contraseña">
-                    {fila.debe_cambiar_password && (
+                    {fila.debe_cambiar_password && !fila.eliminado && (
                       <span className="badge alerta-media" data-testid="badge-password-pendiente">
                         Cambio pendiente
                       </span>
@@ -439,25 +489,48 @@ export default function Usuarios() {
                   </td>
                   <td data-etiqueta="Capturas">{fila.capturas}</td>
                   <td data-etiqueta="Acciones" className="acciones">
-                    <BotonIcono
-                      icono="lapiz"
-                      etiqueta="Editar"
-                      testId="btn-editar-usuario"
-                      onClick={() => abrirEdicion(fila)}
-                    />
-                    <BotonIcono
-                      icono="llave"
-                      etiqueta="Resetear contraseña"
-                      testId="btn-reset-password"
-                      onClick={() => abrirReset(fila)}
-                    />
-                    <BotonIcono
-                      icono={fila.activo ? 'ojo-tachado' : 'check'}
-                      etiqueta={fila.activo ? 'Desactivar' : 'Activar'}
-                      tono={fila.activo ? 'peligro' : 'neutro'}
-                      testId="btn-toggle-activo"
-                      onClick={() => void alternarActivo(fila)}
-                    />
+                    {!fila.eliminado ? (
+                      <>
+                        <BotonIcono
+                          icono="lapiz"
+                          etiqueta="Editar"
+                          testId="btn-editar-usuario"
+                          onClick={() => abrirEdicion(fila)}
+                        />
+                        <BotonIcono
+                          icono="llave"
+                          etiqueta="Resetear contraseña"
+                          testId="btn-reset-password"
+                          onClick={() => abrirReset(fila)}
+                        />
+                        <BotonIcono
+                          icono={fila.activo ? 'ojo-tachado' : 'check'}
+                          etiqueta={fila.activo ? 'Desactivar' : 'Activar'}
+                          tono={fila.activo ? 'peligro' : 'neutro'}
+                          testId="btn-toggle-activo"
+                          onClick={() => void alternarActivo(fila)}
+                        />
+                        {perfil?.rol === 'admin' && (
+                          <BotonIcono
+                            icono="basura"
+                            etiqueta="Eliminar"
+                            tono="peligro"
+                            testId="btn-eliminar-usuario"
+                            onClick={() => void eliminarUsuario(fila)}
+                          />
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <BotonIcono
+                          icono="regresar"
+                          etiqueta="Restaurar"
+                          tono="neutro"
+                          testId="btn-restaurar-usuario"
+                          onClick={() => void restaurarUsuario(fila)}
+                        />
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}

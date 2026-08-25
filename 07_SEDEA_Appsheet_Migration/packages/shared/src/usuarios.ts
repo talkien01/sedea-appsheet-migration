@@ -238,6 +238,7 @@ export interface UsuarioAdmin {
   regional_id: number | null;
   regional: string | null;
   activo: boolean;
+  eliminado: boolean;
   debe_cambiar_password: boolean;
   creado_en: string;
   actualizado_en: string | null;

@@ -36,6 +36,7 @@ import {
   validarAlta,
   validarEdicion
 } from '../servicios/usuarios.js';
+import { generarPlantillaLote, procesarLote } from '../servicios/usuariosLote.js';
 
 /** Guarda de rol propia para devolver el codigo `rol_no_autorizado` del contrato. */
 async function soloAdministradores(peticion: FastifyRequest, _respuesta: FastifyReply) {
@@ -134,6 +135,67 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
       usuario: creado,
       password_temporal: passwordTemporal,
       modo_password: modoPassword,
+      aviso: AVISO_PASSWORD_TEMPORAL
+    });
+  });
+
+  // E38b-1 - Plantilla CSV del alta en lote.
+  // Se sirve desde el backend (y no se arma en el navegador) para que las
+  // columnas y el ejemplo salgan de la MISMA fuente que las lee al subirlas.
+  app.get('/api/usuarios/plantilla-lote.csv', protegida, async (_peticion, respuesta) => {
+    return respuesta
+      .status(200)
+      .header('Content-Type', 'text/csv; charset=utf-8')
+      .header('Content-Disposition', 'attachment; filename="plantilla_usuarios_sedea.csv"')
+      .send(generarPlantillaLote());
+  });
+
+  // E38b-2 - Alta en lote desde CSV.
+  // Cada fila se valida y se crea con las mismas reglas del alta individual y
+  // es INDEPENDIENTE de las demas: un error no aborta el resto del archivo.
+  // Siempre responde 200 con el detalle fila por fila; los unicos 4xx son los
+  // del archivo completo (sin archivo, encabezado invalido, demasiadas filas).
+  app.post('/api/usuarios/lote', protegida, async (peticion, respuesta) => {
+    const actor = peticion.usuario!;
+    let texto: string | null = null;
+
+    if (peticion.isMultipart()) {
+      for await (const parte of peticion.parts()) {
+        if (parte.type === 'file') {
+          const contenido = await parte.toBuffer();
+          if (parte.fieldname !== 'archivo') continue;
+          if (parte.file.truncated === true) {
+            throw error422('archivo_muy_grande', 'El archivo excede el tamaño máximo permitido.');
+          }
+          texto = contenido.toString('utf8');
+        }
+      }
+    } else {
+      // Alternativa para scripts: { "csv": "usuario,nombre_completo,..." }.
+      const cuerpo = peticion.body as { csv?: unknown } | null;
+      if (cuerpo && typeof cuerpo.csv === 'string') texto = cuerpo.csv;
+    }
+
+    if (texto === null || texto.trim().length === 0) {
+      throw error422(
+        'archivo_requerido',
+        'Sube el archivo CSV en el campo "archivo" (multipart/form-data).'
+      );
+    }
+
+    const { resultados, creados, errores } = await procesarLote(actor, texto, {
+      ip: peticion.ip,
+      userAgent: (peticion.headers['user-agent'] as string | undefined)?.slice(0, 300) ?? null
+    });
+
+    return respuesta.status(200).send({
+      ok: true,
+      total: resultados.length,
+      creados,
+      errores,
+      resultados,
+      // Las temporales de este cuerpo son la unica copia en claro que existira:
+      // no se persisten ni se registran en la bitacora.
       aviso: AVISO_PASSWORD_TEMPORAL
     });
   });

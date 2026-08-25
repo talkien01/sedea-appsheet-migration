@@ -535,9 +535,48 @@ capturando a mano.
 - El navegador solo entrega la cámara en contexto seguro: `https://` o
   `localhost`. Servida por `http://` en una IP de la red, el botón mostrará el
   aviso de cámara no disponible.
-- Código: `pwa/src/componentes/curpQr.ts` (parseo) y
+- Código: `packages/shared/src/curpQr.ts` (parseo, compartido con el backend) y
   `pwa/src/componentes/EscanerCurpQr.tsx` (modal de cámara). Pruebas:
   `npx playwright test test-curp-qr.spec.ts` (con el stack arriba).
+
+### Escanear con el celular cuando la computadora no tiene cámara
+
+El equipo de ventanilla suele ser un escritorio sin cámara utilizable, y por la
+restricción de contexto seguro de arriba el botón *Escanear CURP* tampoco sirve
+si la PWA se sirve por `http://` en una IP de la red. Para eso está el segundo
+botón, **Escanear con el celular**:
+
+1. El capturista lo pulsa y la pantalla muestra un código QR de vinculación.
+2. Lo escanea con la cámara de su celular, que abre `/escaneo-movil/:token`.
+3. En el celular escanea la Constancia CURP.
+4. Los cuatro campos aparecen solos en el formulario de la computadora, con el
+   mismo aviso de revisión que el escaneo directo.
+
+Cómo está resuelto, y por qué:
+
+- El celular **no inicia sesión**. La pantalla `/escaneo-movil/:token` vive
+  fuera del cascarón y de `RutaProtegida` a propósito: se abre en un teléfono
+  donde nadie se autenticó. El token de la URL es la única credencial y lo
+  único que habilita es entregar un escaneo.
+- Por eso el token es de 24 bytes aleatorios, vive **10 minutos** y es de **un
+  solo uso**. Un token inexistente y uno ajeno responden ambos 404, para que no
+  se pueda distinguir uno del otro sondeando.
+- El celular manda el **texto crudo** del QR, no los campos ya parseados: así el
+  criterio de validez vive en un solo lugar (`@sedea/shared`) y el teléfono no
+  puede inventar una CURP que el parser habría rechazado.
+- La sesión es un buzón efímero entre dos navegadores: **no escribe nada en
+  `solicitudes`**. Los datos llegan al expediente por la vía de siempre, cuando
+  el capturista los revisa y envía el formulario.
+- El QR de vinculación se genera en el navegador (`qrcode`); el token no pasa
+  por ningún servicio externo.
+- El celular tiene que alcanzar el mismo servidor que ve la computadora: el QR
+  codifica el origen actual, así que en la red de la oficina eso es una IP o un
+  host local, y el teléfono debe estar en esa misma red.
+- Código: `backend/src/rutas/escaneoCurp.ts` (3 endpoints),
+  `pwa/src/componentes/VincularCelular.tsx` (modal del escritorio),
+  `pwa/src/pantallas/EscaneoMovil.tsx` (pantalla del celular) y la migración
+  `db/migrations/019_sesiones_escaneo_curp.sql`. Pruebas:
+  `npx playwright test test-escaneo-movil.spec.ts` (con el stack arriba).
 
 ### Todo el texto libre se guarda en MAYÚSCULAS
 

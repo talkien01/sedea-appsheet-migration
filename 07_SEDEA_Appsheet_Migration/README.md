@@ -275,7 +275,7 @@ reutilizan la de los demás.
 | `ventanilla1` | `ventanilla` | Ventanilla de San Juan del Río (`REG-04`) con **alcance restringido**: 2 municipios y el componente `TR` |
 | `ventanilla2` | `ventanilla` | Ventanilla SEDEA central, **sin restricción** (alcance "todos") |
 | `vent.jalpan` | `ventanilla` | Ventanilla de Jalpan (`REG-02`) **sin alcance granular**: el recorte lo hace su Dirección Regional (solo captura en los 4 municipios de Jalpan) |
-| `dict.test` | `dictaminador` | Cola de dictamen a nivel **estatal**. No entra a `/solicitudes` |
+| `dict.test` | `dictaminador` | Sin Regional: cola de dictamen de todo el estado. No entra a `/solicitudes` |
 | `vent.dict` | `ventanilla+dictaminador` | Multi-rol: captura en ventanilla **y** dictamina |
 
 > **Advertencia:** estos usuarios existen únicamente para pruebas.
@@ -305,8 +305,8 @@ base de datos con SQL para crear capturistas.
 ### Alta de una cuenta
 
 1. **Nuevo usuario** → nombre de acceso, nombre completo, rol y —si el rol es
-   **Capturista** o **Ventanilla**— su Dirección Regional. Los demás roles no
-   llevan Regional.
+   **Capturista**, **Ventanilla** o **Dictaminador**— su Dirección Regional.
+   Los demás roles no llevan Regional.
    - En **Capturista** la Regional es obligatoria.
    - En **Ventanilla** la Regional decide en qué municipios puede capturar
      (secciones 2.2 y 4.1 de Nueva Solicitud): una ventanilla de Jalpan solo ve
@@ -314,6 +314,10 @@ base de datos con SQL para crear capturistas.
      la ventanilla central de SEDEA (`VEN-SED`), que atiende todo el estado y se
      da de alta con la opción explícita **“SEDEA Central (todo el estado)”**
      (equivale a dejar la Regional en blanco).
+   - En **Dictaminador** la Regional recorta su **bandeja de dictamen**: un
+     dictaminador de Jalpan solo ve, abre y dictamina solicitudes de Jalpan.
+     Dejarla en **“SEDEA Central (todo el estado)”** (Regional en blanco) le
+     devuelve la cola completa de las cuatro Regionales.
 2. **Contraseña inicial:** el formulario incluye un selector con dos opciones.
    - **Generar automática** (opción por defecto): el sistema genera una
      **contraseña temporal de 14 caracteres**, sin caracteres ambiguos, y la
@@ -356,7 +360,7 @@ sección **Carga masiva**, con el mismo criterio de acceso que el alta individua
    | `usuario` | Sí | Nombre de acceso, único. Minúsculas, números, punto, guion y guion bajo. |
    | `nombre_completo` | Sí | Entre 3 y 120 caracteres. |
    | `rol` | Sí | Un rol, o varios unidos con `+` (ej. `capturista+ventanilla`). |
-   | `regional_clave` | Según el rol | Clave de la Dirección Regional (`REG-01` … `REG-04`). Obligatoria si el rol incluye `capturista`; opcional en `ventanilla` (vacía = SEDEA Central, todo el estado); debe ir **vacía** en cualquier otro rol. |
+   | `regional_clave` | Según el rol | Clave de la Dirección Regional (`REG-01` … `REG-04`). Obligatoria si el rol incluye `capturista`; opcional en `ventanilla` y `dictaminador` (vacía = SEDEA Central, todo el estado); debe ir **vacía** en cualquier otro rol. |
    | `alcance_municipios` | No | Claves de municipio separadas por `;` (ej. `22004;22005`). Solo para `ventanilla`. Vacío = todos los de su Regional. |
    | `alcance_componentes` | No | Claves de componente separadas por `;` (ej. `DIN`). Solo para `ventanilla`. Vacío = todos. |
 
@@ -807,7 +811,15 @@ bloque `@media print` únicamente lo específico de su documento.
 ## Pre-dictaminación con IA y dictamen (`/dictamen`)
 
 Rol nuevo **`dictaminador`** (combinable con `+`, p. ej. `ventanilla+dictaminador`).
-Dictamina a nivel **estatal**: no se le aplica el aislamiento por Dirección Regional.
+
+**Aislamiento por Dirección Regional.** La cola de dictamen **no es compartida**:
+un dictaminador con Regional asignada ve, abre y dictamina únicamente las
+solicitudes de su Regional —bandeja, métricas de la cabecera, detalle,
+pre-dictaminación en lote y confirmación—. El criterio es el mismo que ya usan
+ventanilla y capturista: manda el **municipio de ubicación del predio**. Una
+solicitud de otra Regional responde **404** aunque se pida por URL directa, así
+que ocultarla de la lista no es lo único que la protege. Un dictaminador de
+**SEDEA Central** (Regional en blanco) y el `admin` siguen viendo todo el estado.
 
 **Qué hace.** La IA lee **los archivos que ventanilla ya adjuntó documento por
 documento** (el checklist de la solicitud, endpoint E46 de siempre) y emite un

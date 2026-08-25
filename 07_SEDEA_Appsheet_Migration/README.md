@@ -340,6 +340,56 @@ base de datos con SQL para crear capturistas.
    la cambie (el backend responde `cambio_password_requerido` a cualquier otra
    ruta). Esto aplica a **los cuatro roles**, no solo a los capturistas.
 
+### Alta en lote con plantilla CSV
+
+Para dar de alta a mucha gente de una vez (por ejemplo, todas las ventanillas de
+una Regional al arrancar un programa) la pantalla `/usuarios` tiene abajo la
+sección **Carga masiva**, con el mismo criterio de acceso que el alta individual
+(`admin` y `editor_datos`).
+
+1. **Descargar plantilla CSV** — baja un archivo con estas seis columnas y una
+   fila de ejemplo comentada con `#` (se ignora al subirla, así que no hace falta
+   borrarla para que funcione):
+
+   | Columna | Obligatoria | Qué lleva |
+   |---|---|---|
+   | `usuario` | Sí | Nombre de acceso, único. Minúsculas, números, punto, guion y guion bajo. |
+   | `nombre_completo` | Sí | Entre 3 y 120 caracteres. |
+   | `rol` | Sí | Un rol, o varios unidos con `+` (ej. `capturista+ventanilla`). |
+   | `regional_clave` | Según el rol | Clave de la Dirección Regional (`REG-01` … `REG-04`). Obligatoria si el rol incluye `capturista`; opcional en `ventanilla` (vacía = SEDEA Central, todo el estado); debe ir **vacía** en cualquier otro rol. |
+   | `alcance_municipios` | No | Claves de municipio separadas por `;` (ej. `22004;22005`). Solo para `ventanilla`. Vacío = todos los de su Regional. |
+   | `alcance_componentes` | No | Claves de componente separadas por `;` (ej. `DIN`). Solo para `ventanilla`. Vacío = todos. |
+
+2. **Subir el archivo** — se procesa **fila por fila, cada una independiente**:
+   que una traiga un error no impide que las demás se creen. Cada fila se valida
+   con **exactamente las mismas reglas del alta uno por uno** (es el mismo código:
+   un CSV no puede colar un usuario que el formulario habría rechazado), y los
+   motivos de error son literalmente los mismos textos.
+
+3. **Tabla de resultados** — una fila por cada línea del archivo, con el número de
+   línea tal como se ve en Excel, el chip **Creado** o **Error**, y el motivo
+   exacto cuando falla (`Ya existe un usuario con ese nombre de acceso.`,
+   `Los capturistas deben tener una Dirección Regional asignada.`, etc.).
+
+4. **Descargar contraseñas de los creados** — un CSV con `usuario,password_temporal`
+   de **solo los creados en esa corrida**. Rige el mismo principio que el modal
+   del alta individual: **esa descarga es la única oportunidad de obtener esas
+   contraseñas**. No se guardan en claro en ninguna parte, no quedan en la
+   bitácora y al recargar la pantalla se pierden. Si se pierde una, se resuelve
+   con **Resetear contraseña** de esa cuenta.
+
+Los usuarios creados por lote quedan con contraseña temporal automática de 14
+caracteres y **cambio obligatorio en el primer acceso**, igual que el alta
+individual.
+
+Dos límites que la carga masiva **no** relaja, porque son los mismos de las altas
+individuales:
+
+- Un `editor_datos` no puede crear cuentas `admin` desde el CSV
+  (`rol_no_asignable`).
+- Las columnas de alcance solo las puede usar un `admin` y solo sobre el rol
+  `ventanilla` puro, que es la misma regla del endpoint que administra el alcance.
+
 ### Cambio obligatorio vs. cambio voluntario
 
 Son dos flujos con la misma pantalla y con una diferencia deliberada:

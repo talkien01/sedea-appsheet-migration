@@ -45,12 +45,12 @@ export const MAX_FILAS_LOTE = 500;
  * sin borrar el ejemplo no crea un usuario basura.
  */
 const FILA_EJEMPLO = [
-  '# ejemplo (borra esta linea): juan.perez',
+  '# ejemplo (borra esta línea): juan.perez',
   'Juan Pérez Hernández',
-  'capturista+ventanilla',
+  'ventanilla',
   'REG-02',
-  'AMEALCO;SJR',
-  'CAS-EJI'
+  '22009;22010',
+  'DIN'
 ];
 
 /** Plantilla CSV lista para descargar (encabezados + ejemplo comentado). */

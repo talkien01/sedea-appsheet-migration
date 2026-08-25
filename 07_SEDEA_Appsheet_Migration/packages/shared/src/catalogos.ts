@@ -131,29 +131,33 @@ export const esquemaTipoApoyoEdicion = z.object({
 // TipoApoyo ya esta definido en dto.ts, se re-exporta alli
 
 // --- Documentos Requeridos --------------------------------------------------
+// `null` en los arreglos significa "aplica a todos": es el valor que guarda la
+// columna y el que interpreta el motor de coincidencia. El servicio ya lo
+// contempla (`datos[campo] ?? null`), pero el esquema no lo aceptaba, asi que
+// dar de alta una regla sin marcar componentes ni tipos devolvia 422.
 export const esquemaDocumentoRequeridoAlta = z.object({
   requisito: z.string().trim().min(3).max(300),
-  componentes: z.array(z.string()).optional(),
+  componentes: z.array(z.string()).nullable().optional(),
   // F-13: validado en el servicio para devolver tipo_persona_invalido (479).
-  tipos_persona: z.array(z.string()).optional(),
+  tipos_persona: z.array(z.string()).nullable().optional(),
   proyecto_id: z.number().int().positive().nullable().optional(),
   apoyo_id: z.number().int().positive().nullable().optional(),
-  apoyo_etiquetas: z.array(z.string()).optional(),
+  apoyo_etiquetas: z.array(z.string()).nullable().optional(),
   apoyo_excluir_id: z.number().int().positive().nullable().optional(),
-  apoyo_excluir_etiquetas: z.array(z.string()).optional(),
+  apoyo_excluir_etiquetas: z.array(z.string()).nullable().optional(),
   orden: z.number().int().min(0).max(9999).optional().default(0)
 }).strict();
 
 export const esquemaDocumentoRequeridoEdicion = z.object({
   requisito: z.string().trim().min(3).max(300).optional(),
-  componentes: z.array(z.string()).optional(),
+  componentes: z.array(z.string()).nullable().optional(),
   // F-13: validado en el servicio para devolver tipo_persona_invalido (479).
-  tipos_persona: z.array(z.string()).optional(),
+  tipos_persona: z.array(z.string()).nullable().optional(),
   proyecto_id: z.number().int().positive().nullable().optional(),
   apoyo_id: z.number().int().positive().nullable().optional(),
-  apoyo_etiquetas: z.array(z.string()).optional(),
+  apoyo_etiquetas: z.array(z.string()).nullable().optional(),
   apoyo_excluir_id: z.number().int().positive().nullable().optional(),
-  apoyo_excluir_etiquetas: z.array(z.string()).optional(),
+  apoyo_excluir_etiquetas: z.array(z.string()).nullable().optional(),
   orden: z.number().int().min(0).max(9999).optional()
 }).strict();
 

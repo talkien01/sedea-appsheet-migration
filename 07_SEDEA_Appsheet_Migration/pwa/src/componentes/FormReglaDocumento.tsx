@@ -1,12 +1,44 @@
 // Formulario de reglas de documentacion (Build 10).
 // [data-testid="form-regla-documento"]
+import { useState } from 'react';
+
+interface OpcionCatalogo {
+  id: number;
+  clave: string;
+  nombre: string;
+  activo?: boolean;
+}
+
 interface Props {
   regla: any | null;
   guardando: boolean;
   errorApi: string | null;
   exito: string | null;
+  /**
+   * Catalogos reales (GET /admin/catalogos/referencias). Los selects de
+   * proyecto y concepto se arman con estas listas: antes estaban escritas a
+   * mano en el JSX, asi que los conceptos dados de alta en /catalogos nunca
+   * aparecian aqui y la unica opcion ofrecida apuntaba a un id equivocado.
+   */
+  proyectos: OpcionCatalogo[];
+  tiposApoyo: OpcionCatalogo[];
+  cargandoReferencias: boolean;
   alGuardar: (datos: Record<string, unknown>) => void;
   alCancelar: () => void;
+}
+
+/**
+ * Deja solo los registros activos, pero conserva el que la regla ya tiene
+ * seleccionado aunque este dado de baja, para que editar una regla vieja no
+ * borre en silencio su referencia.
+ */
+function opcionesVisibles(lista: OpcionCatalogo[], seleccionado: number | null): OpcionCatalogo[] {
+  return lista.filter((o) => o.activo !== false || o.id === seleccionado);
+}
+
+function etiqueta(opcion: OpcionCatalogo): string {
+  const base = opcion.clave ? `${opcion.clave} — ${opcion.nombre}` : opcion.nombre;
+  return opcion.activo === false ? `${base} (desactivado)` : base;
 }
 
 export default function FormReglaDocumento({
@@ -14,9 +46,24 @@ export default function FormReglaDocumento({
   guardando,
   errorApi,
   exito,
+  proyectos,
+  tiposApoyo,
+  cargandoReferencias,
   alGuardar,
   alCancelar
 }: Props) {
+  // Controlados: las listas llegan por fetch, y un <select> no controlado se
+  // reinicia a la primera opcion cuando sus <option> cambian.
+  const [proyectoId, setProyectoId] = useState<string>(regla?.proyecto_id ? String(regla.proyecto_id) : '');
+  const [apoyoId, setApoyoId] = useState<string>(regla?.apoyo_id ? String(regla.apoyo_id) : '');
+  const [apoyoExcluirId, setApoyoExcluirId] = useState<string>(
+    regla?.apoyo_excluir_id ? String(regla.apoyo_excluir_id) : ''
+  );
+
+  const opcionesProyecto = opcionesVisibles(proyectos, regla?.proyecto_id ?? null);
+  const opcionesApoyo = opcionesVisibles(tiposApoyo, regla?.apoyo_id ?? null);
+  const opcionesApoyoExcluir = opcionesVisibles(tiposApoyo, regla?.apoyo_excluir_id ?? null);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
@@ -141,11 +188,16 @@ export default function FormReglaDocumento({
             id="select-proyecto-regla"
             name="proyecto_id"
             data-testid="select-proyecto-regla"
-            defaultValue={regla?.proyecto_id ?? ''}
+            value={proyectoId}
+            onChange={(e) => setProyectoId(e.target.value)}
+            disabled={cargandoReferencias}
           >
             <option value="">Cualquier proyecto</option>
-            <option value="1">PEO</option>
-            <option value="2">DEM</option>
+            {opcionesProyecto.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.clave}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -155,10 +207,18 @@ export default function FormReglaDocumento({
             id="select-apoyo"
             name="apoyo_id"
             data-testid="select-apoyo"
-            defaultValue={regla?.apoyo_id ?? ''}
+            value={apoyoId}
+            onChange={(e) => setApoyoId(e.target.value)}
+            disabled={cargandoReferencias}
           >
-            <option value="">Cualquier concepto</option>
-            <option value="153">CASAS-EJIDALES</option>
+            <option value="">
+              {cargandoReferencias ? 'Cargando conceptos…' : 'Cualquier concepto'}
+            </option>
+            {opcionesApoyo.map((t) => (
+              <option key={t.id} value={t.id}>
+                {etiqueta(t)}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -180,10 +240,18 @@ export default function FormReglaDocumento({
             id="select-apoyo-excluir"
             name="apoyo_excluir_id"
             data-testid="select-apoyo-excluir"
-            defaultValue={regla?.apoyo_excluir_id ?? ''}
+            value={apoyoExcluirId}
+            onChange={(e) => setApoyoExcluirId(e.target.value)}
+            disabled={cargandoReferencias}
           >
-            <option value="">Sin excepción</option>
-            <option value="153">CASAS-EJIDALES</option>
+            <option value="">
+              {cargandoReferencias ? 'Cargando conceptos…' : 'Sin excepción'}
+            </option>
+            {opcionesApoyoExcluir.map((t) => (
+              <option key={t.id} value={t.id}>
+                {etiqueta(t)}
+              </option>
+            ))}
           </select>
         </div>
 

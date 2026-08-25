@@ -52,6 +52,25 @@ export default function CatalogoDocumentos() {
   } | null>(null);
   const [resultadoSimulacion, setResultadoSimulacion] = useState<string[] | null>(null);
 
+  // Catalogos reales para los selects del formulario. `referencias` no pagina:
+  // devuelve el catalogo completo, que es justo lo que necesita un select.
+  const [proyectos, setProyectos] = useState<any[]>([]);
+  const [tiposApoyo, setTiposApoyo] = useState<any[]>([]);
+  const [cargandoReferencias, setCargandoReferencias] = useState(true);
+
+  const cargarReferencias = useCallback(async () => {
+    try {
+      const data = await (api as any).catalogosReferencias();
+      setProyectos(data?.proyectos ?? []);
+      setTiposApoyo(data?.tipos_apoyo ?? []);
+    } catch {
+      setProyectos([]);
+      setTiposApoyo([]);
+    } finally {
+      setCargandoReferencias(false);
+    }
+  }, []);
+
   const cargarReglas = useCallback(async () => {
     setCargando(true);
     setError(null);
@@ -75,11 +94,18 @@ export default function CatalogoDocumentos() {
     void cargarReglas();
   }, [cargarReglas]);
 
+  useEffect(() => {
+    void cargarReferencias();
+  }, [cargarReferencias]);
+
   const abrirAlta = () => {
     setEnEdicion(null);
     setFormAbierto(true);
     setErrorForm(null);
     setExito(null);
+    // Relee el catalogo al abrir: recoge conceptos dados de alta despues de
+    // que se monto la pantalla.
+    void cargarReferencias();
   };
 
   const abrirEdicion = (regla: ReglaDocumento) => {
@@ -87,6 +113,7 @@ export default function CatalogoDocumentos() {
     setFormAbierto(true);
     setErrorForm(null);
     setExito(null);
+    void cargarReferencias();
   };
 
   const guardar = async (datos: Record<string, unknown>) => {
@@ -284,10 +311,14 @@ export default function CatalogoDocumentos() {
 
       {formAbierto && (
         <FormReglaDocumento
+          key={enEdicion?.id ?? 'alta'}
           regla={enEdicion}
           guardando={guardando}
           errorApi={errorForm}
           exito={exito}
+          proyectos={proyectos}
+          tiposApoyo={tiposApoyo}
+          cargandoReferencias={cargandoReferencias}
           alGuardar={guardar}
           alCancelar={() => setFormAbierto(false)}
         />

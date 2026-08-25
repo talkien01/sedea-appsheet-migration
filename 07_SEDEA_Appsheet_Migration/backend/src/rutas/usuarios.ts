@@ -21,7 +21,9 @@ import {
   insertarUsuario,
   listarUsuarios,
   obtenerFilaUsuario,
-  obtenerUsuarioAdmin
+  obtenerMunicipiosDeRegional,
+  obtenerUsuarioAdmin,
+  regionalValida
 } from '../db/queries/usuarios.js';
 import {
   calcularCambios,
@@ -109,6 +111,21 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
         regional_id: regionalId,
         password_hash: hash
       });
+
+      // D35: Insertar automáticamente todos los municipios de la regional
+      // para capturista y ventanilla. La semántica es "0 filas = todos",
+      // pero queremos que el usuario vea solo los municipios de su regional.
+      if (regionalId !== null && (datos.rol.includes('capturista') || datos.rol.includes('ventanilla'))) {
+        const municipios = await obtenerMunicipiosDeRegional(regionalId, cliente);
+        for (const municipio of municipios) {
+          await cliente.query(
+            `INSERT INTO usuario_municipios (usuario_id, municipio_id)
+             VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [nuevoId, municipio.id]
+          );
+        }
+      }
+
       await bitacoraEnTransaccion(cliente, {
         usuarioId: actor.id,
         accion: 'usuario_creado',
@@ -121,7 +138,8 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
           rol: datos.rol,
           regional_id: regionalId,
           creado_por_rol: actor.rol,
-          modo_password: modoPassword
+          modo_password: modoPassword,
+          municipios_asignados: regionalId !== null ? 'todos_los_de_la_regional' : 'ninguno'
         },
         ip: peticion.ip,
         userAgent: (peticion.headers['user-agent'] as string | undefined)?.slice(0, 300) ?? null

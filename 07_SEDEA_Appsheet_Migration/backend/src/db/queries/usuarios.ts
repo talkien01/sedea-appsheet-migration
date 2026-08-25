@@ -112,6 +112,19 @@ export async function regionalValida(regionalId: number, cliente?: PoolClient): 
   return rows.length > 0;
 }
 
+/** Obtiene todos los municipios activos de una regional. */
+export async function obtenerMunicipiosDeRegional(
+  regionalId: number,
+  cliente?: PoolClient
+): Promise<{ id: number; clave: string; nombre: string }[]> {
+  const ejecutor = cliente ?? pool;
+  const { rows } = await ejecutor.query(
+    `SELECT id, clave, nombre FROM municipios WHERE regional_id = $1 AND activo ORDER BY nombre`,
+    [regionalId]
+  );
+  return rows;
+}
+
 /** Cuenta administradores activos, opcionalmente excluyendo a uno. */
 export async function contarAdminsActivos(
   cliente: PoolClient,

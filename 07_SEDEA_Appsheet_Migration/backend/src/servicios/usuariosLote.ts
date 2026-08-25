@@ -19,7 +19,7 @@ import { ErrorApi } from '../plugins/errores.js';
 import { generarPasswordTemporal, hashearPassword } from '../servicios/passwords.js';
 import { bitacoraEnTransaccion, enTransaccion } from '../servicios/promocion.js';
 import { reemplazarAlcance } from '../servicios/alcance.js';
-import { existeNombreUsuario, insertarUsuario } from '../db/queries/usuarios.js';
+import { existeNombreUsuario, insertarUsuario, obtenerMunicipiosDeRegional } from '../db/queries/usuarios.js';
 import { error403, error409, error422, exigirRolAdministrable, resolverRegional, validarAlta } from './usuarios.js';
 import { generarCsv, parsearCsv } from './csv.js';
 
@@ -255,7 +255,19 @@ async function procesarFila(
       regional_id: regionalId,
       password_hash: hash
     });
-    if (traeAlcance) {
+
+    // D35: Insertar automáticamente todos los municipios de la regional
+    // para capturista y ventanilla cuando no se especifica alcance explícito.
+    if (!traeAlcance && regionalId !== null && (datos.rol.includes('capturista') || datos.rol.includes('ventanilla'))) {
+      const municipiosDeRegional = await obtenerMunicipiosDeRegional(regionalId, cliente);
+      for (const m of municipiosDeRegional) {
+        await cliente.query(
+          `INSERT INTO usuario_municipios (usuario_id, municipio_id)
+           VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+          [nuevoId, m.id]
+        );
+      }
+    } else if (traeAlcance) {
       await reemplazarAlcance(
         cliente,
         nuevoId,
@@ -263,6 +275,7 @@ async function procesarFila(
         componentes.length > 0 ? componentes : 'todos'
       );
     }
+
     await bitacoraEnTransaccion(cliente, {
       usuarioId: actor.id,
       accion: 'usuario_creado',
@@ -275,7 +288,8 @@ async function procesarFila(
         regional_id: regionalId,
         creado_por_rol: actor.rol,
         modo_password: 'automatica',
-        origen: 'lote_csv'
+        origen: 'lote_csv',
+        municipios_asignados: !traeAlcance && regionalId !== null ? 'todos_los_de_la_regional' : 'explicito'
       },
       ip: contexto.ip,
       userAgent: contexto.userAgent

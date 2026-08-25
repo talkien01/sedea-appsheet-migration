@@ -32,6 +32,7 @@ import Catalogos from './pantallas/Catalogos';
 import CatalogoDocumentos from './pantallas/CatalogoDocumentos';
 import Dictamen from './pantallas/Dictamen';
 import DictamenDetalle from './pantallas/DictamenDetalle';
+import EscaneoMovil from './pantallas/EscaneoMovil';
 
 const CAMPO = ['capturista', 'admin'];
 const AUDITORIA = ['auditor', 'admin'];
@@ -49,6 +50,12 @@ export default function Rutas() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/*
+        E60: pantalla del celular vinculado. Va FUERA del cascaron y sin
+        RutaProtegida a proposito: se abre en un telefono sin sesion. El token
+        de la URL es la unica credencial y solo sirve para entregar un escaneo.
+      */}
+      <Route path="/escaneo-movil/:token" element={<EscaneoMovil />} />
       <Route element={<Cascaron />}>
         <Route path="/" element={<Navigate to="/beneficiarios" replace />} />
 

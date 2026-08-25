@@ -24,7 +24,11 @@ import type {
   RespuestaBandejaDictamen,
   RespuestaDetalleDictamen,
   ResultadoPredictaminar,
-  VeredictoDocumento
+  VeredictoDocumento,
+  DatosCurpQr,
+  EstadoSesionEscaneoRespuesta,
+  ResultadoEscaneoMovilCuerpo,
+  SesionEscaneoCreada
 } from '@sedea/shared';
 import { obtenerSesion } from '../db/repositorios';
 
@@ -404,6 +408,35 @@ export const api = {
     return peticion(`/dictamen/${solicitudId}/confirmar`, {
       method: 'POST',
       body: JSON.stringify(cuerpo)
+    });
+  },
+
+  // --- E60: escaneo del CURP con un celular vinculado ----------------------
+
+  /** Abre la sesion que el escritorio pinta como QR. */
+  async abrirSesionEscaneo(): Promise<SesionEscaneoCreada> {
+    return peticion<SesionEscaneoCreada>('/escaneo-curp/sesiones', { method: 'POST' });
+  },
+
+  /** Sondeo del escritorio mientras espera al celular. */
+  async estadoSesionEscaneo(token: string): Promise<EstadoSesionEscaneoRespuesta> {
+    return peticion<EstadoSesionEscaneoRespuesta>(
+      `/escaneo-curp/sesiones/${encodeURIComponent(token)}`
+    );
+  },
+
+  /**
+   * Entrega del celular. Es la UNICA llamada de la app que va sin token de
+   * sesion: la pantalla `/escaneo-movil/:token` se abre en un telefono donde
+   * nadie inicio sesion, y el token de la URL hace de credencial.
+   */
+  async entregarEscaneoMovil(
+    token: string,
+    textoQr: string
+  ): Promise<{ ok: true; datos: DatosCurpQr }> {
+    return peticion(`/escaneo-curp/sesiones/${encodeURIComponent(token)}/resultado`, {
+      method: 'POST',
+      body: JSON.stringify({ texto_qr: textoQr } satisfies ResultadoEscaneoMovilCuerpo)
     });
   }
 };

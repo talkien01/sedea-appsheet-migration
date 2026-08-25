@@ -7,13 +7,14 @@ import {
   TIPOS_ASENTAMIENTO,
   TIPOS_PERSONA,
   TIPOS_VIALIDAD,
+  type DatosCurpQr,
   type MunicipioVentanilla,
   type TipoPersona
 } from '@sedea/shared';
 import { useState } from 'react';
 import { ESTILO_MAYUSCULAS, aMayusculas } from './campoMayusculas';
 import EscanerCurpQr from './EscanerCurpQr';
-import type { DatosCurpQr } from './curpQr';
+import VincularCelular from './VincularCelular';
 
 export interface DatosSolicitante {
   tipo_persona: TipoPersona;
@@ -49,14 +50,18 @@ export default function SeccionSolicitante({ valores, municipios, cambiar }: Pro
   // Escaneo del QR de la Constancia CURP: solo autocompleta los cuatro campos
   // que trae el QR; todo lo demas sigue siendo captura manual.
   const [escaneando, setEscaneando] = useState(false);
+  const [vinculando, setVinculando] = useState(false);
   const [escaneoOk, setEscaneoOk] = useState(false);
 
+  // Mismo destino para las dos vias de escaneo: la camara de este equipo y la
+  // del celular vinculado. Lo unico que cambia es de donde viene el texto.
   const aplicarEscaneo = (datos: DatosCurpQr) => {
     cambiar('curp', aMayusculas(datos.curp));
     cambiar('nombre_solicitante', aMayusculas(datos.nombre_solicitante));
     if (datos.sexo) cambiar('sexo', datos.sexo);
     if (datos.fecha_nacimiento) cambiar('fecha_nacimiento', datos.fecha_nacimiento);
     setEscaneando(false);
+    setVinculando(false);
     setEscaneoOk(true);
   };
 
@@ -120,9 +125,20 @@ export default function SeccionSolicitante({ valores, municipios, cambiar }: Pro
           >
             Escanear CURP
           </button>
+          <button
+            type="button"
+            className="secundario"
+            data-testid="btn-vincular-celular"
+            onClick={() => {
+              setEscaneoOk(false);
+              setVinculando(true);
+            }}
+          >
+            Escanear con el celular
+          </button>
           <p className="dato">
-            Lee el código QR de la Constancia CURP con la cámara y llena CURP, nombre, sexo y
-            fecha de nacimiento.
+            Lee el código QR de la Constancia CURP y llena CURP, nombre, sexo y fecha de
+            nacimiento. Usa la cámara de este equipo o, si no tiene, vincula tu celular.
           </p>
         </div>
 
@@ -134,6 +150,10 @@ export default function SeccionSolicitante({ valores, municipios, cambiar }: Pro
 
         {escaneando && (
           <EscanerCurpQr onDatos={aplicarEscaneo} onCerrar={() => setEscaneando(false)} />
+        )}
+
+        {vinculando && (
+          <VincularCelular onDatos={aplicarEscaneo} onCerrar={() => setVinculando(false)} />
         )}
 
         <div className="campo">

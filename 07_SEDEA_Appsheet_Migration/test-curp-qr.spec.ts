@@ -10,7 +10,7 @@
 // Requiere el stack arriba (docker compose up -d) con la PWA reconstruida:
 //   npx playwright test test-curp-qr.spec.ts
 import { test, expect } from '@playwright/test';
-import { parsearQrCurp } from './pwa/src/componentes/curpQr';
+import { parsearQrCurp } from './packages/shared/src/curpQr';
 
 const BASE = process.env.PWA_URL || 'http://localhost:8081';
 const PASSWORD = process.env.SEED_PASSWORD || 'cambiame123';

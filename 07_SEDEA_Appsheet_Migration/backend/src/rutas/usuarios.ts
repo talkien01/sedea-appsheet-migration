@@ -154,19 +154,25 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
       if (datos.rol) exigirRolAdministrable(actor.rol, datos.rol);
 
       const rolFinal = datos.rol ?? actual.rol;
-      // Multi-rol: se considera que requiere Regional si contiene 'capturista' en la lista
-      const tieneRolCapturista = rolFinal.split('+').includes('capturista');
+      // Multi-rol: la Regional aplica si la lista contiene 'capturista'
+      // (obligatoria) o 'ventanilla' (opcional: null = ventanilla Central).
+      const rolesFinales = rolFinal.split('+');
+      const regionalAplica =
+        rolesFinales.includes('capturista') || rolesFinales.includes('ventanilla');
 
-      // Coherencia rol <-> Regional: si el rol deja de ser capturista, la
-      // Regional se limpia sola; enviarla explicitamente sigue siendo un error.
+      // Coherencia rol <-> Regional: si el rol deja de aplicarla, la Regional se
+      // limpia sola; enviarla explicitamente sigue siendo un error.
       let regionalFinal: number | null;
-      if (tieneRolCapturista) {
+      if (regionalAplica) {
         const propuesta =
           'regional_id' in datos ? (datos.regional_id ?? null) : actual.regional_id;
-        regionalFinal = await resolverRegional('capturista', propuesta);
+        regionalFinal = await resolverRegional(rolFinal, propuesta);
       } else {
         if ('regional_id' in datos && (datos.regional_id ?? null) !== null) {
-          throw error422('regional_no_aplica', 'Solo los capturistas llevan Dirección Regional.');
+          throw error422(
+            'regional_no_aplica',
+            'Solo los capturistas y las ventanillas llevan Dirección Regional.'
+          );
         }
         regionalFinal = null;
       }

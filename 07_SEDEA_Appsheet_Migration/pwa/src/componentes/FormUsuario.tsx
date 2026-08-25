@@ -44,6 +44,21 @@ interface Props {
   alCancelar: () => void;
 }
 
+/**
+ * Valor centinela del select de Regional que representa "sin Regional": el
+ * perfil de la ventanilla Central de SEDEA, con alcance estatal. No se usa la
+ * cadena vacia para que "no elegi nada" y "elegi Central" sean distinguibles.
+ */
+const CENTRAL = 'central';
+
+/** La Regional aplica al capturista y a la ventanilla (multi-rol incluido). */
+const aplicaRegional = (roles: string[]) =>
+  roles.includes('capturista') || roles.includes('ventanilla');
+
+/** Solo la ventanilla pura puede quedarse sin Regional (SEDEA Central). */
+const aplicaCentral = (roles: string[]) =>
+  roles.includes('ventanilla') && !roles.includes('capturista');
+
 const ALCANCE_TODOS: ValoresAlcance = {
   municipiosTodos: true,
   municipios: [],
@@ -71,9 +86,13 @@ export default function FormUsuario({
   const [roles, setRoles] = useState<string[]>(
     usuario?.rol ? usuario.rol.split('+') : ['capturista']
   );
-  const [regionalId, setRegionalId] = useState<string>(
-    usuario?.regional_id ? String(usuario.regional_id) : ''
-  );
+  const [regionalId, setRegionalId] = useState<string>(() => {
+    if (usuario?.regional_id) return String(usuario.regional_id);
+    // Una ventanilla pura ya guardada sin Regional es la Central: se preselecciona
+    // para que editar cualquier otro dato no obligue a re-elegirla.
+    if (usuario && aplicaCentral(usuario.rol.split('+'))) return CENTRAL;
+    return '';
+  });
 
   // Modo de contrasena: solo aplica al alta; por defecto, automatica (D27).
   const [modoPassword, setModoPassword] = useState<ModoPassword>('automatica');
@@ -97,23 +116,32 @@ export default function FormUsuario({
     }
   };
 
-  // La Regional solo aplica al capturista (D22).
+  // La Regional aplica al capturista (D22) y tambien a la ventanilla: el
+  // backend recorta con ella los municipios capturables, asi que una ventanilla
+  // sin Regional acabaria viendo los 18 municipios del estado.
   const tieneRol = (r: string) => roles.includes(r);
-  const regionalAplica = tieneRol('capturista');
+  const regionalAplica = aplicaRegional(roles);
+  // Unica excepcion: la ventanilla Central de SEDEA (VEN-SED) si tiene alcance
+  // estatal, y el sistema la reconoce justamente por no llevar Regional. Se
+  // ofrece como opcion explicita para que nadie la elija por descuido.
+  const permiteCentral = aplicaCentral(roles);
 
   const toggleRol = (rolItem: string) => {
-    setRoles((prev) => {
-      if (prev.includes(rolItem)) {
-        // No permitir quitar el último rol
-        if (prev.length === 1) return prev;
-        return prev.filter((r) => r !== rolItem);
-      } else {
-        return [...prev, rolItem];
-      }
-    });
-    if (rolItem !== 'capturista') {
+    const siguiente = roles.includes(rolItem)
+      ? // No permitir quitar el último rol
+        roles.length === 1
+        ? roles
+        : roles.filter((r) => r !== rolItem)
+      : [...roles, rolItem];
+    setRoles(siguiente);
+
+    // La Regional solo se limpia cuando deja de aplicar por completo.
+    if (!aplicaRegional(siguiente)) {
       setRegionalId('');
       setErrorRegional(null);
+    } else if (regionalId === CENTRAL && !aplicaCentral(siguiente)) {
+      // "SEDEA Central" solo existe para la ventanilla pura.
+      setRegionalId('');
     }
   };
 
@@ -144,7 +172,11 @@ export default function FormUsuario({
     }
 
     if (regionalAplica && !regionalId) {
-      setErrorRegional('Los capturistas deben tener una Dirección Regional asignada.');
+      setErrorRegional(
+        permiteCentral
+          ? 'Elige la Dirección Regional de esta ventanilla, o "SEDEA Central" si atiende todo el estado.'
+          : 'Los capturistas y las ventanillas deben tener una Dirección Regional asignada.'
+      );
       valido = false;
     }
 
@@ -167,7 +199,9 @@ export default function FormUsuario({
       usuario: acceso,
       nombre_completo: nombre,
       rol: rolPrincipal,
-      regional_id: regionalAplica ? Number(regionalId) : null,
+      // CENTRAL viaja como null: es asi como el backend reconoce la ventanilla
+      // Central de SEDEA y le deja el alcance estatal.
+      regional_id: regionalAplica && regionalId !== CENTRAL ? Number(regionalId) : null,
       // En edicion no se manda modo alguno: la contrasena solo se cambia con
       // "Resetear contraseña" (campo_no_editable).
       ...(esAlta ? { modo_password: modoPassword } : {}),
@@ -285,7 +319,16 @@ export default function FormUsuario({
                   {r.nombre}
                 </option>
               ))}
+            {permiteCentral && (
+              <option value={CENTRAL}>SEDEA Central (todo el estado)</option>
+            )}
           </select>
+          {regionalAplica && tieneRol('ventanilla') && (
+            <p className="dato">
+              La ventanilla solo podrá capturar en los municipios de su Regional. Elige “SEDEA
+              Central” únicamente para la ventanilla central, que atiende todo el estado.
+            </p>
+          )}
           {errorRegional && (
             <p className="mensaje error" data-testid="error-regional">
               {errorRegional}

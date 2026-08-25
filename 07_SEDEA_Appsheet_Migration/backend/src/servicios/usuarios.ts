@@ -87,8 +87,15 @@ function tieneRol(rol: string, rolBuscado: string): boolean {
 
 /**
  * Coherencia rol <-> Regional (D22): la Regional es obligatoria para el
- * capturista e inaplicable para los demas roles. Devuelve el valor definitivo.
- * Para multi-rol, se considera 'capturista' si la lista contiene 'capturista'.
+ * capturista, opcional para la ventanilla e inaplicable para los demas roles.
+ * Devuelve el valor definitivo.
+ *
+ * La ventanilla la necesita porque `regionalForzada()` recorta con ella los
+ * municipios capturables: sin Regional, un usuario de ventanilla regional
+ * veria los 18 municipios del estado. Se deja OPCIONAL (null permitido) porque
+ * la ventanilla Central de SEDEA (VEN-SED, `es_central`) si tiene alcance
+ * estatal, y el sistema la distingue justamente por no llevar Regional.
+ * Para multi-rol basta con que la lista contenga el rol.
  */
 export async function resolverRegional(
   rol: string,
@@ -114,8 +121,22 @@ export async function resolverRegional(
     return valor;
   }
 
+  if (tieneRol(rol, 'ventanilla')) {
+    if (valor === null) return null; // ventanilla Central: alcance estatal.
+    if (!(await regionalValida(valor, cliente))) {
+      throw error422(
+        'regional_invalida',
+        'La Dirección Regional seleccionada no existe o está inactiva.'
+      );
+    }
+    return valor;
+  }
+
   if (valor !== null) {
-    throw error422('regional_no_aplica', 'Solo los capturistas llevan Dirección Regional.');
+    throw error422(
+      'regional_no_aplica',
+      'Solo los capturistas y las ventanillas llevan Dirección Regional.'
+    );
   }
   return null;
 }

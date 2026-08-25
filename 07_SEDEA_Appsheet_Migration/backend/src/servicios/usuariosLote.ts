@@ -14,6 +14,7 @@
 // Cada fila es INDEPENDIENTE: corre en su propia transaccion y su fallo no
 // arrastra a las demas, igual que el flujo de staging de beneficiarios.
 import type { PerfilUsuario, ResultadoFilaLoteUsuario } from '@sedea/shared';
+import { validarPasswordManual } from '@sedea/shared';
 import { consultar } from '../db/pool.js';
 import { ErrorApi } from '../plugins/errores.js';
 import { generarPasswordTemporal, hashearPassword } from '../servicios/passwords.js';
@@ -204,7 +205,8 @@ async function resolverClavesComponente(claves: string[]): Promise<number[]> {
 async function procesarFila(
   actor: PerfilUsuario,
   fila: FilaLote,
-  contexto: { ip: string; userAgent: string | null }
+  contexto: { ip: string; userAgent: string | null },
+  passwordComun: string | null
 ): Promise<{ usuario: string; password_temporal: string }> {
   // Mismo payload y misma validacion que E35: lista blanca de claves + Zod.
   const datos = validarAlta({
@@ -241,7 +243,9 @@ async function procesarFila(
   const componentes = traeAlcance ? await resolverClavesComponente(clavesComponente) : [];
 
   // La cadena en claro solo vive en memoria y en la respuesta HTTP (D27/D29).
-  const passwordTemporal = generarPasswordTemporal();
+  // Si el lote trae contrasena comun, ya venia validada con la MISMA politica
+  // del alta manual antes de crear la primera fila.
+  const passwordTemporal = passwordComun ?? generarPasswordTemporal();
   const hash = hashearPassword(passwordTemporal);
 
   await enTransaccion(async (cliente) => {
@@ -287,7 +291,7 @@ async function procesarFila(
         rol: datos.rol,
         regional_id: regionalId,
         creado_por_rol: actor.rol,
-        modo_password: 'automatica',
+        modo_password: passwordComun === null ? 'automatica' : 'manual',
         origen: 'lote_csv',
         municipios_asignados: !traeAlcance && regionalId !== null ? 'todos_los_de_la_regional' : 'explicito'
       },
@@ -307,8 +311,19 @@ async function procesarFila(
 export async function procesarLote(
   actor: PerfilUsuario,
   texto: string,
-  contexto: { ip: string; userAgent: string | null }
+  contexto: { ip: string; userAgent: string | null },
+  passwordComun?: string | null
 ): Promise<{ resultados: ResultadoFilaLote[]; creados: number; errores: number }> {
+  // Contrasena comun del lote (opcional). Se valida ANTES de leer el archivo y
+  // de crear nada: si no cumple la politica, el lote entero se rechaza de una
+  // vez, nunca a mitad de las filas. Se reusa `validarPasswordManual`, la MISMA
+  // regla que exige el alta individual en modo "Escribir yo mismo".
+  const comun = typeof passwordComun === 'string' && passwordComun.length > 0 ? passwordComun : null;
+  if (comun !== null) {
+    const fallo = validarPasswordManual(comun);
+    if (fallo) throw error422(fallo.codigo, fallo.mensaje);
+  }
+
   const filas = leerFilasLote(texto);
   const resultados: ResultadoFilaLote[] = [];
 
@@ -316,7 +331,7 @@ export async function procesarLote(
     const fila = filas[i];
     const numeroFila = i + 2; // +1 por el encabezado, +1 porque Excel cuenta desde 1.
     try {
-      const creado = await procesarFila(actor, fila, contexto);
+      const creado = await procesarFila(actor, fila, contexto, comun);
       resultados.push({
         fila: numeroFila,
         usuario: creado.usuario,

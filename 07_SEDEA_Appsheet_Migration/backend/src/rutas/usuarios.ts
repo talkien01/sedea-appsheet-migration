@@ -178,6 +178,10 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
   app.post('/api/usuarios/lote', protegida, async (peticion, respuesta) => {
     const actor = peticion.usuario!;
     let texto: string | null = null;
+    // Contrasena comun opcional del lote: si viene, se usa para TODAS las filas
+    // en vez de generar una aleatoria por fila. La valida `procesarLote` con la
+    // misma politica del alta individual, antes de crear nada.
+    let passwordComun: string | null = null;
 
     if (peticion.isMultipart()) {
       for await (const parte of peticion.parts()) {
@@ -188,12 +192,15 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
             throw error422('archivo_muy_grande', 'El archivo excede el tamaño máximo permitido.');
           }
           texto = contenido.toString('utf8');
+        } else if (parte.fieldname === 'password_comun' && typeof parte.value === 'string') {
+          passwordComun = parte.value;
         }
       }
     } else {
       // Alternativa para scripts: { "csv": "usuario,nombre_completo,..." }.
-      const cuerpo = peticion.body as { csv?: unknown } | null;
+      const cuerpo = peticion.body as { csv?: unknown; password_comun?: unknown } | null;
       if (cuerpo && typeof cuerpo.csv === 'string') texto = cuerpo.csv;
+      if (cuerpo && typeof cuerpo.password_comun === 'string') passwordComun = cuerpo.password_comun;
     }
 
     if (texto === null || texto.trim().length === 0) {
@@ -206,7 +213,7 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
     const { resultados, creados, errores } = await procesarLote(actor, texto, {
       ip: peticion.ip,
       userAgent: (peticion.headers['user-agent'] as string | undefined)?.slice(0, 300) ?? null
-    });
+    }, passwordComun);
 
     return respuesta.status(200).send({
       ok: true,

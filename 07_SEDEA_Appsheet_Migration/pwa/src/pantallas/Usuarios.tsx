@@ -4,6 +4,7 @@
 // borrado, para conservar la trazabilidad de capturas y auditoria (D16).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AYUDA_PASSWORD_MANUAL,
   ETIQUETAS_ROL,
   ROLES_USUARIO,
   type ModoPassword,
@@ -73,6 +74,11 @@ export default function Usuarios() {
   const [subiendoLote, setSubiendoLote] = useState(false);
   const [resultadosLote, setResultadosLote] = useState<ResultadoFilaLoteUsuario[] | null>(null);
   const [errorLote, setErrorLote] = useState<string | null>(null);
+  // Contrasena temporal COMUN para todo el lote (opcional). Sin marcar, cada
+  // fila sigue recibiendo una aleatoria distinta, como hasta ahora. En ambos
+  // casos el usuario debe cambiarla en su primer inicio de sesion.
+  const [usarPasswordComunLote, setUsarPasswordComunLote] = useState(false);
+  const [passwordComunLote, setPasswordComunLote] = useState('');
 
   // Reseteo: fila elegida, estado de envio y error de la API (11.6.3).
   const [reseteando, setReseteando] = useState<UsuarioAdmin | null>(null);
@@ -243,7 +249,10 @@ export default function Usuarios() {
     // contrasenas ya no se pueden recuperar y no deben confundirse con las nuevas.
     setResultadosLote(null);
     try {
-      const respuesta = await api.crearUsuariosLote(archivoLote);
+      const respuesta = await api.crearUsuariosLote(
+        archivoLote,
+        usarPasswordComunLote ? passwordComunLote : null
+      );
       setResultadosLote(respuesta.resultados);
       // El archivo se limpia para que no se vuelva a subir por accidente: un
       // segundo envio del mismo CSV solo produciria `usuario_duplicado`.
@@ -573,11 +582,54 @@ export default function Usuarios() {
           <button
             type="button"
             data-testid="btn-subir-lote"
-            disabled={!archivoLote || subiendoLote}
+            disabled={
+              !archivoLote ||
+              subiendoLote ||
+              (usarPasswordComunLote && passwordComunLote.trim().length === 0)
+            }
             onClick={() => void subirLote()}
           >
             {subiendoLote ? 'Procesando…' : 'Subir archivo'}
           </button>
+        </div>
+
+        {/*
+          Contrasena comun del lote. Sin marcar (por defecto) cada fila recibe
+          una aleatoria distinta, igual que antes. Marcada, todas comparten la
+          misma temporal — util para dar de alta a un grupo que entra el mismo
+          dia — y de todos modos cada quien debe cambiarla al primer ingreso.
+        */}
+        <div className="campo">
+          <label>
+            <input
+              type="checkbox"
+              data-testid="check-password-comun-lote"
+              checked={usarPasswordComunLote}
+              onChange={(e) => {
+                setUsarPasswordComunLote(e.target.checked);
+                if (!e.target.checked) setPasswordComunLote('');
+                setErrorLote(null);
+              }}
+            />{' '}
+            Usar una contraseña común para todo el lote
+          </label>
+
+          {usarPasswordComunLote && (
+            <>
+              <input
+                type="text"
+                data-testid="input-password-comun-lote"
+                aria-label="Contraseña común del lote"
+                autoComplete="off"
+                value={passwordComunLote}
+                onChange={(e) => {
+                  setPasswordComunLote(e.target.value);
+                  setErrorLote(null);
+                }}
+              />
+              <p className="dato">{AYUDA_PASSWORD_MANUAL}</p>
+            </>
+          )}
         </div>
 
         {errorLote && (

@@ -302,9 +302,15 @@ export const api = {
    * Alta en lote. El backend responde 200 con el detalle fila por fila incluso
    * cuando algunas fallan: los 4xx son solo del archivo completo.
    */
-  async crearUsuariosLote(archivo: File): Promise<RespuestaLoteUsuarios> {
+  async crearUsuariosLote(
+    archivo: File,
+    passwordComun?: string | null
+  ): Promise<RespuestaLoteUsuarios> {
     const formulario = new FormData();
     formulario.append('archivo', archivo);
+    // Solo se manda cuando el admin eligio contrasena comun; sin el campo, el
+    // backend sigue generando una aleatoria por fila (comportamiento por defecto).
+    if (passwordComun) formulario.append('password_comun', passwordComun);
     return peticion<RespuestaLoteUsuarios>('/usuarios/lote', {
       method: 'POST',
       body: formulario

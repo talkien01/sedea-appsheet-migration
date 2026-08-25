@@ -10,6 +10,24 @@
 const { test, expect } = require('@playwright/test');
 
 const PWA = 'http://localhost:8081';
+const API = 'http://localhost:3011';
+
+/**
+ * El fixture de arriba se aplica a mano. Sin el, las 4 solicitudes viven en la
+ * misma Regional y el escenario no prueba nada: se salta en vez de fallar.
+ */
+async function exigirFixture(request) {
+  const login = await request.post(`${API}/api/auth/login`, {
+    data: { usuario: 'dict.jalpan', password: 'JalpanDict2026!' }
+  });
+  test.skip(!login.ok(), 'Falta el usuario dict.jalpan (ver fixture de la cabecera).');
+  const { token } = await login.json();
+  const bandeja = await request.get(`${API}/api/dictamen/bandeja?estado=todas&por_pagina=100`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const { total } = await bandeja.json();
+  test.skip(total === 0, 'Fixture no aplicado: no hay solicitudes en la Regional de Jalpan.');
+}
 
 async function entrar(page, usuario, password) {
   await page.goto(`${PWA}/login`);
@@ -19,7 +37,8 @@ async function entrar(page, usuario, password) {
   await page.waitForURL((u) => !u.pathname.includes('/login'), { timeout: 15000 });
 }
 
-test('dictaminador de Jalpan solo ve su Regional; Central ve todo', async ({ page }) => {
+test('dictaminador de Jalpan solo ve su Regional; Central ve todo', async ({ page, request }) => {
+  await exigirFixture(request);
   page.on('response', async (r) => {
     if (r.url().includes('/api/dictamen/')) {
       console.log('API', r.status(), r.url(), (await r.text().catch(() => '')).slice(0, 200));
@@ -50,7 +69,8 @@ test('dictaminador de Jalpan solo ve su Regional; Central ve todo', async ({ pag
   await expect(page.locator('body')).toContainText('PEO-CAD-AME-0003-26', { timeout: 20000 });
 });
 
-test('dictaminador de SEDEA Central sigue viendo todas las Regionales', async ({ page }) => {
+test('dictaminador de SEDEA Central sigue viendo todas las Regionales', async ({ page, request }) => {
+  await exigirFixture(request);
   await entrar(page, 'dict.central', 'CentralDict2026!');
   await page.goto(`${PWA}/dictamen`);
   // Ve la de Jalpan (Regional 2) aunque no es la suya: sin restriccion.

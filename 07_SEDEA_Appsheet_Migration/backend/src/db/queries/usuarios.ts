@@ -47,12 +47,13 @@ export async function listarUsuarios(
   }
   // Filtro para papelera: eliminado=true (solo admin)
   if (filtros.eliminado === true) {
-    // Si se piden eliminados, no filtrar por WHERE de SELECT_USUARIO
     condiciones.push(`u.eliminado = TRUE`);
   } else if (filtros.eliminado === false) {
     condiciones.push(`u.eliminado = FALSE`);
+  } else {
+    // Por defecto, solo no eliminados
+    condiciones.push(`u.eliminado = FALSE`);
   }
-  // Si eliminado es undefined/null, se usa el WHERE por defecto de SELECT_USUARIO
 
   if (filtros.q && filtros.q.trim().length >= 2) {
     parametros.push(`%${filtros.q.trim()}%`);
@@ -64,15 +65,12 @@ export async function listarUsuarios(
   }
 
   const where = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
-  // Para eliminados, usar FROM directo sin WHERE predefinido
-  const sqlBase = filtros.eliminado === true
-    ? `SELECT u.id, u.usuario, u.nombre_completo, u.rol, u.regional_id,
+  const sqlBase = `SELECT u.id, u.usuario, u.nombre_completo, u.rol, u.regional_id,
              r.nombre AS regional, u.activo, u.eliminado, u.debe_cambiar_password,
              u.creado_en, u.actualizado_en, u.password_actualizado_en,
              (SELECT count(*)::int FROM capturas c WHERE c.usuario_id = u.id) AS capturas
        FROM usuarios u
-       LEFT JOIN direcciones_regionales r ON r.id = u.regional_id`
-    : SELECT_USUARIO;
+       LEFT JOIN direcciones_regionales r ON r.id = u.regional_id`;
 
   const totalFila = await consultarUna<{ total: number }>(
     `SELECT count(*)::int AS total FROM (${sqlBase}) _ ${where}`,

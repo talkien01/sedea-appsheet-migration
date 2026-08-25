@@ -3,9 +3,24 @@
 
 const BOM = '\uFEFF';
 
+/**
+ * Caracteres con los que Excel / Google Sheets interpretan la celda como
+ * FORMULA al abrir el archivo. Un texto libre capturado en ventanilla (nombre
+ * del beneficiario, colonia, observaciones) llega tal cual al CSV que abre el
+ * auditor, asi que un `=HYPERLINK(...)` se ejecutaria en su maquina.
+ */
+const INICIO_FORMULA = /^[=+\-@\t\r]/;
+
 function escapar(valor: unknown): string {
   if (valor === null || valor === undefined) return '';
-  const texto = String(valor);
+  let texto = String(valor);
+  // Mitigacion estandar OWASP contra CSV injection: el apostrofo inicial hace
+  // que Excel muestre la celda como texto literal en vez de evaluarla. Va
+  // ANTES del escape de comillas para que un valor con comillas y formula
+  // quede correctamente entrecomillado.
+  if (INICIO_FORMULA.test(texto)) {
+    texto = `'${texto}`;
+  }
   if (/[",\n\r]/.test(texto)) {
     return `"${texto.replace(/"/g, '""')}"`;
   }

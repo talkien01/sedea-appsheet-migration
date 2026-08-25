@@ -1518,3 +1518,14 @@ input[type='radio'] {
   gap: 6px;
   font-size: 14px;
 }
+
+/* Carga masiva de usuarios: bloque separado del listado por una regla fina. */
+.bloque-carga-lote {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-strong);
+}
+
+.bloque-carga-lote > h2 {
+  margin: 0 0 4px;
+}

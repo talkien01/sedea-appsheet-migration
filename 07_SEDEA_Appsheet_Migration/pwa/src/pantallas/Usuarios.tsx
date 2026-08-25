@@ -2,11 +2,12 @@
 // Pantalla ONLINE-ONLY: nada se guarda en IndexedDB ni en la cola de sync.
 // Las bajas se hacen desactivando la cuenta; no existe ningun control de
 // borrado, para conservar la trazabilidad de capturas y auditoria (D16).
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ETIQUETAS_ROL,
   ROLES_USUARIO,
   type ModoPassword,
+  type ResultadoFilaLoteUsuario,
   type UsuarioAdmin
 } from '@sedea/shared';
 import { useSesion } from '../App';
@@ -62,6 +63,15 @@ export default function Usuarios() {
     usuario: string;
     modo: ModoPassword;
   } | null>(null);
+
+  // Carga masiva: archivo elegido, resultados de la ultima corrida y errores.
+  // Las contrasenas de `resultadosLote` viven SOLO en este estado: al recargar
+  // la pantalla se pierden, igual que el modal del alta individual.
+  const refArchivoLote = useRef<HTMLInputElement>(null);
+  const [archivoLote, setArchivoLote] = useState<File | null>(null);
+  const [subiendoLote, setSubiendoLote] = useState(false);
+  const [resultadosLote, setResultadosLote] = useState<ResultadoFilaLoteUsuario[] | null>(null);
+  const [errorLote, setErrorLote] = useState<string | null>(null);
 
   // Reseteo: fila elegida, estado de envio y error de la API (11.6.3).
   const [reseteando, setReseteando] = useState<UsuarioAdmin | null>(null);
@@ -200,6 +210,68 @@ export default function Usuarios() {
     } finally {
       setGuardando(false);
     }
+  };
+
+  /** Dispara la descarga de un CSV ya construido, sin dejar rastro en disco. */
+  const descargarCsv = (contenido: Blob, nombre: string) => {
+    const enlace = document.createElement('a');
+    enlace.href = URL.createObjectURL(contenido);
+    enlace.download = nombre;
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+    URL.revokeObjectURL(enlace.href);
+  };
+
+  const descargarPlantilla = async () => {
+    setErrorLote(null);
+    try {
+      descargarCsv(await api.plantillaUsuariosLote(), 'plantilla_usuarios_sedea.csv');
+    } catch {
+      setErrorLote('No fue posible descargar la plantilla.');
+    }
+  };
+
+  const subirLote = async () => {
+    if (!archivoLote) return;
+    setSubiendoLote(true);
+    setErrorLote(null);
+    // Los resultados anteriores se descartan al iniciar otra corrida: sus
+    // contrasenas ya no se pueden recuperar y no deben confundirse con las nuevas.
+    setResultadosLote(null);
+    try {
+      const respuesta = await api.crearUsuariosLote(archivoLote);
+      setResultadosLote(respuesta.resultados);
+      // El archivo se limpia para que no se vuelva a subir por accidente: un
+      // segundo envio del mismo CSV solo produciria `usuario_duplicado`.
+      setArchivoLote(null);
+      if (refArchivoLote.current) refArchivoLote.current.value = '';
+      await cargar();
+    } catch (fallo) {
+      setErrorLote((fallo as Error).message);
+    } finally {
+      setSubiendoLote(false);
+    }
+  };
+
+  /**
+   * CSV de contrasenas de los usuarios creados en ESTA corrida. Se arma en el
+   * navegador con lo que ya esta en memoria: las temporales nunca vuelven a
+   * pedirse al servidor porque el servidor tampoco las tiene.
+   */
+  const descargarPasswordsLote = () => {
+    const creados = (resultadosLote ?? []).filter((r) => r.estado === 'creado');
+    if (creados.length === 0) return;
+    const escapar = (v: string) => (/[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const lineas = ['usuario,password_temporal'];
+    for (const fila of creados) {
+      lineas.push(`${escapar(fila.usuario)},${escapar(fila.password_temporal ?? '')}`);
+    }
+    // BOM UTF-8 para que Excel en Windows lo abra sin romper los acentos.
+    const contenido = new Blob(['﻿' + lineas.join('\r\n') + '\r\n'], {
+      type: 'text/csv;charset=utf-8'
+    });
+    descargarCsv(contenido, `passwords_usuarios_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   const abrirReset = (fila: UsuarioAdmin) => {
@@ -393,6 +465,108 @@ export default function Usuarios() {
           </table>
         </div>
       )}
+
+      {/* Carga masiva: mismo criterio de acceso que el alta individual. */}
+      <section className="bloque-carga-lote" data-testid="seccion-carga-lote">
+        <h2>Carga masiva</h2>
+        <p className="dato">
+          Descarga la plantilla, llénala con un usuario por fila y súbela. Cada fila se valida
+          por separado: si una tiene un error, las demás se crean igual. Las contraseñas
+          temporales se muestran una sola vez, al terminar la carga.
+        </p>
+
+        <div className="filtros">
+          <button
+            type="button"
+            className="secundario"
+            data-testid="btn-descargar-plantilla-usuarios"
+            onClick={() => void descargarPlantilla()}
+          >
+            Descargar plantilla CSV
+          </button>
+
+          <input
+            ref={refArchivoLote}
+            data-testid="input-archivo-lote"
+            type="file"
+            accept=".csv,text/csv"
+            aria-label="Archivo CSV de usuarios"
+            onChange={(e) => {
+              setArchivoLote(e.target.files?.[0] ?? null);
+              setErrorLote(null);
+            }}
+          />
+
+          <button
+            type="button"
+            data-testid="btn-subir-lote"
+            disabled={!archivoLote || subiendoLote}
+            onClick={() => void subirLote()}
+          >
+            {subiendoLote ? 'Procesando…' : 'Subir archivo'}
+          </button>
+        </div>
+
+        {errorLote && (
+          <div className="mensaje error" role="alert" data-testid="error-lote">
+            {errorLote}
+          </div>
+        )}
+
+        {resultadosLote && (
+          <>
+            <div className="mensaje aviso" role="status" data-testid="resumen-lote">
+              {resultadosLote.filter((r) => r.estado === 'creado').length} creados,{' '}
+              {resultadosLote.filter((r) => r.estado === 'error').length} con error de{' '}
+              {resultadosLote.length} filas. Cópialas ahora: no se volverán a mostrar.
+            </div>
+
+            {resultadosLote.some((r) => r.estado === 'creado') && (
+              <button
+                type="button"
+                data-testid="btn-descargar-passwords-lote"
+                onClick={descargarPasswordsLote}
+              >
+                Descargar contraseñas de los creados
+              </button>
+            )}
+
+            <div className="tabla-contenedor">
+              <table data-testid="tabla-resultados-lote">
+                <thead>
+                  <tr>
+                    <th>Fila</th>
+                    <th>Usuario</th>
+                    <th>Estado</th>
+                    <th>Motivo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resultadosLote.map((resultado) => (
+                    <tr key={resultado.fila} data-testid="fila-resultado-lote">
+                      <td data-etiqueta="Fila">{resultado.fila}</td>
+                      <td data-etiqueta="Usuario" className="mono">
+                        {resultado.usuario || '—'}
+                      </td>
+                      <td data-etiqueta="Estado">
+                        <span
+                          className={`badge ${resultado.estado === 'creado' ? 'capturado' : 'alerta-alta'}`}
+                          data-testid="chip-estado-lote"
+                        >
+                          {resultado.estado === 'creado' ? 'Creado' : 'Error'}
+                        </span>
+                      </td>
+                      <td data-etiqueta="Motivo" className="celda-texto">
+                        {resultado.motivo ?? '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
 
       {formAbierto && (
         <FormUsuario

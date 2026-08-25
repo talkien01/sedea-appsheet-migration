@@ -276,3 +276,28 @@ export interface RespuestaResetPassword {
   modo_password: ModoPassword;
   aviso: string;
 }
+
+/**
+ * Resultado de UNA fila del alta en lote. `password_temporal` solo viene en las
+ * filas creadas y es la unica copia en claro que existira: al recargar la
+ * pantalla se pierde, igual que el modal del alta individual.
+ */
+export interface ResultadoFilaLoteUsuario {
+  /** Numero de linea tal como se ve en Excel (el encabezado es la 1). */
+  fila: number;
+  usuario: string;
+  estado: 'creado' | 'error';
+  password_temporal?: string;
+  motivo?: string;
+  codigo?: string;
+}
+
+/** Respuesta del alta en lote. Siempre 200: el detalle va fila por fila. */
+export interface RespuestaLoteUsuarios {
+  ok: true;
+  total: number;
+  creados: number;
+  errores: number;
+  resultados: ResultadoFilaLoteUsuario[];
+  aviso: string;
+}

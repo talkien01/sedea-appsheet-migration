@@ -13,7 +13,7 @@
 //
 // Cada fila es INDEPENDIENTE: corre en su propia transaccion y su fallo no
 // arrastra a las demas, igual que el flujo de staging de beneficiarios.
-import type { PerfilUsuario } from '@sedea/shared';
+import type { PerfilUsuario, ResultadoFilaLoteUsuario } from '@sedea/shared';
 import { consultar } from '../db/pool.js';
 import { ErrorApi } from '../plugins/errores.js';
 import { generarPasswordTemporal, hashearPassword } from '../servicios/passwords.js';
@@ -58,15 +58,8 @@ export function generarPlantillaLote(): string {
   return generarCsv([...COLUMNAS_LOTE], [FILA_EJEMPLO]);
 }
 
-/** Resultado de una fila del lote, tal como viaja en la respuesta. */
-export interface ResultadoFilaLote {
-  fila: number;
-  usuario: string;
-  estado: 'creado' | 'error';
-  password_temporal?: string;
-  motivo?: string;
-  codigo?: string;
-}
+/** El contrato de la respuesta vive en @sedea/shared: backend y PWA lo comparten. */
+export type ResultadoFilaLote = ResultadoFilaLoteUsuario;
 
 /** Fila cruda ya mapeada por nombre de columna. */
 type FilaLote = Record<(typeof COLUMNAS_LOTE)[number], string>;

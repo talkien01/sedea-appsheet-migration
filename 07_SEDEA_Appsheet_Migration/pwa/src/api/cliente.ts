@@ -7,6 +7,7 @@ import type {
   PaginaUsuarios,
   PerfilUsuario,
   RespuestaAltaUsuario,
+  RespuestaLoteUsuarios,
   RespuestaResetPassword,
   UsuarioAdmin,
   EntradaHistorialCorreccion,
@@ -279,6 +280,34 @@ export const api = {
     return peticion<RespuestaAltaUsuario>('/usuarios', {
       method: 'POST',
       body: JSON.stringify(cuerpo)
+    });
+  },
+
+  /**
+   * Plantilla CSV del alta en lote. Se pide al backend (y no se arma aqui)
+   * para que columnas y ejemplo salgan de la misma fuente que las lee.
+   */
+  async plantillaUsuariosLote(): Promise<Blob> {
+    const token = await tokenActual();
+    const respuesta = await fetch(`${URL_API}/usuarios/plantilla-lote.csv`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined
+    });
+    if (!respuesta.ok) {
+      throw new ErrorPeticion(respuesta.status, 'error', 'No fue posible generar la plantilla.');
+    }
+    return respuesta.blob();
+  },
+
+  /**
+   * Alta en lote. El backend responde 200 con el detalle fila por fila incluso
+   * cuando algunas fallan: los 4xx son solo del archivo completo.
+   */
+  async crearUsuariosLote(archivo: File): Promise<RespuestaLoteUsuarios> {
+    const formulario = new FormData();
+    formulario.append('archivo', archivo);
+    return peticion<RespuestaLoteUsuarios>('/usuarios/lote', {
+      method: 'POST',
+      body: formulario
     });
   },
 

@@ -1,0 +1,5 @@
+- [Build 7 scope y estado](build7_ventanilla_estado.md) — scope del Build 7 (ventanilla al 100% + Casas Ejidales)
+- [Build 8 estado](build8_estado.md) — avance del Build 8
+- [Build 12 estado](build12_estado.md) — Build 12 completado: multi-rol, timer plazo, folio QR, capturista crea solicitudes
+- [Estrategia builds 7-10](estrategia_builds_7_10.md) — orden de urgencia operativa acordado con el usuario
+- [Rol del usuario en SEDEA](user_role_sedea.md) — usuario migra SEDEA de AppSheet a sistema propio documentado

@@ -262,8 +262,8 @@ Reglas del importador:
 
 Se crean con `npm run seed` usando la contraseña de la variable
 `SEED_ADMIN_PASSWORD` (por defecto `cambiame123` en `.env.example`). El usuario
-`editor1` puede tener contraseña propia con `SEED_EDITOR_PASSWORD` y los dos
-usuarios de ventanilla con `SEED_VENTANILLA_PASSWORD`; si no se definen,
+`editor1` puede tener contraseña propia con `SEED_EDITOR_PASSWORD` y los
+usuarios de ventanilla con `SEED_VENTANILLA_PASSWORD`; si no se define,
 reutilizan la de los demás.
 
 | Usuario | Rol | Alcance |
@@ -274,6 +274,7 @@ reutilizan la de los demás.
 | `editor1` | `editor_datos` | Depuración de staging y corrección de datos en producción (perfil de gabinete central, sin Regional asignada) |
 | `ventanilla1` | `ventanilla` | Ventanilla de San Juan del Río (`REG-04`) con **alcance restringido**: 2 municipios y el componente `TR` |
 | `ventanilla2` | `ventanilla` | Ventanilla SEDEA central, **sin restricción** (alcance "todos") |
+| `vent.jalpan` | `ventanilla` | Ventanilla de Jalpan (`REG-02`) **sin alcance granular**: el recorte lo hace su Dirección Regional (solo captura en los 4 municipios de Jalpan) |
 | `dict.test` | `dictaminador` | Cola de dictamen a nivel **estatal**. No entra a `/solicitudes` |
 | `vent.dict` | `ventanilla+dictaminador` | Multi-rol: captura en ventanilla **y** dictamina |
 
@@ -303,8 +304,16 @@ base de datos con SQL para crear capturistas.
 
 ### Alta de una cuenta
 
-1. **Nuevo usuario** → nombre de acceso, nombre completo, rol y —solo si el rol es
-   **Capturista**— su Dirección Regional. Los demás roles no llevan Regional.
+1. **Nuevo usuario** → nombre de acceso, nombre completo, rol y —si el rol es
+   **Capturista** o **Ventanilla**— su Dirección Regional. Los demás roles no
+   llevan Regional.
+   - En **Capturista** la Regional es obligatoria.
+   - En **Ventanilla** la Regional decide en qué municipios puede capturar
+     (secciones 2.2 y 4.1 de Nueva Solicitud): una ventanilla de Jalpan solo ve
+     los 4 municipios de Jalpan, no los 18 del estado. La **única** excepción es
+     la ventanilla central de SEDEA (`VEN-SED`), que atiende todo el estado y se
+     da de alta con la opción explícita **“SEDEA Central (todo el estado)”**
+     (equivale a dejar la Regional en blanco).
 2. **Contraseña inicial:** el formulario incluye un selector con dos opciones.
    - **Generar automática** (opción por defecto): el sistema genera una
      **contraseña temporal de 14 caracteres**, sin caracteres ambiguos, y la

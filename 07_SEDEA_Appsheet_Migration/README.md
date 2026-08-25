@@ -382,6 +382,28 @@ Los usuarios creados por lote quedan con contraseña temporal automática de 14
 caracteres y **cambio obligatorio en el primer acceso**, igual que el alta
 individual.
 
+#### Contraseña temporal común para todo el lote
+
+Cuando un grupo entra el mismo día conviene que todos reciban la **misma**
+temporal, para poder dictarla una sola vez. En la sección *Carga masiva* se marca
+**Usar una contraseña común para todo el lote** y se escribe en el campo que
+aparece: esa contraseña se aplica a **todas** las filas del CSV en vez de generar
+una aleatoria distinta por fila.
+
+- Debe cumplir la **misma política** que la contraseña escrita a mano en el alta
+  individual (mínimo 10 caracteres, con al menos una letra y un número). Si no la
+  cumple, el endpoint **rechaza el lote completo antes de crear nada**: no quedan
+  usuarios a medias.
+- El **cambio obligatorio en el primer acceso sigue vigente** (`debe_cambiar_password`).
+- La descarga *Descargar contraseñas de los creados* funciona igual; simplemente
+  repite la misma contraseña en cada fila.
+- **Sin marcar la casilla no cambia nada**: cada fila sigue recibiendo su
+  temporal aleatoria de 14 caracteres, que es el comportamiento por defecto.
+
+Para scripts, el mismo campo va como `password_comun` en el `multipart/form-data`
+(o en el JSON `{ "csv": "...", "password_comun": "..." }`) de
+`POST /api/usuarios/lote`.
+
 Dos límites que la carga masiva **no** relaja, porque son los mismos de las altas
 individuales:
 

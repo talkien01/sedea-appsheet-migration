@@ -10,7 +10,10 @@ import {
   type MunicipioVentanilla,
   type TipoPersona
 } from '@sedea/shared';
+import { useState } from 'react';
 import { ESTILO_MAYUSCULAS, aMayusculas } from './campoMayusculas';
+import EscanerCurpQr from './EscanerCurpQr';
+import type { DatosCurpQr } from './curpQr';
 
 export interface DatosSolicitante {
   tipo_persona: TipoPersona;
@@ -42,6 +45,20 @@ export default function SeccionSolicitante({ valores, municipios, cambiar }: Pro
   // Persona moral y grupo de productores comparten los campos de razon social
   // y numero de integrantes; la persona fisica ni siquiera los renderiza.
   const esColectiva = valores.tipo_persona === 'moral' || valores.tipo_persona === 'grupo';
+
+  // Escaneo del QR de la Constancia CURP: solo autocompleta los cuatro campos
+  // que trae el QR; todo lo demas sigue siendo captura manual.
+  const [escaneando, setEscaneando] = useState(false);
+  const [escaneoOk, setEscaneoOk] = useState(false);
+
+  const aplicarEscaneo = (datos: DatosCurpQr) => {
+    cambiar('curp', aMayusculas(datos.curp));
+    cambiar('nombre_solicitante', aMayusculas(datos.nombre_solicitante));
+    if (datos.sexo) cambiar('sexo', datos.sexo);
+    if (datos.fecha_nacimiento) cambiar('fecha_nacimiento', datos.fecha_nacimiento);
+    setEscaneando(false);
+    setEscaneoOk(true);
+  };
 
   return (
     <>
@@ -89,6 +106,34 @@ export default function SeccionSolicitante({ valores, municipios, cambiar }: Pro
               />
             </div>
           </>
+        )}
+
+        <div className="campo">
+          <button
+            type="button"
+            className="secundario"
+            data-testid="btn-escanear-curp"
+            onClick={() => {
+              setEscaneoOk(false);
+              setEscaneando(true);
+            }}
+          >
+            Escanear CURP
+          </button>
+          <p className="dato">
+            Lee el código QR de la Constancia CURP con la cámara y llena CURP, nombre, sexo y
+            fecha de nacimiento.
+          </p>
+        </div>
+
+        {escaneoOk && (
+          <div className="mensaje exito" role="status" data-testid="exito-escaneo-curp">
+            Datos tomados de la Constancia CURP. Revísalos antes de continuar.
+          </div>
+        )}
+
+        {escaneando && (
+          <EscanerCurpQr onDatos={aplicarEscaneo} onCerrar={() => setEscaneando(false)} />
         )}
 
         <div className="campo">

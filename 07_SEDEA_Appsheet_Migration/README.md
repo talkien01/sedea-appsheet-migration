@@ -514,6 +514,31 @@ El desplegable de municipio tampoco es el mismo en las dos: el de 2.2 lista
 **todos los municipios de la Regional** del usuario y el de 4.1 solo los de su
 alcance asignado (ver *Alcance por municipios y componentes*).
 
+### Escaneo del QR de la Constancia CURP (sección 2.1)
+
+En *Datos del solicitante* hay un botón **Escanear CURP** que abre la cámara del
+dispositivo (la trasera en celular, la webcam en escritorio) y lee el código QR
+de la Constancia CURP. Con un escaneo válido se llenan cuatro campos: CURP,
+nombre del solicitante, sexo y fecha de nacimiento. Todo lo demás se sigue
+capturando a mano.
+
+- La decodificación es 100 % en el navegador (`jsqr`): la imagen no sale del
+  dispositivo ni se guarda.
+- El QR trae los campos separados por `|`:
+  `CURP|CURP_anterior|paterno|materno|nombre(s)|sexo|DD/MM/AAAA|entidad|código|`.
+  La CURP anterior y el código INEGI de la entidad se ignoran.
+- Si el QR no es el de una Constancia CURP, sale el aviso *"No se pudo leer el
+  CURP, intenta de nuevo o captura los datos manualmente"* y el formulario
+  queda intacto. Lo mismo si el navegador no tiene cámara o el usuario niega el
+  permiso: la captura manual nunca se bloquea.
+- Fuera de alcance: lectores USB que emulan teclado. Solo cámara.
+- El navegador solo entrega la cámara en contexto seguro: `https://` o
+  `localhost`. Servida por `http://` en una IP de la red, el botón mostrará el
+  aviso de cámara no disponible.
+- Código: `pwa/src/componentes/curpQr.ts` (parseo) y
+  `pwa/src/componentes/EscanerCurpQr.tsx` (modal de cámara). Pruebas:
+  `npx playwright test test-curp-qr.spec.ts` (con el stack arriba).
+
 ### Todo el texto libre se guarda en MAYÚSCULAS
 
 Los campos de texto libre del formulario se homologan a mayúsculas **mientras

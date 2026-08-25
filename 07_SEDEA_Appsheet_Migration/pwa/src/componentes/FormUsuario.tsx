@@ -51,13 +51,17 @@ interface Props {
  */
 const CENTRAL = 'central';
 
-/** La Regional aplica al capturista y a la ventanilla (multi-rol incluido). */
+/**
+ * La Regional aplica al capturista, a la ventanilla y al dictaminador
+ * (multi-rol incluido): la bandeja de dictamen tambien se recorta con ella.
+ */
 const aplicaRegional = (roles: string[]) =>
-  roles.includes('capturista') || roles.includes('ventanilla');
+  roles.includes('capturista') || roles.includes('ventanilla') || roles.includes('dictaminador');
 
-/** Solo la ventanilla pura puede quedarse sin Regional (SEDEA Central). */
+/** Ventanilla y dictaminador pueden quedarse sin Regional (SEDEA Central). */
 const aplicaCentral = (roles: string[]) =>
-  roles.includes('ventanilla') && !roles.includes('capturista');
+  (roles.includes('ventanilla') || roles.includes('dictaminador')) &&
+  !roles.includes('capturista');
 
 const ALCANCE_TODOS: ValoresAlcance = {
   municipiosTodos: true,
@@ -174,7 +178,7 @@ export default function FormUsuario({
     if (regionalAplica && !regionalId) {
       setErrorRegional(
         permiteCentral
-          ? 'Elige la Dirección Regional de esta ventanilla, o "SEDEA Central" si atiende todo el estado.'
+          ? 'Elige la Dirección Regional de esta cuenta, o "SEDEA Central" si atiende todo el estado.'
           : 'Los capturistas y las ventanillas deben tener una Dirección Regional asignada.'
       );
       valido = false;

@@ -1,8 +1,12 @@
 // Consultas del modulo de dictamen (Build 13, E56-E59).
 //
-// El `dictaminador` dictamina a nivel ESTATAL: aqui NO se aplica
-// `regionalForzada` ni `leerAlcance` (A19-6).
+// Aislamiento por Direccion Regional: la bandeja, las metricas y el detalle se
+// recortan a la Regional forzada del usuario (`regionalForzada()`), con el
+// mismo criterio de `condicionRegionalSql()` que ya usan ventanilla/capturista.
+// `regionalId === null` (SEDEA Central y admin) = sin restriccion.
+// El alcance granular por municipio/componente NO aplica al dictaminador.
 import { pool } from '../pool.js';
+import { condicionRegionalSql } from '../../servicios/alcance.js';
 import { documentosConProblema, type DetalleDocumento } from '../../servicios/predictamen.js';
 
 const POR_PAGINA_MAX = 100;
@@ -20,6 +24,8 @@ export interface OpcionesBandeja {
   porPagina: number;
   estado: FiltroEstadoBandeja;
   q: string | null;
+  /** Regional forzada del usuario; null = sin restriccion. */
+  regionalId: number | null;
 }
 
 /**
@@ -89,6 +95,10 @@ export async function bandejaDictamen(opciones: OpcionesBandeja) {
   const pagina = Math.max(1, opciones.pagina);
   const parametros: unknown[] = [];
   const condiciones = [condicionEstado(opciones.estado)];
+
+  const regional = condicionRegionalSql(opciones.regionalId, parametros.length + 1);
+  condiciones.push(regional.sql);
+  parametros.push(...regional.valores);
 
   if (opciones.q && opciones.q.trim().length >= 2) {
     parametros.push(`%${opciones.q.trim()}%`);
@@ -188,8 +198,13 @@ export async function ultimoPredictamen(solicitudId: number) {
   return rows[0] ?? null;
 }
 
-/** Detalle completo de la solicitud para E57. */
-export async function detalleDictamen(solicitudId: number) {
+/**
+ * Detalle completo de la solicitud para E57. El filtro de Regional va en el
+ * WHERE, no despues: una solicitud de otra Regional se comporta como
+ * inexistente (404) aunque se pida por URL directa.
+ */
+export async function detalleDictamen(solicitudId: number, regionalId: number | null) {
+  const regional = condicionRegionalSql(regionalId, 2);
   const { rows: solicitudes } = await pool.query<{
     id: number;
     folio: string;
@@ -203,8 +218,8 @@ export async function detalleDictamen(solicitudId: number) {
             c.nombre AS componente, s.recibida_en
        FROM solicitudes s
        LEFT JOIN componentes c ON c.id = s.componente_id
-      WHERE s.id = $1`,
-    [solicitudId]
+      WHERE s.id = $1 AND ${regional.sql}`,
+    [solicitudId, ...regional.valores]
   );
   const solicitud = solicitudes[0] ?? null;
   if (!solicitud) return null;
@@ -336,8 +351,9 @@ export async function documentosRequeridosDeSolicitud(solicitudId: number): Prom
   );
 }
 
-/** Metricas de la cabecera de /dictamen (E59). */
-export async function metricasDictamen() {
+/** Metricas de la cabecera de /dictamen (E59), recortadas a la misma Regional. */
+export async function metricasDictamen(regionalId: number | null) {
+  const regional = condicionRegionalSql(regionalId, 1);
   const { rows } = await pool.query<{
     negativos: number;
     positivos: number;
@@ -354,15 +370,19 @@ export async function metricasDictamen() {
        count(*) FILTER (WHERE d.id IS NOT NULL)::int                       AS dictaminadas
      FROM solicitudes s
      LEFT JOIN ultimo_pre p ON p.solicitud_id = s.id
-     LEFT JOIN ultimo_dic d ON d.solicitud_id = s.id`
+     LEFT JOIN ultimo_dic d ON d.solicitud_id = s.id
+     WHERE ${regional.sql}`,
+    regional.valores
   );
   const m = rows[0];
 
   const { rows: coincidencias } = await pool.query<{ total: number; coinciden: number }>(
     `SELECT count(*)::int AS total,
-            count(*) FILTER (WHERE coincide_con_ia = true)::int AS coinciden
-       FROM dictamenes
-      WHERE coincide_con_ia IS NOT NULL`
+            count(*) FILTER (WHERE dic.coincide_con_ia = true)::int AS coinciden
+       FROM dictamenes dic
+       JOIN solicitudes s ON s.id = dic.solicitud_id
+      WHERE dic.coincide_con_ia IS NOT NULL AND ${regional.sql}`,
+    regional.valores
   );
   const c = coincidencias[0];
   const porcentaje = c.total > 0 ? Math.round((c.coinciden / c.total) * 100) : 0;

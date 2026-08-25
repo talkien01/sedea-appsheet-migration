@@ -121,8 +121,11 @@ export async function resolverRegional(
     return valor;
   }
 
-  if (tieneRol(rol, 'ventanilla')) {
-    if (valor === null) return null; // ventanilla Central: alcance estatal.
+  // El dictaminador la lleva por la misma razon que la ventanilla: sin ella su
+  // bandeja de dictamen abarcaria las cuatro Regionales. Opcional (null) para
+  // el dictaminador de SEDEA Central, con alcance estatal.
+  if (tieneRol(rol, 'ventanilla') || tieneRol(rol, 'dictaminador')) {
+    if (valor === null) return null; // Central: alcance estatal.
     if (!(await regionalValida(valor, cliente))) {
       throw error422(
         'regional_invalida',
@@ -135,7 +138,7 @@ export async function resolverRegional(
   if (valor !== null) {
     throw error422(
       'regional_no_aplica',
-      'Solo los capturistas y las ventanillas llevan Dirección Regional.'
+      'Solo los capturistas, las ventanillas y los dictaminadores llevan Dirección Regional.'
     );
   }
   return null;

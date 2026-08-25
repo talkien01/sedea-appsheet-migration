@@ -3,8 +3,11 @@
 // Reglas transversales:
 //  - Todos los endpoints exigen rol `dictaminador` o `admin` (multi-rol ya
 //    soportado por requiereRol).
-//  - El dictaminador ve TODAS las regionales: aqui no se aplica
-//    regionalForzada ni leerAlcance (A19-6).
+//  - Aislamiento por Direccion Regional: la cola de dictamen NO es compartida.
+//    Un dictaminador con Regional asignada solo ve/abre solicitudes de su
+//    Regional; SEDEA Central (regional_id NULL) y admin siguen viendo todo.
+//    Se usa `regionalForzada()`, el mismo criterio de ventanilla/capturista.
+//    El alcance granular (leerAlcance) sigue sin aplicar al dictaminador.
 //  - La IA NUNCA aprueba sola (D19-8): el unico camino que escribe en
 //    `dictamenes` es E58, con `resultado` explicito de un humano autenticado.
 //  - No existe ningun endpoint de expediente: los archivos se suben con E46 y
@@ -13,6 +16,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { config } from '../config.js';
 import { ErrorApi } from '../plugins/errores.js';
+import { regionalForzada } from '../plugins/rbac.js';
+import { solicitudEnRegional } from '../servicios/alcance.js';
 import { pool } from '../db/pool.js';
 import { enTransaccion, bitacoraEnTransaccion } from '../servicios/promocion.js';
 import { predictaminarLote } from '../servicios/predictamen.js';
@@ -109,6 +114,15 @@ export default async function rutasDictamen(app: FastifyInstance): Promise<void>
         );
       }
 
+      // El lote no puede salirse de la Regional del usuario (mismo criterio
+      // que la bandeja y el detalle): si un id es ajeno, se rechaza entero.
+      const regional = regionalForzada(usuario);
+      for (const id of ids) {
+        if (!(await solicitudEnRegional(id, regional))) {
+          throw error404('Alguna de las solicitudes no existe.');
+        }
+      }
+
       const resultados = await predictaminarLote(ids, usuario.id);
 
       await enTransaccion(async (cliente) => {
@@ -158,7 +172,8 @@ export default async function rutasDictamen(app: FastifyInstance): Promise<void>
       pagina: Number(consulta.pagina) > 0 ? Number(consulta.pagina) : 1,
       porPagina: Number(consulta.por_pagina) > 0 ? Number(consulta.por_pagina) : 25,
       estado,
-      q: consulta.q ?? null
+      q: consulta.q ?? null,
+      regionalId: regionalForzada(usuarioDe(peticion))
     });
 
     return respuesta.send(resultado);
@@ -168,8 +183,8 @@ export default async function rutasDictamen(app: FastifyInstance): Promise<void>
   // E59 - Metricas de la cabecera. Va ANTES de /:solicitudId para que
   // "metricas" no se interprete como un id.
   // -------------------------------------------------------------------------
-  app.get('/api/dictamen/metricas', protegida, async (_peticion, respuesta) => {
-    return respuesta.send(await metricasDictamen());
+  app.get('/api/dictamen/metricas', protegida, async (peticion, respuesta) => {
+    return respuesta.send(await metricasDictamen(regionalForzada(usuarioDe(peticion))));
   });
 
   // -------------------------------------------------------------------------
@@ -183,7 +198,8 @@ export default async function rutasDictamen(app: FastifyInstance): Promise<void>
       if (!Number.isInteger(solicitudId) || solicitudId <= 0) {
         throw error404('La solicitud no existe.');
       }
-      const detalle = await detalleDictamen(solicitudId);
+      // Una solicitud de otra Regional no se distingue de una inexistente.
+      const detalle = await detalleDictamen(solicitudId, regionalForzada(usuarioDe(peticion)));
       if (!detalle) throw error404('La solicitud no existe.');
       return respuesta.send(detalle);
     }
@@ -208,6 +224,10 @@ export default async function rutasDictamen(app: FastifyInstance): Promise<void>
         [solicitudId]
       );
       if (existe.length === 0) throw error404('La solicitud no existe.');
+      // Mismo criterio que el detalle: fuera de la Regional = inexistente.
+      if (!(await solicitudEnRegional(solicitudId, regionalForzada(usuario)))) {
+        throw error404('La solicitud no existe.');
+      }
 
       const parseado = esquemaConfirmar.safeParse(peticion.body);
       if (!parseado.success) {

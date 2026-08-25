@@ -89,6 +89,45 @@ export function ventanillasPermitidas(
 }
 
 /**
+ * Fragmento SQL "la solicitud es de esta Regional", con el mismo criterio que
+ * usan municipioCapturable() y condicionAlcanceSql(): manda el municipio de
+ * ubicacion del predio (`s.ubi_municipio_id`), no la Regional de la ventanilla
+ * que la capturo. `regionalId` nulo = sin restriccion (SEDEA Central).
+ */
+export function condicionRegionalSql(
+  regionalId: number | null | undefined,
+  indice: number,
+  alias = 's'
+): { sql: string; valores: unknown[] } {
+  if (regionalId === null || regionalId === undefined) {
+    return { sql: 'TRUE', valores: [] };
+  }
+  return {
+    sql: `${alias}.ubi_municipio_id IN (SELECT id FROM municipios WHERE regional_id = $${indice})`,
+    valores: [regionalId]
+  };
+}
+
+/**
+ * Version por fila del filtro anterior, para proteger el detalle y las
+ * escrituras sobre UNA solicitud (no solo ocultarla del listado).
+ */
+export async function solicitudEnRegional(
+  solicitudId: number,
+  regionalId: number | null
+): Promise<boolean> {
+  if (regionalId === null) return true;
+  const fila = await consultar<{ uno: number }>(
+    `SELECT 1 AS uno
+       FROM solicitudes s
+       JOIN municipios m ON m.id = s.ubi_municipio_id
+      WHERE s.id = $1 AND m.regional_id = $2`,
+    [solicitudId, regionalId]
+  );
+  return fila.length > 0;
+}
+
+/**
  * Fragmento SQL de aislamiento para las consultas de solicitudes (E43/E44).
  * Devuelve la condicion y los parametros a concatenar; para "todos" devuelve
  * una condicion siempre verdadera.
@@ -110,11 +149,10 @@ export function condicionAlcanceSql(
 
   if (alcance.municipios !== 'todos') {
     if (regionalId !== null && regionalId !== undefined) {
-      partes.push(
-        `(s.ubi_municipio_id = ANY($${indice}::bigint[]) OR s.ubi_municipio_id IN (SELECT id FROM municipios WHERE regional_id = $${indice + 1}))`
-      );
-      valores.push(alcance.municipios, regionalId);
-      indice += 2;
+      const regional = condicionRegionalSql(regionalId, indice + 1);
+      partes.push(`(s.ubi_municipio_id = ANY($${indice}::bigint[]) OR ${regional.sql})`);
+      valores.push(alcance.municipios, ...regional.valores);
+      indice += 1 + regional.valores.length;
     } else {
       // Un alcance vacio de verdad (lista sin ids) no deja ver nada.
       partes.push(`s.ubi_municipio_id = ANY($${indice}::bigint[])`);

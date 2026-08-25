@@ -244,10 +244,13 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
 
       const rolFinal = datos.rol ?? actual.rol;
       // Multi-rol: la Regional aplica si la lista contiene 'capturista'
-      // (obligatoria) o 'ventanilla' (opcional: null = ventanilla Central).
+      // (obligatoria), 'ventanilla' o 'dictaminador' (opcionales: null =
+      // SEDEA Central, con alcance estatal).
       const rolesFinales = rolFinal.split('+');
       const regionalAplica =
-        rolesFinales.includes('capturista') || rolesFinales.includes('ventanilla');
+        rolesFinales.includes('capturista') ||
+        rolesFinales.includes('ventanilla') ||
+        rolesFinales.includes('dictaminador');
 
       // Coherencia rol <-> Regional: si el rol deja de aplicarla, la Regional se
       // limpia sola; enviarla explicitamente sigue siendo un error.
@@ -260,7 +263,7 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
         if ('regional_id' in datos && (datos.regional_id ?? null) !== null) {
           throw error422(
             'regional_no_aplica',
-            'Solo los capturistas y las ventanillas llevan Dirección Regional.'
+            'Solo los capturistas, las ventanillas y los dictaminadores llevan Dirección Regional.'
           );
         }
         regionalFinal = null;

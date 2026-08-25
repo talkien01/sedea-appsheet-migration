@@ -13,7 +13,6 @@ const SELECT_USUARIO = `
          (SELECT count(*)::int FROM capturas c WHERE c.usuario_id = u.id) AS capturas
     FROM usuarios u
     LEFT JOIN direcciones_regionales r ON r.id = u.regional_id
-   WHERE u.eliminado = FALSE
 `;
 
 export interface FiltrosUsuarios {
@@ -73,7 +72,7 @@ export async function listarUsuarios(
        LEFT JOIN direcciones_regionales r ON r.id = u.regional_id`;
 
   const totalFila = await consultarUna<{ total: number }>(
-    `SELECT count(*)::int AS total FROM (${sqlBase}) _ ${where}`,
+    `SELECT count(*)::int AS total FROM (${sqlBase} ${where}) _`,
     parametros
   );
   const total = totalFila?.total ?? 0;

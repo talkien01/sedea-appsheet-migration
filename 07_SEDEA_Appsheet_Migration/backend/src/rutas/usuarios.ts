@@ -65,6 +65,7 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
       rol: q.rol || null,
       regional_id: q.regional_id ? Number(q.regional_id) : null,
       activo: q.activo === 'true' ? true : q.activo === 'false' ? false : null,
+      eliminado: q.eliminado === 'true' ? true : q.eliminado === 'false' ? false : null,
       q: q.q || null,
       page,
       page_size: pageSize

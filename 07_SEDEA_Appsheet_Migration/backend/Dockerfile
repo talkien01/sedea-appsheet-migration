@@ -1,4 +1,5 @@
 # Imagen de la API. El contexto de build es la raiz del monorepo.
+# Build fix: papelera usuarios
 FROM node:20-alpine
 
 WORKDIR /app

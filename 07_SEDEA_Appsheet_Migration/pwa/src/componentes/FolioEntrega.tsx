@@ -124,15 +124,24 @@ export default function FolioEntrega() {
 
   return (
     <div className="tarjeta">
-      <div className="folio-entrega-print" data-testid="folio-entrega">
+      <div
+        className="folio-entrega-print"
+        data-testid="folio-entrega"
+        style={{ '--folio-chars': datos.folio.length } as React.CSSProperties}
+      >
         <div className="folio-header">
           <h1>SEDEA</h1>
           <p>Secretaría de Desarrollo Agropecuario</p>
           <h2>FOLIO DE ENTREGA DE APOYO</h2>
         </div>
 
+        {/* El folio es el dato con el que se busca el expediente en la mesa de
+            entrega: en la pagina 1 va como banner de ancho completo, con la
+            etiqueta chica arriba y el numero en grande. Ocupa su propia franja
+            sobre la rejilla de 3 columnas, asi que crecer no la desacomoda. */}
         <div className="folio-folio">
-          <strong>Folio:</strong> {datos.folio}
+          <span className="folio-folio-etiqueta">Folio</span>
+          <span className="folio-folio-numero" data-testid="folio-numero">{datos.folio}</span>
         </div>
 
         {/* En Carta horizontal el ancho sobra y el alto escasea: los dos
@@ -294,13 +303,41 @@ export default function FolioEntrega() {
           margin: 8px 0 0 0;
           text-transform: uppercase;
         }
+        /* Banner del folio en la pagina 1. Antes era un renglon de 20px que se
+           perdia entre el resto del texto; ahora el numero manda (mas del
+           triple) y la etiqueta queda como antetitulo. El padding se recorto
+           para que el bloque crezca poco en alto y la pagina 1 siga cabiendo
+           en una sola hoja Carta horizontal. */
         .folio-folio {
-          font-size: 20px;
           text-align: center;
-          padding: 16px;
+          padding: 8px 16px 10px;
           background: #f5f5f5;
           border-radius: 8px;
-          margin-bottom: 24px;
+          margin-bottom: 18px;
+        }
+        .folio-folio-etiqueta {
+          display: block;
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 2px;
+          color: #444;
+        }
+        .folio-folio-numero {
+          /* inline-block (no block): la caja se ajusta al texto, asi el
+             centrado del padre lo centra de verdad y un desborde por ancho
+             seria visible en vez de quedar escondido tras un bloque al 100%. */
+          display: inline-block;
+          font-family: var(--font-mono);
+          font-weight: 700;
+          /* 19 caracteres monoespaciados a 64px ocupan ~0.6*19*64 = 730px,
+             muy por debajo del ancho util de la hoja (~980px), y el
+             clamp por ancho de contenedor evita que un folio mas largo se
+             desborde. */
+          font-size: min(64px, calc(200mm / var(--folio-chars, 19) * 1.45));
+          line-height: 1.1;
+          white-space: nowrap;
+          overflow-wrap: normal;
         }
         .folio-seccion {
           margin-bottom: 20px;

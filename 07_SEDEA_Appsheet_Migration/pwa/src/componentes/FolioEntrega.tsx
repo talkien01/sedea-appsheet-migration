@@ -218,10 +218,12 @@ export default function FolioEntrega() {
           background: white;
           color: black;
         }
+        /* La columna del apoyo carga la tabla de conceptos, asi que se lleva
+           el doble de ancho; la del QR es fija porque el codigo no escala. */
         .folio-cuerpo {
           display: grid;
-          grid-template-columns: 1fr 1.4fr auto;
-          gap: 16px;
+          grid-template-columns: 1fr 2fr 190px;
+          gap: 24px;
           align-items: start;
         }
         .folio-conceptos {
@@ -246,6 +248,12 @@ export default function FolioEntrega() {
         }
         .folio-conceptos .folio-col-cant {
           text-align: right;
+          white-space: nowrap;
+          width: 1%;
+        }
+        /* Encabezados cortos: sin esto "UNIDAD DE MEDIDA" se parte en tres
+           renglones y desbalancea la altura de la fila. */
+        .folio-conceptos th {
           white-space: nowrap;
         }
         /* Pagina 2 (folio gigante): en pantalla es solo una vista previa; el
@@ -308,9 +316,11 @@ export default function FolioEntrega() {
           margin: 8px 0;
           font-size: 14px;
         }
+        /* En horizontal el QR es la tercera columna, no un bloque centrado
+           bajo el texto: sin margen vertical y acotado al ancho de columna. */
         .folio-qr {
           text-align: center;
-          margin: 32px 0;
+          margin: 0;
         }
         .qr-image {
           width: 150px;

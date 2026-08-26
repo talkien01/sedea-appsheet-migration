@@ -702,7 +702,7 @@ distintos y complementarios**, cada uno con su botón:
 
 | Botón | Documento | Para qué |
 |---|---|---|
-| *Imprimir Folio de Entrega* | Folio A4 con QR | Entrega del apoyo **ya aprobado** |
+| *Imprimir Folio de Entrega* | Folio Carta **horizontal**, 2 páginas, con QR | Entrega del apoyo **ya aprobado** |
 | *Solicitud de Apoyo (PDF)* | Réplica de 3 páginas del formato oficial | Acuse/expediente **desde la captura** |
 
 El segundo se sirve en:
@@ -971,7 +971,7 @@ variable de entorno nueva ni migración adicional**:
 | **Banner post-guardado** | Al guardar una solicitud, la redirección automática (4 s) lleva a `/solicitudes/:id?nuevo=1`. El detalle muestra un banner de confirmación que desaparece al tocarlo o a los 10 s. |
 | **Drag & drop** | Cada documento del checklist tiene una zona de arrastre encima del selector de archivo. Sin librerías externas. |
 | **Carátula imprimible** | El botón "Imprimir carátula" llama a `window.print()`. Se imprime solo el bloque con folio, solicitante, municipio, proyecto, conceptos y lista de documentos con casillas vacías para check manual. |
-| **Folio de entrega con QR** | `/solicitudes/:id/folio` genera la hoja de entrega con el QR del folio. También se imprime con `window.print()`. |
+| **Folio de entrega con QR** | `/solicitudes/:id/folio` genera la hoja de entrega con el QR del folio. También se imprime con `window.print()`. Sale en **Carta horizontal** y **dos páginas**: la 1 lleva beneficiario, apoyo y QR en tres columnas; la 2, solo el folio en letra gigante para separar expedientes en la mesa de entrega. El apoyo se documenta en **cantidad + unidad de medida** (todos los conceptos de la solicitud), **no** en dinero: el folio se firma al recibir costales u obra, y el monto solo confundía en ventanilla. |
 
 ### Reglas de impresión compartidas
 
@@ -986,6 +986,15 @@ fija para la barra lateral y `height: 100dvh`. Si no se neutraliza, el documento
 sale desplazado a la derecha y recortado fuera del área imprimible, y la barra
 lateral se dibuja dentro del PDF. Cada pantalla imprimible agrega en su propio
 bloque `@media print` únicamente lo específico de su documento.
+
+**Cómo una pantalla usa un tamaño de hoja distinto.** `@page` no se puede acotar
+con un selector: es global a la hoja de estilos. El folio de entrega necesita
+Carta horizontal mientras la carátula de expediente sigue en A4 vertical, así que
+su `@page { size: letter landscape }` vive en el `<style>` que renderiza el propio
+`FolioEntrega.tsx`. Ese `<style>` **solo existe en el DOM mientras esa ruta está
+montada**, y va después de `impresion.css` en la cascada: gana en el folio y
+desaparece al salir de la pantalla. Si se necesita otro tamaño en una pantalla
+nueva, seguir ese patrón —**no** cambiar el `@page` compartido—.
 
 
 ---

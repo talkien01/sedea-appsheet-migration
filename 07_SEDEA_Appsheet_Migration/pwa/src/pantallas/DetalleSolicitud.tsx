@@ -37,6 +37,7 @@ export default function DetalleSolicitud() {
   const [detalle, setDetalle] = useState<DetalleSolicitudApi | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [enlaces, setEnlaces] = useState<Record<number, string>>({});
+  const [urlSolicitudPdf, setUrlSolicitudPdf] = useState<string>('');
 
   // B7-C: banner "Solicitud registrada"
   const [searchParams] = useSearchParams();
@@ -90,6 +91,19 @@ export default function DetalleSolicitud() {
     if (!enLinea) return;
     void cargar();
   }, [cargar, enLinea]);
+
+  // Acuse/expediente oficial en PDF. El <a> necesita la URL ya resuelta con
+  // token (?token=), igual que los adjuntos de /media.
+  useEffect(() => {
+    if (!id) return;
+    let vigente = true;
+    void urlConToken(`/api/solicitudes/${id}/solicitud-completa.pdf`).then((url) => {
+      if (vigente) setUrlSolicitudPdf(url);
+    });
+    return () => {
+      vigente = false;
+    };
+  }, [id]);
 
   const marcar = async (docId: number, recibido: boolean) => {
     if (!id) return;
@@ -273,6 +287,19 @@ export default function DetalleSolicitud() {
           <Link className="boton" to={`/solicitudes/${id}/folio`}>
             📄 Imprimir Folio de Entrega
           </Link>
+          {/* Documento DISTINTO al folio de entrega: es el acuse/expediente
+              completo de la solicitud (3 paginas, formato oficial). */}
+          {urlSolicitudPdf && (
+            <a
+              className="boton"
+              data-testid="btn-solicitud-pdf"
+              href={urlSolicitudPdf}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              🖨️ Solicitud de Apoyo (PDF)
+            </a>
+          )}
           <button
             type="button"
             data-testid="btn-imprimir-caratula"

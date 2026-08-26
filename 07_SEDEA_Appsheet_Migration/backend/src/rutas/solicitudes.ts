@@ -34,6 +34,7 @@ import {
   type AlcanceResuelto
 } from '../servicios/alcance.js';
 import { calcularDocumentosRequeridos } from '../servicios/documentos.js';
+import { generarSolicitudCompletaPdf } from '../servicios/solicitud-completa.js';
 import { anioFolio, armarFolio, reservarConsecutivo, siglasMunicipio } from '../servicios/folios.js';
 import {
   TIPOS_ADJUNTO_SOLICITUD,
@@ -792,6 +793,38 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
         documentos: await documentosDeSolicitud(id),
         beneficiarios: await beneficiariosDeSolicitud(id)
       });
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // Acuse/expediente: replica fiel del formato oficial "Solicitud de Apoyo"
+  // (3 paginas, PDF). Vive aqui y no en un archivo aparte para reusar tal cual
+  // el mismo guard de rol y el mismo aislamiento por alcance que E44: quien
+  // puede ver la solicitud puede imprimir su acuse, nadie mas.
+  // -------------------------------------------------------------------------
+  app.get<{ Params: { id: string } }>(
+    '/api/solicitudes/:id/solicitud-completa.pdf',
+    protegida,
+    async (peticion, respuesta) => {
+      const usuario = peticion.usuario!;
+      const id = Number(peticion.params.id);
+      if (!Number.isInteger(id) || id <= 0) throw error404('La solicitud no existe.');
+
+      const solicitud = await obtenerSolicitud(id);
+      if (!solicitud) throw error404('La solicitud no existe.');
+
+      if (usuario.rol !== 'admin') {
+        exigirAlcanceSobre(usuario, await leerAlcance(usuario), solicitud);
+      }
+
+      const pdf = await generarSolicitudCompletaPdf(id);
+      return respuesta
+        .header('content-type', 'application/pdf')
+        .header(
+          'content-disposition',
+          `inline; filename="solicitud_${String(solicitud.folio).replace(/[^A-Za-z0-9._-]/g, '_')}.pdf"`
+        )
+        .send(pdf);
     }
   );
 

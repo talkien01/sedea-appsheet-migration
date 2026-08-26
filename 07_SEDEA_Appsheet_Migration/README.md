@@ -416,6 +416,41 @@ individuales:
 - Las columnas de alcance solo las puede usar un `admin` y solo sobre el rol
   `ventanilla` puro, que es la misma regla del endpoint que administra el alcance.
 
+### Reseteo de contraseña en lote (usuarios que ya existen)
+
+La *Carga masiva* de arriba solo sirve para **altas nuevas**. Para el caso
+contrario —usuarios que **ya están dados de alta**, cada uno con su temporal
+aleatoria, y que se quiere dejar a todos con la **misma** contraseña para
+facilitar el primer ingreso— se usa la selección de la tabla de `/usuarios`:
+
+1. Marca la casilla de cada usuario que quieras resetear (o la del encabezado
+   para seleccionarlos todos). Los usuarios en la papelera no son seleccionables.
+2. Aparece una barra con **Resetear contraseña de N usuarios seleccionados**.
+3. En el modal escribe la contraseña común y confirma.
+
+Reglas, que son **las mismas del reseteo individual**, no unas nuevas:
+
+- Misma política de contraseña (mínimo 10 caracteres, con al menos una letra y un
+  número). Si no la cumple, se **rechaza el lote completo sin resetear a nadie**.
+- Todos los reseteados quedan con **cambio obligatorio en el primer acceso**
+  (`debe_cambiar_password`).
+- Cada usuario es **independiente**: si el actor no puede administrar ese rol
+  (por ejemplo un `editor_datos` que selecciona a un `admin`), **esa fila** queda
+  en error con `rol_no_asignable` y **las demás sí se resetean**. El resultado se
+  muestra usuario por usuario con el motivo de cada fallo.
+- Se registra una entrada `usuario_password_reset` en la bitácora por cada
+  usuario reseteado, **sin la contraseña** ni en claro ni hasheada.
+- La contraseña común se muestra en claro una sola vez en pantalla (es una sola
+  para todos, y hay que poder dictarla); no hay CSV de descarga porque no hace
+  falta.
+
+Para scripts: `POST /api/usuarios/reset-password-lote` con
+`{ "ids": [1,2,3], "modo_password": "manual", "password_manual": "..." }`. Con
+`"modo_password": "automatica"` (o sin el campo) cada usuario recibe su propia
+temporal aleatoria y viene en `password_temporal` de su fila del resultado.
+Siempre responde 200 con el detalle por id; el único 4xx es el de la contraseña
+manual inválida, que se juzga antes de tocar nada.
+
 ### Cambio obligatorio vs. cambio voluntario
 
 Son dos flujos con la misma pantalla y con una diferencia deliberada:

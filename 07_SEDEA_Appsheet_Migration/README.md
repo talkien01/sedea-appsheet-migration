@@ -695,6 +695,56 @@ PEO-SJR-AME-0001-26
   reserva de forma atómica. Puede dejar huecos si una transacción falla después de
   reservarlo: un consecutivo nunca se reutiliza.
 
+### Acuse en PDF: réplica del formato oficial en papel
+
+Desde el detalle de una solicitud (`/solicitudes/:id`) hay **dos documentos
+distintos y complementarios**, cada uno con su botón:
+
+| Botón | Documento | Para qué |
+|---|---|---|
+| *Imprimir Folio de Entrega* | Folio A4 con QR | Entrega del apoyo **ya aprobado** |
+| *Solicitud de Apoyo (PDF)* | Réplica de 3 páginas del formato oficial | Acuse/expediente **desde la captura** |
+
+El segundo se sirve en:
+
+```
+GET /api/solicitudes/:id/solicitud-completa.pdf
+```
+
+Reproduce fielmente el formato en papel del Programa Institucional Apoyo al
+Campo Queretano: secciones 1 a 7, comprobante del beneficiario y el texto legal
+**copiado verbatim** (incluidas las erratas tipográficas del original, que **no
+se corrigen**: es texto legal). Se genera server-side con PDFKit
+(`backend/src/servicios/solicitud-completa.ts`), igual que el folio de entrega.
+
+Dos cosas salen resueltas donde el papel las dejaba en blanco, porque el sistema
+sí las conoce: en el **comprobante del beneficiario**, el funcionario receptor
+(el usuario de ventanilla que capturó) y la fecha de recepción.
+
+La **sección 7 (dictamen)** y las firmas van en blanco para llenarse a mano,
+salvo que la solicitud ya tenga un dictamen humano registrado (tabla
+`dictamenes`): entonces se imprime el resultado positiva/negativa, los conceptos,
+la nota y el nombre del dictaminador.
+
+Los componentes y las ventanillas del formato **se leen del catálogo en vivo**:
+al dar de alta un componente nuevo aparece solo, sin tocar el código.
+
+Campos del formato viejo que salen **en blanco** porque hoy no se capturan en
+`solicitudes`: **Número exterior** y **Número interior** del domicilio (el modelo
+guarda un solo campo libre `dom_vialidad`, "Nombre de la vialidad y número").
+
+Descarga directa con curl:
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:3000/api/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"usuario":"ventanilla2","password":"cambiame123"}' | jq -r .token)
+
+curl -s -o solicitud.pdf \
+  -H "authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/solicitudes/4/solicitud-completa.pdf
+```
+
 ### Qué pasa al guardar
 
 La solicitud **entra directo a producción, sin pasar por staging ni por
@@ -1131,6 +1181,7 @@ desactivan (ver *Administración de usuarios*).
 | GET | `/api/solicitudes` | `ventanilla`, `admin` (aislado por alcance) |
 | GET | `/api/solicitudes/:id` | `ventanilla`, `admin` (aislado por alcance) |
 | GET | `/api/solicitudes/:id/folio-entrega.pdf` | autenticado (PDF A4 con QR del folio) |
+| GET | `/api/solicitudes/:id/solicitud-completa.pdf` | `ventanilla`, `capturista`, `admin` (aislado por alcance) |
 | PATCH | `/api/solicitudes/:id/documentos/:docId` | `ventanilla`, `admin` |
 | POST | `/api/solicitudes/:id/documentos/:docId/archivo` | `ventanilla`, `admin` |
 | GET | `/api/usuarios/:id/alcance` | `admin` |

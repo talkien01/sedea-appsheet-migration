@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { apiSolicitudes } from '../api/solicitudes';
+import { ErrorPeticion } from '../api/cliente';
 import { ETIQUETAS_NOMBRE_SOLICITANTE, type TipoPersona } from '@sedea/shared';
 
 /** Un renglon del apoyo entregado: que es y cuanto, en unidades fisicas. */
@@ -67,8 +68,10 @@ export default function FolioEntrega() {
 
   useEffect(() => {
     if (!id) return;
-    // Obtener datos de la solicitud
-    apiSolicitudes.detalle(Number(id))
+    // Obtener datos de la solicitud por la ruta CON candado: si la solicitud
+    // no tiene capturada la autorización del Secretario, el backend responde
+    // 403 y esta pantalla no se arma, aunque se llegue por URL directa.
+    apiSolicitudes.folio(Number(id))
       .then(detalle => {
         const s = detalle.solicitud as unknown as SolicitudFolio;
         // Mismo criterio que la caratula de expediente: para persona moral o
@@ -110,7 +113,12 @@ export default function FolioEntrega() {
         );
       })
       .then(setQrDataUrl)
-      .catch(() => setError('No se pudieron cargar los datos.'))
+      .catch((e: unknown) => {
+        // El mensaje del backend ya viene en español y explica el candado
+        // ("se habilita hasta que se capture la autorización del Secretario").
+        const mensaje = e instanceof ErrorPeticion ? e.message : null;
+        setError(mensaje ?? 'No se pudieron cargar los datos.');
+      })
       .finally(() => setCargando(false));
   }, [id]);
 
@@ -119,7 +127,12 @@ export default function FolioEntrega() {
   };
 
   if (cargando) return <p className="vacio">Cargando folio...</p>;
-  if (error) return <div className="mensaje error">{error}</div>;
+  if (error)
+    return (
+      <div className="mensaje error" role="alert" data-testid="folio-error">
+        {error}
+      </div>
+    );
   if (!datos) return null;
 
   return (

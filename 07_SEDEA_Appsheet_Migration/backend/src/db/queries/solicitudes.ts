@@ -216,7 +216,8 @@ export async function obtenerSolicitud(id: number) {
             mu.regional_id AS ubi_municipio_regional_id,
             u.usuario AS capturado_por_usuario,
             m.clave AS modalidad, m.nombre AS modalidad_nombre,
-            dr.nombre AS regional_nombre
+            dr.nombre AS regional_nombre,
+            ua.usuario AS autorizada_secretario_por_usuario
        FROM solicitudes s
        JOIN componentes c ON c.id = s.componente_id
        JOIN proyectos p   ON p.id = s.proyecto_id
@@ -228,6 +229,7 @@ export async function obtenerSolicitud(id: number) {
        LEFT JOIN usuarios u ON u.id = s.capturado_por
        LEFT JOIN modalidades m ON m.id = s.modalidad_id
        LEFT JOIN direcciones_regionales dr ON dr.id = s.regional_id
+       LEFT JOIN usuarios ua ON ua.id = s.autorizada_secretario_por
       WHERE s.id = $1`,
     [id]
   );

@@ -4,6 +4,8 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { generarFolioEntregaPdf } from '../servicios/folio-entrega.js';
 import { ErrorApi } from '../plugins/errores.js';
+import { obtenerSolicitud } from '../db/queries/solicitudes.js';
+import { exigirAutorizacionSecretario } from './solicitudes.js';
 
 export default async function rutasFolioEntrega(app: FastifyInstance): Promise<void> {
   app.get(
@@ -14,6 +16,12 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
       if (!id || isNaN(id)) {
         throw new ErrorApi(400, 'id_invalido', 'ID de solicitud inválido.');
       }
+
+      // Mismo candado que la pantalla del folio: sin autorizacion capturada, el
+      // PDF tampoco se emite (si no, bastaria pedir el .pdf para saltarselo).
+      const solicitud = await obtenerSolicitud(id);
+      if (!solicitud) throw new ErrorApi(404, 'no_encontrado', 'Solicitud no encontrada.');
+      exigirAutorizacionSecretario(solicitud);
 
       try {
         const pdf = await generarFolioEntregaPdf(id);

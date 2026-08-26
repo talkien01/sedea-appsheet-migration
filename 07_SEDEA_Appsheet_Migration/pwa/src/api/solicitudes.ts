@@ -85,6 +85,27 @@ export const apiSolicitudes = {
     return peticion<DetalleSolicitudApi>(`/solicitudes/${id}`);
   },
 
+  /**
+   * Datos para la pantalla del Folio de entrega. Es la MISMA carga que
+   * `detalle()`, pero por una ruta que exige la Autorización del Secretario:
+   * si falta, responde 403 `autorizacion_secretario_pendiente`. El candado no
+   * puede estar en `detalle()` porque el Detalle sí debe verse siempre.
+   */
+  folio(id: number): Promise<DetalleSolicitudApi> {
+    return peticion<DetalleSolicitudApi>(`/solicitudes/${id}/folio`);
+  },
+
+  /** Captura (o corrige) la autorización del Secretario. Solo admin. */
+  autorizacionSecretario(
+    id: number,
+    cuerpo: { autorizada: boolean; nota?: string | null }
+  ): Promise<{ ok: true; solicitud: Record<string, unknown> }> {
+    return peticion(`/solicitudes/${id}/autorizacion-secretario`, {
+      method: 'POST',
+      body: JSON.stringify(cuerpo)
+    });
+  },
+
   /** E45 - marcar recibido / observaciones de un documento. */
   actualizarDocumento(
     id: number,

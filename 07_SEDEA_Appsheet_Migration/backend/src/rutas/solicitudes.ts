@@ -162,6 +162,20 @@ function exigirAlcanceSobre(
   }
 }
 
+/**
+ * Candado del Folio de entrega: sin la Autorizacion del Secretario capturada,
+ * el folio no existe para nadie (ni siquiera para admin: el candado no es de
+ * permisos, es del proceso). Es INDEPENDIENTE del dictamen.
+ */
+export function exigirAutorizacionSecretario(solicitud: { autorizada_secretario?: unknown }): void {
+  if (solicitud.autorizada_secretario !== true) {
+    throw error403(
+      'autorizacion_secretario_pendiente',
+      'El Folio de entrega se habilita hasta que se capture la autorización del Secretario.'
+    );
+  }
+}
+
 export default async function rutasSolicitudes(app: FastifyInstance): Promise<void> {
   const protegida = { preHandler: [app.autenticar, soloVentanilla] };
 
@@ -793,6 +807,110 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
         documentos: await documentosDeSolicitud(id),
         beneficiarios: await beneficiariosDeSolicitud(id)
       });
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // Folio de entrega: MISMOS datos que E44, pero detras del candado de la
+  // Autorizacion del Secretario.
+  //
+  // Por que un endpoint aparte y no un flag sobre E44: la pantalla del folio
+  // (`/solicitudes/:id/folio`) y el detalle general consumen la misma consulta,
+  // pero solo el folio esta gateado. Si el candado viviera en E44, el Detalle
+  // dejaria de poder mostrar la solicitud; si viviera en un query param, el
+  // candado seria opcional para quien navega directo. Con una ruta propia el
+  // bloqueo es real: no hay forma de pedir los datos del folio sin pasar por
+  // aqui, y E44 sigue abierto para el resto de las pantallas.
+  // -------------------------------------------------------------------------
+  app.get<{ Params: { id: string } }>(
+    '/api/solicitudes/:id/folio',
+    protegida,
+    async (peticion, respuesta) => {
+      const usuario = peticion.usuario!;
+      const id = Number(peticion.params.id);
+      if (!Number.isInteger(id) || id <= 0) throw error404('La solicitud no existe.');
+
+      const solicitud = await obtenerSolicitud(id);
+      if (!solicitud) throw error404('La solicitud no existe.');
+
+      if (usuario.rol !== 'admin') {
+        exigirAlcanceSobre(usuario, await leerAlcance(usuario), solicitud);
+      }
+      exigirAutorizacionSecretario(solicitud);
+
+      return respuesta.status(200).send({
+        solicitud,
+        conceptos: await conceptosDeSolicitud(id),
+        documentos: await documentosDeSolicitud(id),
+        beneficiarios: await beneficiariosDeSolicitud(id)
+      });
+    }
+  );
+
+  // -------------------------------------------------------------------------
+  // Autorizacion del Secretario: captura (o correccion) en el sistema de la
+  // firma que el Secretario puso EN PAPEL sobre la Solicitud impresa.
+  //
+  // Solo `admin`: es la decision mas alta del proceso. Se permite desmarcar
+  // porque una captura equivocada debe poder corregirse; cada cambio —marcar y
+  // desmarcar— deja su propio renglon en bitacora.
+  // -------------------------------------------------------------------------
+  app.post<{ Params: { id: string } }>(
+    '/api/solicitudes/:id/autorizacion-secretario',
+    { preHandler: [app.autenticar, app.requiereRol('admin')] },
+    async (peticion, respuesta) => {
+      const usuario = peticion.usuario!;
+      const id = Number(peticion.params.id);
+      if (!Number.isInteger(id) || id <= 0) throw error404('La solicitud no existe.');
+
+      const cuerpo = (peticion.body ?? {}) as { autorizada?: unknown; nota?: unknown };
+      if (typeof cuerpo.autorizada !== 'boolean') {
+        throw error422('payload_invalido', 'Indica si la solicitud queda autorizada: true o false.');
+      }
+      if (cuerpo.nota !== undefined && cuerpo.nota !== null && typeof cuerpo.nota !== 'string') {
+        throw error422('payload_invalido', 'La nota debe ser texto.');
+      }
+      const nota = texto(cuerpo.nota)?.slice(0, 2000) ?? null;
+
+      const previa = await obtenerSolicitud(id);
+      if (!previa) throw error404('La solicitud no existe.');
+
+      const autorizada = cuerpo.autorizada;
+
+      const actualizada = await enTransaccion(async (cliente) => {
+        // Al desmarcar se limpian fecha y autor: el estado vigente no debe
+        // sugerir una autorizacion que ya no existe. El rastro vive en bitacora.
+        const { rows } = await cliente.query(
+          `UPDATE solicitudes
+              SET autorizada_secretario = $2,
+                  autorizada_secretario_en = CASE WHEN $2 THEN now() ELSE NULL END,
+                  autorizada_secretario_por = CASE WHEN $2 THEN $3::bigint ELSE NULL END,
+                  autorizada_secretario_nota = $4
+            WHERE id = $1
+        RETURNING id, autorizada_secretario, autorizada_secretario_en,
+                  autorizada_secretario_por, autorizada_secretario_nota`,
+          [id, autorizada, usuario.id, nota]
+        );
+
+        await bitacoraEnTransaccion(cliente, {
+          usuarioId: usuario.id,
+          accion: 'autorizacion_secretario',
+          entidad: 'solicitud',
+          entidadId: id,
+          detalle: {
+            folio: previa.folio,
+            autorizada,
+            anterior: previa.autorizada_secretario === true,
+            nota
+          },
+          ip: peticion.ip,
+          userAgent: (peticion.headers['user-agent'] as string | undefined)?.slice(0, 300) ?? null
+        });
+
+        return rows[0];
+      });
+
+      return respuesta.status(200).send({ ok: true, solicitud: actualizada });
     }
   );
 

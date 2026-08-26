@@ -20,6 +20,7 @@ import {
 import { apiSolicitudes } from '../api/solicitudes';
 import { ErrorPeticion, urlConToken } from '../api/cliente';
 import { useEstadoRed } from '../sync/estadoRed';
+import { useSesion } from '../App';
 
 // ------------------------------------------------------------------
 // Utilidad: devuelve la extensión en minúsculas de un nombre de archivo,
@@ -38,6 +39,10 @@ export default function DetalleSolicitud() {
   const [error, setError] = useState<string | null>(null);
   const [enlaces, setEnlaces] = useState<Record<number, string>>({});
   const [urlSolicitudPdf, setUrlSolicitudPdf] = useState<string>('');
+  const [notaAutorizacion, setNotaAutorizacion] = useState('');
+  const [guardandoAutorizacion, setGuardandoAutorizacion] = useState(false);
+  const { perfil } = useSesion();
+  const esAdmin = perfil?.rol.split('+').includes('admin') ?? false;
 
   // B7-C: banner "Solicitud registrada"
   const [searchParams] = useSearchParams();
@@ -105,6 +110,27 @@ export default function DetalleSolicitud() {
     };
   }, [id]);
 
+  // Autorización del Secretario: captura en el sistema de una firma que ocurre
+  // en papel. Solo admin la ve y la toca.
+  const guardarAutorizacion = async (autorizada: boolean) => {
+    if (!id) return;
+    setGuardandoAutorizacion(true);
+    setError(null);
+    try {
+      await apiSolicitudes.autorizacionSecretario(Number(id), {
+        autorizada,
+        nota: notaAutorizacion.trim() === '' ? null : notaAutorizacion.trim()
+      });
+      await cargar();
+    } catch (fallo) {
+      setError(
+        fallo instanceof ErrorPeticion ? fallo.message : 'No se pudo guardar la autorización.'
+      );
+    } finally {
+      setGuardandoAutorizacion(false);
+    }
+  };
+
   const marcar = async (docId: number, recibido: boolean) => {
     if (!id) return;
     try {
@@ -139,6 +165,9 @@ export default function DetalleSolicitud() {
   if (!detalle) return <p className="vacio">Cargando…</p>;
 
   const s = detalle.solicitud as Record<string, any>;
+
+  /** Candado del Folio de entrega (independiente del dictamen). */
+  const autorizada: boolean = s.autorizada_secretario === true;
 
   // B7-E: nombre o razón social para la carátula según tipo de persona.
   const nombreCaratula: string =
@@ -284,9 +313,28 @@ export default function DetalleSolicitud() {
         )}
         {/* B7-E: botón para imprimir la carátula del expediente */}
         <div className="acciones">
-          <Link className="boton" to={`/solicitudes/${id}/folio`}>
-            📄 Imprimir Folio de Entrega
-          </Link>
+          {/* El Folio de entrega vive detrás de la Autorización del Secretario.
+              Aquí solo se OCULTA el camino; el candado real lo aplica el
+              backend en GET /api/solicitudes/:id/folio. */}
+          {autorizada ? (
+            <Link
+              className="boton"
+              data-testid="btn-folio-entrega"
+              to={`/solicitudes/${id}/folio`}
+            >
+              📄 Imprimir Folio de Entrega
+            </Link>
+          ) : (
+            <button
+              type="button"
+              className="boton"
+              data-testid="btn-folio-entrega"
+              disabled
+              title="Disponible tras la autorización del Secretario"
+            >
+              📄 Folio de Entrega — disponible tras la autorización del Secretario
+            </button>
+          )}
           {/* Documento DISTINTO al folio de entrega: es el acuse/expediente
               completo de la solicitud (3 paginas, formato oficial). */}
           {urlSolicitudPdf && (
@@ -312,6 +360,72 @@ export default function DetalleSolicitud() {
           </Link>
         </div>
       </div>
+
+      {/* Autorización del Secretario: solo admin. Es la decisión más alta del
+          proceso y es INDEPENDIENTE del dictamen — el Secretario firma en papel
+          y puede ir en contra del resultado del dictamen. Aquí solo se captura
+          lo que ya ocurrió fuera del sistema. */}
+      {esAdmin && (
+        <div className="tarjeta" data-testid="tarjeta-autorizacion-secretario">
+          <h2>Autorización del Secretario</h2>
+          <p className="dato" data-testid="estado-autorizacion-secretario">
+            {autorizada ? (
+              <>
+                <strong>Sí, capturada</strong>
+                {s.autorizada_secretario_en
+                  ? ` el ${new Date(s.autorizada_secretario_en).toLocaleDateString('es-MX')}`
+                  : ''}
+                {s.autorizada_secretario_por_usuario
+                  ? ` por ${s.autorizada_secretario_por_usuario}`
+                  : ''}
+                .
+              </>
+            ) : (
+              <strong>No autorizada aún</strong>
+            )}
+          </p>
+          {autorizada && s.autorizada_secretario_nota && (
+            <p className="dato">Nota: {s.autorizada_secretario_nota}</p>
+          )}
+          <p className="dato">
+            Se captura cuando regresa la Solicitud impresa con la firma del Secretario. Habilita
+            el Folio de entrega y no depende del dictamen.
+          </p>
+          <label htmlFor="input-nota-autorizacion">Nota (opcional)</label>
+          <input
+            id="input-nota-autorizacion"
+            data-testid="input-nota-autorizacion"
+            type="text"
+            maxLength={2000}
+            value={notaAutorizacion}
+            placeholder="Ej. autorizado a pesar de dictamen negativo, ver folio X"
+            onChange={(e) => setNotaAutorizacion(e.target.value)}
+          />
+          <div className="acciones">
+            {autorizada ? (
+              <button
+                type="button"
+                className="boton secundario"
+                data-testid="btn-quitar-autorizacion"
+                disabled={guardandoAutorizacion}
+                onClick={() => void guardarAutorizacion(false)}
+              >
+                Quitar la autorización
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="boton"
+                data-testid="btn-marcar-autorizacion"
+                disabled={guardandoAutorizacion}
+                onClick={() => void guardarAutorizacion(true)}
+              >
+                Registrar autorización del Secretario
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="tarjeta">
         <h2>Solicitante</h2>

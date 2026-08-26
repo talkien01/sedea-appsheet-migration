@@ -36,6 +36,8 @@ import rutasDictamen from './rutas/dictamen.js';
 import rutasEscaneoCurp from './rutas/escaneoCurp.js';
 // Administracion del sistema: reinicio de datos de prueba (solo admin).
 import rutasAdmin from './rutas/admin.js';
+// Registro de entrega del apoyo por concepto (evidencia en campo).
+import rutasEntregas from './rutas/entregas.js';
 
 async function construirApp() {
   const app = Fastify({
@@ -124,6 +126,8 @@ async function construirApp() {
   await app.register(rutasEscaneoCurp);
   // Reinicio de datos de prueba (solo admin estricto).
   await app.register(rutasAdmin);
+  // Entrega del apoyo: registro por concepto + paquete offline del evento.
+  await app.register(rutasEntregas);
 
   return app;
 }

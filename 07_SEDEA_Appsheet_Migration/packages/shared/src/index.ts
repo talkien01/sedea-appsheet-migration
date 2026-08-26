@@ -13,3 +13,5 @@ export * from './catalogos.js';
 export * from './curpQr.js';
 // Reinicio de datos de prueba: fuente unica de verdad de tablas + frase.
 export * from './reinicio.js';
+// Registro de entrega del apoyo por concepto (evidencia en campo).
+export * from './entregas.js';

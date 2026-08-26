@@ -20,7 +20,9 @@ export type AccionAuditoria =
   | 'usuario_desactivado'
   | 'password_cambiado'
   // Operacion destructiva: vaciado de todos los datos capturados.
-  | 'reiniciar_datos_prueba';
+  | 'reiniciar_datos_prueba'
+  // Entrega fisica del apoyo, un renglon por concepto entregado.
+  | 'entrega_apoyo_registrada';
 
 interface EntradaBitacora {
   usuarioId?: number | null;

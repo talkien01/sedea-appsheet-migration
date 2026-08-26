@@ -201,6 +201,24 @@ export const esquemaResetPassword = z
   })
   .strict();
 
+/** Tope de usuarios por reseteo en lote (E37b). Mismo criterio que el alta CSV. */
+export const MAX_IDS_RESET_LOTE = 500;
+
+/**
+ * Reseteo de contrasena EN LOTE para usuarios que YA EXISTEN (E37b).
+ * Mismo contrato de contrasena que el reseteo individual (E37); lo unico que
+ * agrega es la lista de ids. En modo `manual` la contrasena es la MISMA para
+ * todos los ids validos; en `automatica` cada uno recibe la suya.
+ */
+export const esquemaResetPasswordLote = z
+  .object({
+    ids: z.array(z.number().int().positive()).min(1).max(MAX_IDS_RESET_LOTE),
+    motivo: z.string().max(300).optional().nullable(),
+    modo_password: campoModoPassword,
+    password_manual: campoPasswordManual
+  })
+  .strict();
+
 /**
  * Cambio de la propia contrasena (E39, 11.4).
  * `password_actual` es OPCIONAL en el esquema porque su obligatoriedad depende
@@ -300,5 +318,34 @@ export interface RespuestaLoteUsuarios {
   creados: number;
   errores: number;
   resultados: ResultadoFilaLoteUsuario[];
+  aviso: string;
+}
+
+/**
+ * Resultado de UN usuario del reseteo en lote (E37b). Cada id es independiente:
+ * que uno falle (no existe, o el actor no puede administrar ese rol) no impide
+ * que los demas se reseteen, igual que en el alta CSV.
+ * `password_temporal` solo viene en modo automatica, donde cada usuario recibe
+ * una distinta; en modo manual la comun va una sola vez en la respuesta.
+ */
+export interface ResultadoResetLoteUsuario {
+  id: number;
+  usuario: string;
+  estado: 'reseteado' | 'error';
+  password_temporal?: string;
+  motivo?: string;
+  codigo?: string;
+}
+
+/** Respuesta del reseteo en lote. Siempre 200: el detalle va usuario por usuario. */
+export interface RespuestaResetPasswordLote {
+  ok: true;
+  total: number;
+  reseteados: number;
+  errores: number;
+  modo_password: ModoPassword;
+  /** Solo en modo manual: la MISMA contrasena que quedo en todos los reseteados. */
+  password_comun?: string;
+  resultados: ResultadoResetLoteUsuario[];
   aviso: string;
 }

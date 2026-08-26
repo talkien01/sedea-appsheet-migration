@@ -8,7 +8,8 @@ import {
   CLAVES_EDICION_USUARIO,
   ROLES_ADMIN_USUARIOS,
   esquemaActivoUsuario,
-  esquemaResetPassword
+  esquemaResetPassword,
+  esquemaResetPasswordLote
 } from '@sedea/shared';
 import { errorNoAutorizado } from '../plugins/errores.js';
 import { enTransaccion, bitacoraEnTransaccion } from '../servicios/promocion.js';
@@ -40,6 +41,7 @@ import {
   validarEdicion
 } from '../servicios/usuarios.js';
 import { generarPlantillaLote, procesarLote } from '../servicios/usuariosLote.js';
+import { procesarResetLote } from '../servicios/usuariosResetLote.js';
 
 /** Guarda de rol propia para devolver el codigo `rol_no_autorizado` del contrato. */
 async function soloAdministradores(peticion: FastifyRequest, _respuesta: FastifyReply) {
@@ -368,6 +370,47 @@ export default async function rutasUsuarios(app: FastifyInstance): Promise<void>
       });
     }
   );
+
+  // E37b - Reseteo de contrasena EN LOTE de usuarios que YA EXISTEN.
+  // No confundir con POST /api/usuarios/lote, que CREA usuarios desde un CSV.
+  // Cada id se resetea con las mismas piezas de E37 y es INDEPENDIENTE: que el
+  // actor no pueda administrar un rol deja ESA fila en error sin bloquear las
+  // demas. Siempre responde 200 con el detalle por id; el unico 4xx es el de la
+  // contrasena manual invalida, que se juzga antes de resetear a nadie.
+  app.post('/api/usuarios/reset-password-lote', protegida, async (peticion, respuesta) => {
+    const actor = peticion.usuario!;
+    const parseado = esquemaResetPasswordLote.safeParse(peticion.body ?? {});
+    if (!parseado.success) {
+      throw error422('payload_invalido', 'Selecciona al menos un usuario válido.');
+    }
+
+    const { resultados, reseteados, errores, modoPassword, passwordComun } =
+      await procesarResetLote(
+        actor,
+        {
+          ids: parseado.data.ids,
+          modoPassword: parseado.data.modo_password,
+          passwordManual: parseado.data.password_manual,
+          motivo: parseado.data.motivo ?? null
+        },
+        {
+          ip: peticion.ip,
+          userAgent: (peticion.headers['user-agent'] as string | undefined)?.slice(0, 300) ?? null
+        }
+      );
+
+    return respuesta.status(200).send({
+      ok: true,
+      total: resultados.length,
+      reseteados,
+      errores,
+      modo_password: modoPassword,
+      // Unica copia en claro de la comun: no se persiste ni se registra.
+      ...(passwordComun !== null ? { password_comun: passwordComun } : {}),
+      resultados,
+      aviso: AVISO_PASSWORD_TEMPORAL
+    });
+  });
 
   // E38 - Activacion / desactivacion (la unica forma de "dar de baja").
   app.patch<{ Params: { id: string } }>(

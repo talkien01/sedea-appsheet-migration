@@ -9,6 +9,7 @@ import type {
   RespuestaAltaUsuario,
   RespuestaLoteUsuarios,
   RespuestaResetPassword,
+  RespuestaResetPasswordLote,
   UsuarioAdmin,
   EntradaHistorialCorreccion,
   FilaStagingBeneficiario,
@@ -335,6 +336,24 @@ export const api = {
     if (opciones?.modo_password) cuerpo.modo_password = opciones.modo_password;
     if (opciones?.modo_password === 'manual') cuerpo.password_manual = opciones.password_manual;
     return peticion<RespuestaResetPassword>(`/usuarios/${id}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify(cuerpo)
+    });
+  },
+
+  /**
+   * Reseteo en lote de usuarios que YA EXISTEN. El backend responde 200 con el
+   * detalle por id incluso cuando alguno falla; el unico 4xx es el de la
+   * contrasena manual invalida, que se rechaza sin resetear a nadie.
+   */
+  async resetearPasswordLote(
+    ids: number[],
+    opciones?: { motivo?: string; modo_password?: 'automatica' | 'manual'; password_manual?: string }
+  ): Promise<RespuestaResetPasswordLote> {
+    const cuerpo: Record<string, unknown> = { ids, motivo: opciones?.motivo || null };
+    if (opciones?.modo_password) cuerpo.modo_password = opciones.modo_password;
+    if (opciones?.modo_password === 'manual') cuerpo.password_manual = opciones.password_manual;
+    return peticion<RespuestaResetPasswordLote>('/usuarios/reset-password-lote', {
       method: 'POST',
       body: JSON.stringify(cuerpo)
     });

@@ -10,6 +10,7 @@ import {
   ROLES_USUARIO,
   type ModoPassword,
   type ResultadoFilaLoteUsuario,
+  type ResultadoResetLoteUsuario,
   type UsuarioAdmin
 } from '@sedea/shared';
 import { useSesion } from '../App';
@@ -20,6 +21,7 @@ import type { ValoresAlcance } from '../componentes/BloqueAlcance';
 import { apiSolicitudes } from '../api/solicitudes';
 import ModalPasswordTemporal from '../componentes/ModalPasswordTemporal';
 import ModalResetPassword from '../componentes/ModalResetPassword';
+import ModalResetPasswordLote from '../componentes/ModalResetPasswordLote';
 import ModalReiniciarDatos from '../componentes/ModalReiniciarDatos';
 import { BotonIcono } from '../componentes/BotonIcono';
 import type { ResultadoReinicioDatos } from '@sedea/shared';
@@ -95,6 +97,19 @@ export default function Usuarios() {
   const [enviandoReset, setEnviandoReset] = useState(false);
   const [errorReset, setErrorReset] = useState<string | null>(null);
 
+  // Reseteo EN LOTE de usuarios que YA EXISTEN (E37b). No confundir con la
+  // carga masiva CSV de mas abajo, que da de ALTA usuarios nuevos.
+  // La contrasena comun del resultado vive solo en este estado: al recargar la
+  // pantalla se pierde, igual que el modal del reseteo individual.
+  const [seleccionados, setSeleccionados] = useState<number[]>([]);
+  const [modalResetLote, setModalResetLote] = useState(false);
+  const [enviandoResetLote, setEnviandoResetLote] = useState(false);
+  const [errorResetLote, setErrorResetLote] = useState<string | null>(null);
+  const [resultadosResetLote, setResultadosResetLote] = useState<{
+    resultados: ResultadoResetLoteUsuario[];
+    password_comun: string | null;
+  } | null>(null);
+
   // Debounce de 300 ms para no consultar en cada tecla.
   useEffect(() => {
     const temporizador = setTimeout(() => setBusquedaAplicada(busqueda.trim()), 300);
@@ -114,6 +129,12 @@ export default function Usuarios() {
       if (busquedaAplicada.length >= 2) parametros.set('q', busquedaAplicada);
       const pagina = await api.usuarios(parametros);
       setFilas(pagina.data);
+      // La seleccion solo sobrevive si el usuario sigue visible y seleccionable:
+      // al cambiar de filtro o irse a la papelera no debe quedar nada marcado
+      // que ya no se ve en pantalla.
+      setSeleccionados((previos) =>
+        previos.filter((id) => pagina.data.some((u) => u.id === id && !u.eliminado))
+      );
     } catch (fallo) {
       setError(
         fallo instanceof ErrorPeticion && fallo.estado === 0
@@ -324,6 +345,45 @@ export default function Usuarios() {
     }
   };
 
+  /** Filas que se pueden seleccionar: las de la papelera no se resetean. */
+  const filasSeleccionables = filas.filter((f) => !f.eliminado);
+  const todasSeleccionadas =
+    filasSeleccionables.length > 0 && seleccionados.length === filasSeleccionables.length;
+
+  const alternarSeleccion = (id: number) => {
+    setSeleccionados((previos) =>
+      previos.includes(id) ? previos.filter((v) => v !== id) : [...previos, id]
+    );
+  };
+
+  /**
+   * Reseteo en lote: UNA misma contrasena para todos los seleccionados. El
+   * backend responde 200 con el detalle por id aunque alguno falle, asi que un
+   * error de la promesa es del lote completo (tipicamente contrasena debil, en
+   * cuyo caso no se reseteo a nadie).
+   */
+  const confirmarResetLote = async (password: string) => {
+    setEnviandoResetLote(true);
+    setErrorResetLote(null);
+    try {
+      const respuesta = await api.resetearPasswordLote(seleccionados, {
+        modo_password: 'manual',
+        password_manual: password
+      });
+      setResultadosResetLote({
+        resultados: respuesta.resultados,
+        password_comun: respuesta.password_comun ?? null
+      });
+      setModalResetLote(false);
+      setSeleccionados([]);
+      await cargar();
+    } catch (fallo) {
+      setErrorResetLote((fallo as Error).message);
+    } finally {
+      setEnviandoResetLote(false);
+    }
+  };
+
   /**
    * Zona de peligro. El modal ya exigio la frase exacta; aqui se vuelve a
    * mandar al backend, que la valida por su cuenta antes de borrar nada.
@@ -477,6 +537,96 @@ export default function Usuarios() {
         </div>
       )}
 
+      {/*
+        Barra de acciones en lote sobre usuarios que YA EXISTEN. Solo aparece
+        con al menos uno seleccionado, para no competir con los filtros el
+        resto del tiempo.
+      */}
+      {seleccionados.length > 0 && (
+        <div className="filtros" data-testid="barra-acciones-seleccion">
+          <span data-testid="contador-seleccion">
+            {seleccionados.length} usuario{seleccionados.length === 1 ? '' : 's'} seleccionado
+            {seleccionados.length === 1 ? '' : 's'}
+          </span>
+          <button
+            type="button"
+            data-testid="btn-resetear-password-lote"
+            onClick={() => {
+              setErrorResetLote(null);
+              setResultadosResetLote(null);
+              setModalResetLote(true);
+            }}
+          >
+            Resetear contraseña de {seleccionados.length} usuario
+            {seleccionados.length === 1 ? '' : 's'} seleccionado
+            {seleccionados.length === 1 ? '' : 's'}
+          </button>
+          <button
+            type="button"
+            className="secundario"
+            data-testid="btn-limpiar-seleccion"
+            onClick={() => setSeleccionados([])}
+          >
+            Limpiar selección
+          </button>
+        </div>
+      )}
+
+      {/*
+        Resultado del ultimo reseteo en lote. La contrasena comun se muestra en
+        claro a proposito: es UNA sola para todos y hay que poder dictarla.
+      */}
+      {resultadosResetLote && (
+        <section data-testid="resultado-reset-lote">
+          <div className="mensaje aviso" role="status" data-testid="resumen-reset-lote">
+            {resultadosResetLote.resultados.filter((r) => r.estado === 'reseteado').length}{' '}
+            reseteados, {resultadosResetLote.resultados.filter((r) => r.estado === 'error').length}{' '}
+            con error de {resultadosResetLote.resultados.length} usuarios.
+          </div>
+
+          {resultadosResetLote.password_comun && (
+            <div className="mensaje exito" role="status" data-testid="password-comun-reset-lote">
+              Avísales esta contraseña:{' '}
+              <strong className="mono">{resultadosResetLote.password_comun}</strong>. Cópiala
+              ahora: no se volverá a mostrar. Cada uno deberá cambiarla en su primer inicio de
+              sesión.
+            </div>
+          )}
+
+          <div className="tabla-contenedor">
+            <table data-testid="tabla-resultados-reset-lote">
+              <thead>
+                <tr>
+                  <th>Usuario</th>
+                  <th>Estado</th>
+                  <th>Motivo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resultadosResetLote.resultados.map((resultado) => (
+                  <tr key={resultado.id} data-testid="fila-resultado-reset-lote">
+                    <td data-etiqueta="Usuario" className="mono">
+                      {resultado.usuario || `#${resultado.id}`}
+                    </td>
+                    <td data-etiqueta="Estado">
+                      <span
+                        className={`badge ${resultado.estado === 'reseteado' ? 'capturado' : 'alerta-alta'}`}
+                        data-testid="chip-estado-reset-lote"
+                      >
+                        {resultado.estado === 'reseteado' ? 'Reseteado' : 'Error'}
+                      </span>
+                    </td>
+                    <td data-etiqueta="Motivo" className="celda-texto">
+                      {resultado.motivo ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       {cargando ? (
         <p className="vacio">Cargando…</p>
       ) : filas.length === 0 ? (
@@ -486,6 +636,20 @@ export default function Usuarios() {
           <table data-testid="tabla-usuarios">
             <thead>
               <tr>
+                <th>
+                  <input
+                    type="checkbox"
+                    data-testid="check-seleccionar-todos-usuarios"
+                    aria-label="Seleccionar todos los usuarios"
+                    checked={todasSeleccionadas}
+                    disabled={filasSeleccionables.length === 0}
+                    onChange={(e) =>
+                      setSeleccionados(
+                        e.target.checked ? filasSeleccionables.map((f) => f.id) : []
+                      )
+                    }
+                  />
+                </th>
                 <th>Usuario</th>
                 <th>Nombre completo</th>
                 <th>Rol</th>
@@ -499,6 +663,17 @@ export default function Usuarios() {
             <tbody>
               {filas.map((fila) => (
                 <tr key={fila.id} data-testid="fila-usuario" className={fila.eliminado ? 'eliminada' : ''}>
+                  <td data-etiqueta="Seleccionar">
+                    {!fila.eliminado && (
+                      <input
+                        type="checkbox"
+                        data-testid={`check-seleccionar-usuario-${fila.id}`}
+                        aria-label={`Seleccionar a ${fila.usuario}`}
+                        checked={seleccionados.includes(fila.id)}
+                        onChange={() => alternarSeleccion(fila.id)}
+                      />
+                    )}
+                  </td>
                   <td data-etiqueta="Usuario" className="mono">{fila.usuario}</td>
                   <td data-etiqueta="Nombre completo" className="celda-texto">{fila.nombre_completo}</td>
                   <td data-etiqueta="Rol">{ETIQUETAS_ROL[fila.rol] ?? fila.rol}</td>
@@ -825,6 +1000,16 @@ export default function Usuarios() {
           errorApi={errorReset}
           alConfirmar={(opciones) => void confirmarReset(opciones)}
           alCancelar={() => setReseteando(null)}
+        />
+      )}
+
+      {modalResetLote && (
+        <ModalResetPasswordLote
+          cantidad={seleccionados.length}
+          enviando={enviandoResetLote}
+          errorApi={errorResetLote}
+          alConfirmar={(password) => void confirmarResetLote(password)}
+          alCancelar={() => setModalResetLote(false)}
         />
       )}
 

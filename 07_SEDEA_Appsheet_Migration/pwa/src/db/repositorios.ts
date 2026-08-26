@@ -269,12 +269,7 @@ export async function limpiarPaqueteEntrega(): Promise<void> {
 export async function limpiarBaseLocal(): Promise<void> {
   await db.transaction(
     'rw',
-    db.beneficiarios,
-    db.catalogos,
-    db.capturas,
-    db.sesion,
-    db.conceptos_entrega,
-    db.evento_entrega,
+    [db.beneficiarios, db.catalogos, db.capturas, db.sesion, db.conceptos_entrega, db.evento_entrega],
     async () => {
       await db.beneficiarios.clear();
       await db.catalogos.clear();

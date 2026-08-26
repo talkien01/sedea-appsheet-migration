@@ -22,7 +22,7 @@ interface Props {
   usuario: UsuarioAdmin | null;
   regionales: RegionalOpcion[];
   /** Catalogos del bloque de alcance (build 6, solo rol ventanilla). */
-  municipios: { id: number; nombre: string }[];
+  municipios: { id: number; nombre: string; regional_id?: number | null }[];
   componentes: { id: number; clave: string; nombre: string }[];
   /** Alcance actual del usuario en edicion; en alta, "todos" por defecto. */
   alcanceInicial?: ValoresAlcance;
@@ -271,32 +271,15 @@ export default function FormUsuario({
         </div>
 
         <div className="campo">
-          <label htmlFor="select-rol">Rol</label>
-          <select
-            id="select-rol"
-            data-testid="select-rol"
-            value={roles[0] ?? 'capturista'}
-            onChange={(e) => {
-              const nuevoRol = e.target.value;
-              // Si el rol ya está en la lista, no hacer nada (ya está seleccionado)
-              if (!roles.includes(nuevoRol)) {
-                setRoles([...roles, nuevoRol]);
-              }
-            }}
-          >
-            <option value="" disabled>Selecciona roles...</option>
-            {rolesDisponibles.map((valor) => (
-              <option key={valor} value={valor}>
-                {ETIQUETAS_ROL[valor]}
-              </option>
-            ))}
-          </select>
-          {/* Checkboxes para multi-selección de roles */}
-          <div className="lista-check" style={{ marginTop: '8px' }}>
+          {/* Multi-rol: solo casillas. El <select> que existia aqui era
+              redundante (solo agregaba roles, nunca los quitaba). */}
+          <label>Rol</label>
+          <div className="lista-check" data-testid="lista-roles" style={{ marginTop: '8px' }}>
             {rolesDisponibles.map((rolItem) => (
               <label key={rolItem} className="casilla" style={{ display: 'block', marginBottom: '4px' }}>
                 <input
                   type="checkbox"
+                  data-testid={`chk-rol-${rolItem}`}
                   checked={roles.includes(rolItem)}
                   onChange={() => toggleRol(rolItem)}
                   style={{ marginRight: '6px' }}
@@ -344,6 +327,7 @@ export default function FormUsuario({
         {tieneRol('ventanilla') && (
           <BloqueAlcance
             municipios={municipios}
+            regionales={regionales}
             componentes={componentes}
             valores={alcance}
             cambiar={setAlcance}

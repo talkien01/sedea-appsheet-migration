@@ -46,7 +46,9 @@ export default function Usuarios() {
   const [filas, setFilas] = useState<UsuarioAdmin[]>([]);
   const [regionales, setRegionales] = useState<RegionalOpcion[]>([]);
   // Catalogos del bloque de alcance del rol ventanilla (build 6).
-  const [municipios, setMunicipios] = useState<{ id: number; nombre: string }[]>([]);
+  const [municipios, setMunicipios] = useState<
+    { id: number; nombre: string; regional_id: number | null }[]
+  >([]);
   const [componentes, setComponentes] = useState<{ id: number; clave: string; nombre: string }[]>([]);
   const [alcanceInicial, setAlcanceInicial] = useState<ValoresAlcance>(ALCANCE_TODOS);
   const [cargando, setCargando] = useState(true);
@@ -155,7 +157,14 @@ export default function Usuarios() {
       try {
         const catalogos = await api.catalogos();
         setRegionales(catalogos.regionales.map((r) => ({ id: r.id, nombre: r.nombre })));
-        setMunicipios(catalogos.municipios.map((m) => ({ id: m.id, nombre: m.nombre })));
+        setMunicipios(
+          catalogos.municipios.map((m) => ({
+            id: m.id,
+            nombre: m.nombre,
+            // Necesario para agrupar el alcance por Direccion Regional.
+            regional_id: m.regional_id ?? null
+          }))
+        );
       } catch {
         setRegionales([]);
       }

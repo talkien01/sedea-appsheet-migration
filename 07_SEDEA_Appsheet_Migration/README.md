@@ -713,13 +713,21 @@ GET /api/solicitudes/:id/solicitud-completa.pdf
 
 Reproduce fielmente el formato en papel del Programa Institucional Apoyo al
 Campo Queretano: secciones 1 a 7, comprobante del beneficiario y el texto legal
-**copiado verbatim** (incluidas las erratas tipográficas del original, que **no
-se corrigen**: es texto legal). Se genera server-side con PDFKit
+**copiado del original sin parafrasear**. La única corrección aplicada es el
+**espacio faltante** en las concatenaciones del formato en papel
+("comercialesilícitas" → "comerciales ilícitas", "deQuerétaro" → "de
+Querétaro", "deDatos" → "de Datos", etc.); no se cambia ninguna palabra. Se
+genera server-side con PDFKit
 (`backend/src/servicios/solicitud-completa.ts`), igual que el folio de entrega.
 
 Dos cosas salen resueltas donde el papel las dejaba en blanco, porque el sistema
 sí las conoce: en el **comprobante del beneficiario**, el funcionario receptor
 (el usuario de ventanilla que capturó) y la fecha de recepción.
+
+Las **líneas de firma** (solicitante y funcionario receptor) cierran la
+**página 2**, justo después de las declaraciones de la sección 6. La **página
+3** arranca directamente con "DATOS PARA LLENAR POR EL ÁREA OPERATIVA DE LA
+SEDEA".
 
 La **sección 7 (dictamen)** y las firmas van en blanco para llenarse a mano,
 salvo que la solicitud ya tenga un dictamen humano registrado (tabla

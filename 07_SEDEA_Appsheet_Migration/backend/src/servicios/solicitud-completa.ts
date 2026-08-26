@@ -2,10 +2,11 @@
 // Institucional Apoyo al Campo Queretano (3 paginas, A4).
 //
 // Mismo patron que folio-entrega.ts: PDFKit, se arma en memoria y se devuelve
-// como Buffer. NO se parafrasea el texto legal: se copia VERBATIM del formato
-// oficial en papel, erratas tipograficas incluidas ("comercialesilícitas",
-// "losfines", "productosfinancieros", "deOperación", "lasinversiones",
-// "lasinstancias"). Corregirlas cambiaria el texto legal del documento.
+// como Buffer. El texto legal se copia del formato oficial en papel sin
+// parafrasear; la unica correccion autorizada es el espacio faltante en las
+// concatenaciones del original ("comercialesilicitas" -> "comerciales
+// ilicitas", "deQueretaro" -> "de Queretaro", etc.). No se cambia ninguna
+// palabra.
 import PDFDocument from 'pdfkit';
 import { pool } from '../db/pool.js';
 
@@ -130,32 +131,32 @@ const PIE_LEGAL =
   '"Este programa es público, ajeno a cualquier partido político. Queda prohibido el uso para fines distintos a los establecidos en el programa"';
 
 const AVISO_PRIVACIDAD_7 =
-  'Autorizo que mis datos personales sean empleados para el trámite de la solicitud. Otorgo el consentimiento para que sean transferidos en caso de ser necesario y dar cumplimiento conforme a lo previsto en los artículos 16 fracción II, 59 y 61 de la Ley de Protección de Datos Personales en Posesión de Sujetos Obligados del Estado deQuerétaro; así como a las obligaciones de transparencia y acceso a la información pública de conformidad con la Ley del Estado deQuerétaro.';
+  'Autorizo que mis datos personales sean empleados para el trámite de la solicitud. Otorgo el consentimiento para que sean transferidos en caso de ser necesario y dar cumplimiento conforme a lo previsto en los artículos 16 fracción II, 59 y 61 de la Ley de Protección de Datos Personales en Posesión de Sujetos Obligados del Estado de Querétaro; así como a las obligaciones de transparencia y acceso a la información pública de conformidad con la Ley del Estado de Querétaro.';
 
 const AVISO_PRIVACIDAD_7_PORTAL =
-  '"En cumplimiento a las Leyes de Protección deDatos Personales, Usted puede consultar el aviso de privacidad a través del portal de Internet http://sedea.queretaro.gob.mx"';
+  '"En cumplimiento a las Leyes de Protección de Datos Personales, Usted puede consultar el aviso de privacidad a través del portal de Internet http://sedea.queretaro.gob.mx"';
 
 const AVISO_PRIVACIDAD_COMPROBANTE =
   'Autorizo que mis datos personales sean empleados para el trámite de la solicitud. Otorgo el consentimiento para que sean transferidos en caso de ser necesario y dar cumplimiento conforme a lo previsto en los artículos 16 fracción II, 59 y 61 de la Ley de Protección de Datos Personales en Posesión de Sujetos Obligados del Estado de Querétaro; así como a las obligaciones de transparencia y acceso a la información pública de conformidad con la Ley del Estado de Querétaro. "En cumplimiento a las Leyes de Protección de Datos Personales, Usted puede consultar el aviso de privacidad a través del portal de Internet https://sedea.queretaro.gob.mx"';
 
 const DECLARACIONES: Array<[string, string]> = [
-  ['a.', 'Que no realizó actividades productivas ni comercialesilícitas.'],
+  ['a.', 'Que no realizó actividades productivas ni comerciales ilícitas.'],
   ['b.', 'Que no tengo procesos pendientes con la Secretaría de Desarrollo Agropecuario.'],
   [
     'c.',
-    'Que aplicaré los apoyos únicamente para losfines autorizados, y que en caso de incumplimiento de mi parte, la consecuencia será la devolución del recurso y los productosfinancieros generados; incluso la pérdida permanente del derecho a la obtención de apoyos por parte de la Secretaría de Desarrollo Agropecuario.'
+    'Que aplicaré los apoyos únicamente para los fines autorizados, y que en caso de incumplimiento de mi parte, la consecuencia será la devolución del recurso y los productos financieros generados; incluso la pérdida permanente del derecho a la obtención de apoyos por parte de la Secretaría de Desarrollo Agropecuario.'
   ],
   [
     'd.',
-    'Manifiesto que los datos en la solicitud son verídicos y me comprometo a cumplir con los ordenamientos establecidos en las Reglas deOperación del Programa Institucional "Apoyo al Campo Queretano".'
+    'Manifiesto que los datos en la solicitud son verídicos y me comprometo a cumplir con los ordenamientos establecidos en las Reglas de Operación del Programa Institucional "Apoyo al Campo Queretano".'
   ],
   [
     'e.',
-    'Expreso mi total y cabal compromiso, para realizar lasinversiones y/o trabajos que me correspondan, para ejecutar las acciones del proyecto en caso de ser autorizado y hasta la conclusión del mismo.'
+    'Expreso mi total y cabal compromiso, para realizar las inversiones y/o trabajos que me correspondan, para ejecutar las acciones del proyecto en caso de ser autorizado y hasta la conclusión del mismo.'
   ],
   [
     'f.',
-    'Que proporcionaré la información que sea requerida en caso de supervisión o auditoría que realicen lasinstancias correspondientes.'
+    'Que proporcionaré la información que sea requerida en caso de supervisión o auditoría que realicen las instancias correspondientes.'
   ],
   [
     'g.',
@@ -675,14 +676,9 @@ function pagina2(doc: Doc, d: DatosSolicitudCompleta): void {
     y = doc.y + 2.5;
   }
 
-  pieLegal(doc);
-}
-
-function pagina3(doc: Doc, d: DatosSolicitudCompleta): void {
-  const s = d.solicitud;
-  let y = encabezado(doc, txt(s.folio), txt(s.recibida_fecha));
-
   // --- Firmas (se llenan a mano en papel) ----------------------------------
+  // Cierran la pagina 2 justo despues de las declaraciones; el pie legal
+  // sigue anclado al fondo de la hoja.
   y += 26;
   const mitad = ANCHO / 2;
   doc.moveTo(MARGEN + 20, y).lineTo(MARGEN + mitad - 20, y).lineWidth(0.8).strokeColor('#000').stroke();
@@ -693,7 +689,13 @@ function pagina3(doc: Doc, d: DatosSolicitudCompleta): void {
     width: mitad - 40,
     align: 'center'
   });
-  y += 34;
+
+  pieLegal(doc);
+}
+
+function pagina3(doc: Doc, d: DatosSolicitudCompleta): void {
+  const s = d.solicitud;
+  let y = encabezado(doc, txt(s.folio), txt(s.recibida_fecha));
 
   // --- 7. DICTAMEN ----------------------------------------------------------
   doc.rect(MARGEN, y, ANCHO, 15).fillAndStroke('#bfbfbf', '#000');

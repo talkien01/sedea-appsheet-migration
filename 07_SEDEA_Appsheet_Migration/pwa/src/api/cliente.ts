@@ -31,7 +31,9 @@ import type {
   EstadoSesionEscaneoRespuesta,
   ResultadoEscaneoMovilCuerpo,
   SesionEscaneoCreada,
-  ResultadoReinicioDatos
+  ResultadoReinicioDatos,
+  PaqueteEventoEntrega,
+  RespuestaEntregaApoyo
 } from '@sedea/shared';
 import { obtenerSesion } from '../db/repositorios';
 
@@ -140,6 +142,21 @@ export const api = {
 
   async subirCaptura(formulario: FormData): Promise<RespuestaCaptura> {
     return peticion<RespuestaCaptura>('/capturas', { method: 'POST', body: formulario });
+  },
+
+  /** Evidencia de la entrega fisica de UN concepto (mismo multipart que las capturas). */
+  async subirEntrega(formulario: FormData): Promise<RespuestaEntregaApoyo> {
+    return peticion<RespuestaEntregaApoyo>('/entregas', { method: 'POST', body: formulario });
+  },
+
+  /** Paquete de trabajo del evento de entrega, para guardarlo en IndexedDB. */
+  async prepararEventoEntrega(
+    tipoApoyoId: number,
+    regionalId?: number | null
+  ): Promise<PaqueteEventoEntrega> {
+    const parametros = new URLSearchParams({ tipo_apoyo_id: String(tipoApoyoId) });
+    if (regionalId) parametros.set('regional_id', String(regionalId));
+    return peticion<PaqueteEventoEntrega>(`/entregas/preparar-evento?${parametros.toString()}`);
   },
 
   async auditoriaCapturas(parametros: URLSearchParams): Promise<{ data: any[]; total: number }> {

@@ -12,6 +12,7 @@ import RutaProtegida from './componentes/RutaProtegida';
 import Login from './pantallas/Login';
 import Sync from './pantallas/Sync';
 import Beneficiarios from './pantallas/Beneficiarios';
+import PrepararEntrega from './pantallas/PrepararEntrega';
 import FichaBeneficiario from './pantallas/FichaBeneficiario';
 import NuevaCaptura from './pantallas/NuevaCaptura';
 import Auditoria from './pantallas/Auditoria';
@@ -64,6 +65,15 @@ export default function Rutas() {
           element={
             <RutaProtegida roles={CAMPO}>
               <Sync />
+            </RutaProtegida>
+          }
+        />
+        {/* Parte 1 del registro de entrega: precarga del paquete offline. */}
+        <Route
+          path="/entregas/preparar"
+          element={
+            <RutaProtegida roles={CAMPO}>
+              <PrepararEntrega />
             </RutaProtegida>
           }
         />

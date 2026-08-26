@@ -49,6 +49,16 @@ export const DESTINOS: Destino[] = [
     grupo: 'Campo',
     Icono: IconoSincronizar
   },
+  // Registro de entrega del apoyo: precarga del evento para trabajar sin senal.
+  {
+    id: 'entregas',
+    ruta: '/entregas/preparar',
+    etiqueta: 'Entregas',
+    testId: 'nav-entregas',
+    roles: ['capturista', 'admin'],
+    grupo: 'Campo',
+    Icono: IconoSello
+  },
   {
     id: 'dashboard',
     ruta: '/dashboard',

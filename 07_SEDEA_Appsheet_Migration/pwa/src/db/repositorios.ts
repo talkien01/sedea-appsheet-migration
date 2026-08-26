@@ -1,7 +1,19 @@
 // Operaciones de lectura/escritura sobre IndexedDB. Toda la UI de campo
 // consulta aqui, nunca a la red directamente.
-import type { RespuestaCatalogos, PerfilUsuario, Beneficiario } from '@sedea/shared';
-import { db, type CapturaLocal, type EntradaCatalogoLocal, type SesionLocal } from './indexeddb';
+import type {
+  RespuestaCatalogos,
+  PerfilUsuario,
+  Beneficiario,
+  PaqueteEventoEntrega
+} from '@sedea/shared';
+import {
+  db,
+  type CapturaLocal,
+  type ConceptoEntregaLocal,
+  type EntradaCatalogoLocal,
+  type EventoEntregaLocal,
+  type SesionLocal
+} from './indexeddb';
 
 // --------------------------------------------------------------------------
 // Sesion
@@ -196,11 +208,80 @@ export async function capturasPendientes(): Promise<CapturaLocal[]> {
   return filas.sort((a, b) => a.capturado_en.localeCompare(b.capturado_en));
 }
 
-export async function limpiarBaseLocal(): Promise<void> {
-  await db.transaction('rw', db.beneficiarios, db.catalogos, db.capturas, db.sesion, async () => {
-    await db.beneficiarios.clear();
-    await db.catalogos.clear();
-    await db.capturas.clear();
-    await db.sesion.clear();
+// --------------------------------------------------------------------------
+// Paquete offline del evento de entrega del apoyo
+// --------------------------------------------------------------------------
+
+/**
+ * Reemplaza por completo el paquete local con el que acaba de bajar del
+ * servidor. Se borra antes de escribir a proposito: los conceptos que ya se
+ * entregaron dejan de venir en el paquete y no deben quedar como fantasmas.
+ */
+export async function guardarPaqueteEntrega(paquete: PaqueteEventoEntrega): Promise<void> {
+  const meta: EventoEntregaLocal = {
+    id: 1,
+    generado_en: paquete.generado_en,
+    descargado_en: new Date().toISOString(),
+    tipo_apoyo_id: paquete.filtro.tipo_apoyo_id,
+    tipo_apoyo_nombre: paquete.filtro.tipo_apoyo_nombre,
+    regional_id: paquete.filtro.regional_id,
+    regional_nombre: paquete.filtro.regional_nombre,
+    total: paquete.total
+  };
+  await db.transaction('rw', db.conceptos_entrega, db.evento_entrega, async () => {
+    await db.conceptos_entrega.clear();
+    await db.conceptos_entrega.bulkPut(paquete.conceptos);
+    await db.evento_entrega.put(meta);
   });
+}
+
+export async function eventoEntregaLocal(): Promise<EventoEntregaLocal | undefined> {
+  return db.evento_entrega.get(1);
+}
+
+export async function contarConceptosEntrega(): Promise<number> {
+  return db.conceptos_entrega.count();
+}
+
+/** Busqueda por folio exacto: es lo que devolvera el QR en la Parte 2. */
+export async function conceptosPorFolio(folio: string): Promise<ConceptoEntregaLocal[]> {
+  const filas = await db.conceptos_entrega.where('folio').equals(folio.trim()).toArray();
+  return filas.sort((a, b) => a.solicitud_concepto_id - b.solicitud_concepto_id);
+}
+
+/** Busqueda tolerante por nombre, folio o CURP para el fallback manual. */
+export async function buscarConceptosEntrega(texto: string): Promise<ConceptoEntregaLocal[]> {
+  const todos = await db.conceptos_entrega.toArray();
+  const aguja = normalizarTexto(texto);
+  if (!aguja) return todos;
+  return todos.filter((c) =>
+    normalizarTexto(`${c.beneficiario_nombre} ${c.folio} ${c.curp ?? ''}`).includes(aguja)
+  );
+}
+
+export async function limpiarPaqueteEntrega(): Promise<void> {
+  await db.transaction('rw', db.conceptos_entrega, db.evento_entrega, async () => {
+    await db.conceptos_entrega.clear();
+    await db.evento_entrega.clear();
+  });
+}
+
+export async function limpiarBaseLocal(): Promise<void> {
+  await db.transaction(
+    'rw',
+    db.beneficiarios,
+    db.catalogos,
+    db.capturas,
+    db.sesion,
+    db.conceptos_entrega,
+    db.evento_entrega,
+    async () => {
+      await db.beneficiarios.clear();
+      await db.catalogos.clear();
+      await db.capturas.clear();
+      await db.sesion.clear();
+      await db.conceptos_entrega.clear();
+      await db.evento_entrega.clear();
+    }
+  );
 }

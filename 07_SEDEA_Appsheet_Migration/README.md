@@ -1002,6 +1002,44 @@ sigue funcionando igual.
 
 Verificación de extremo a extremo: `test-autorizacion-secretario.spec.js`.
 
+### Registro de entrega del apoyo (Parte 1: datos, backend y precarga offline)
+
+Cuando el apoyo se entrega **físicamente** al beneficiario (los costales bajando
+del camión), se registra evidencia —foto + coordenadas— **por cada concepto**,
+no por solicitud completa. Si una solicitud pide garbanzo y avena, son **dos
+entregas independientes**: pueden ocurrir en días distintos, en eventos
+distintos, y cada una tiene su propia foto.
+
+**Sin entregas parciales** (decisión del usuario): un concepto se entrega
+completo o no se entrega. Por eso la tabla **no tiene columna de cantidad
+entregada** — la existencia de la fila *es* el hecho.
+
+| Pieza | Dónde |
+|---|---|
+| Modelo | Tabla `entregas_apoyo`, migración `021` (aditiva). PK `uuid` generado por el cliente; `solicitud_concepto_id` **UNIQUE** (FK a `solicitud_conceptos`); `foto_url`, `foto_hash`, `geom`, `lat`, `lng`, `precision_m`, `entregado_en`, `entregado_por`, `dispositivo`, `creado_en`. |
+| Candado | Solo se registra entrega si la solicitud tiene `autorizada_secretario = TRUE`. Reusa `exigirAutorizacionSecretario()`: mismo **403 `autorizacion_secretario_pendiente`** que el Folio de entrega. |
+| Registro | `POST /api/entregas` (multipart), calcado de `POST /api/capturas`: mismo `guardarFoto`, mismo `uuid` de cliente como clave de idempotencia, mismo `ON CONFLICT DO NOTHING`. |
+| Idempotencia | Reintentar con el **mismo `uuid`** (lo que hace la cola offline al recuperar señal) responde **200** con `duplicado: true` y **no** crea una segunda fila. Un `uuid` **distinto** sobre un concepto ya entregado es un intento de re-entregar: **409 `concepto_ya_entregado`**. |
+| Bitácora | `auditoria_log` con `accion = 'entrega_apoyo_registrada'` y detalle `{solicitud_concepto_id, solicitud_id, folio, lat, lng, precision_m}`. |
+| Preparar evento | `GET /api/entregas/preparar-evento?tipo_apoyo_id=&regional_id=` devuelve el paquete de trabajo: los conceptos de ese tipo de apoyo cuya solicitud está autorizada **y** que aún no tienen entrega. El alcance regional del usuario manda sobre el filtro pedido. |
+| Precarga offline | Pantalla `/entregas/preparar` (roles de campo). Con señal, descarga el paquete y lo guarda en IndexedDB con el mismo patrón que `/sync` usa para el padrón. |
+
+**Forma de los datos en IndexedDB** (base `sedea_campo`, Dexie **v2**), que es
+lo que consume la pantalla de campo:
+
+| Tabla | Clave | Índices | Contenido |
+|---|---|---|---|
+| `conceptos_entrega` | `solicitud_concepto_id` | `folio`, `curp`, `solicitud_id`, `tipo_apoyo_id` | Un renglón por concepto por entregar: `solicitud_concepto_id`, `solicitud_id`, `folio`, `beneficiario_id`, `beneficiario_nombre`, `curp`, `regional_id`, `regional_nombre`, `municipio_nombre`, `tipo_apoyo_id`, `tipo_apoyo_nombre`, `concepto_descripcion`, `cantidad`, `unidad_medida`. |
+| `evento_entrega` | `id` (siempre `1`) | — | Metadatos del último paquete: `generado_en`, `descargado_en`, `tipo_apoyo_id`, `tipo_apoyo_nombre`, `regional_id`, `regional_nombre`, `total`. |
+
+El índice por `folio` existe para la búsqueda por **QR** en campo: el QR del
+Folio de entrega trae el folio, y `conceptosPorFolio(folio)` devuelve **todos**
+los conceptos pendientes de esa solicitud (pueden ser varios). `guardarPaqueteEntrega()`
+**reemplaza** el paquete completo: los conceptos ya entregados dejan de venir del
+servidor y no deben quedar como fantasmas locales.
+
+Verificación de extremo a extremo: `test-entrega-preparar-evento.spec.js`.
+
 ### Reglas de impresión compartidas
 
 `pwa/src/styles/impresion.css` (importado desde `global.css`) contiene el bloque
@@ -1246,6 +1284,8 @@ desactivan (ver *Administración de usuarios*).
 | GET | `/api/solicitudes/:id/solicitud-completa.pdf` | `ventanilla`, `capturista`, `admin` (aislado por alcance) |
 | PATCH | `/api/solicitudes/:id/documentos/:docId` | `ventanilla`, `admin` |
 | POST | `/api/solicitudes/:id/documentos/:docId/archivo` | `ventanilla`, `admin` |
+| POST | `/api/entregas` | `capturista`, `admin` (multipart, idempotente por `uuid`) **+ autorización del Secretario** |
+| GET | `/api/entregas/preparar-evento` | `capturista`, `admin` (paquete offline del evento de entrega) |
 | GET | `/api/usuarios/:id/alcance` | `admin` |
 | POST | `/api/dictamen/predictaminar` | `dictaminador`, `admin` |
 | GET | `/api/dictamen/bandeja` | `dictaminador`, `admin` |

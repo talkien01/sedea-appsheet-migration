@@ -971,7 +971,7 @@ variable de entorno nueva ni migración adicional**:
 | **Banner post-guardado** | Al guardar una solicitud, la redirección automática (4 s) lleva a `/solicitudes/:id?nuevo=1`. El detalle muestra un banner de confirmación que desaparece al tocarlo o a los 10 s. |
 | **Drag & drop** | Cada documento del checklist tiene una zona de arrastre encima del selector de archivo. Sin librerías externas. |
 | **Carátula imprimible** | El botón "Imprimir carátula" llama a `window.print()`. Se imprime solo el bloque con folio, solicitante, municipio, proyecto, conceptos y lista de documentos con casillas vacías para check manual. |
-| **Folio de entrega con QR** | `/solicitudes/:id/folio` genera la hoja de entrega con el QR del folio. También se imprime con `window.print()`. Sale en **Carta horizontal** y **dos páginas**: la 1 lleva beneficiario, apoyo y QR en tres columnas; la 2, solo el folio en letra gigante para separar expedientes en la mesa de entrega. El apoyo se documenta en **cantidad + unidad de medida** (todos los conceptos de la solicitud), **no** en dinero: el folio se firma al recibir costales u obra, y el monto solo confundía en ventanilla. |
+| **Folio de entrega con QR** | `/solicitudes/:id/folio` genera la hoja de entrega con el QR del folio. También se imprime con `window.print()`. Sale en **Carta horizontal** y **dos páginas**: la 1 lleva beneficiario, apoyo y QR en tres columnas, con el folio como **banner de ancho completo** sobre esas columnas (etiqueta chica arriba y el número a ~58 px, contra los 14 px del texto normal); la 2, solo el folio en letra gigante (~72 px) para separar expedientes en la mesa de entrega. El apoyo se documenta en **cantidad + unidad de medida** (todos los conceptos de la solicitud), **no** en dinero: el folio se firma al recibir costales u obra, y el monto solo confundía en ventanilla. |
 
 ### Reglas de impresión compartidas
 
@@ -995,6 +995,20 @@ su `@page { size: letter landscape }` vive en el `<style>` que renderiza el prop
 montada**, y va después de `impresion.css` en la cascada: gana en el folio y
 desaparece al salir de la pantalla. Si se necesita otro tamaño en una pantalla
 nueva, seguir ese patrón —**no** cambiar el `@page` compartido—.
+
+**Tamaño del folio en cada página.** Los dos números escalan con el largo real
+del folio (`--folio-chars`), porque el prefijo de proyecto y el consecutivo
+pueden crecer: la página 1 usa `min(64px, calc(200mm / var(--folio-chars) *
+1.45))` y la página 2 `calc(240mm / var(--folio-chars) * 1.5)`. Así el de la
+página 2 sigue siendo el más grande y ninguno se desborda del ancho útil de
+Carta horizontal (259.4 mm con márgenes de 10 mm). Verificación:
+
+```
+docker compose up -d --build pwa
+npx playwright test test-folio-pagina1-grande.spec.js
+# la evidencia (PDF + captura) puede ir fuera de test-results:
+FOLIO_SALIDA=evidencia-folio npx playwright test test-folio-pagina1-grande.spec.js --output=evidencia-folio/_pw
+```
 
 
 ---

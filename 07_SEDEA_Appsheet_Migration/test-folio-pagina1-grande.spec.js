@@ -14,7 +14,12 @@ const path = require('path');
 const BASE = process.env.PWA_URL || 'http://localhost:8081';
 const PASSWORD = process.env.SEED_PASSWORD || 'cambiame123';
 const SOLICITUD_ID = Number(process.env.SOLICITUD_ID || 4);
-const SALIDA = path.join(__dirname, 'test-results', 'folio-pagina1');
+// Playwright borra su outputDir al arrancar; si un visor tiene abierto algun
+// PDF de una corrida anterior el borrado falla con EBUSY en Windows. Por eso
+// la carpeta de evidencia es configurable y puede vivir fuera de test-results.
+const SALIDA = process.env.FOLIO_SALIDA
+  ? path.resolve(process.env.FOLIO_SALIDA)
+  : path.join(__dirname, 'test-results', 'folio-pagina1');
 
 test.use({ viewport: { width: 1440, height: 900 } });
 

@@ -973,6 +973,35 @@ variable de entorno nueva ni migración adicional**:
 | **Carátula imprimible** | El botón "Imprimir carátula" llama a `window.print()`. Se imprime solo el bloque con folio, solicitante, municipio, proyecto, conceptos y lista de documentos con casillas vacías para check manual. |
 | **Folio de entrega con QR** | `/solicitudes/:id/folio` genera la hoja de entrega con el QR del folio. También se imprime con `window.print()`. Sale en **Carta horizontal** y **dos páginas**: la 1 lleva beneficiario, apoyo y QR en tres columnas, con el folio como **banner de ancho completo** sobre esas columnas (etiqueta chica arriba y el número a ~58 px, contra los 14 px del texto normal); la 2, solo el folio en letra gigante (~72 px) para separar expedientes en la mesa de entrega. El apoyo se documenta en **cantidad + unidad de medida** (todos los conceptos de la solicitud), **no** en dinero: el folio se firma al recibir costales u obra, y el monto solo confundía en ventanilla. |
 
+### Autorización del Secretario (candado del Folio de entrega)
+
+El **dictamen** (`dictamenes`, rol `dictaminador`) es una revisión **interna**.
+La decisión **final** de si el apoyo se entrega la toma el Secretario, y la toma
+**en papel**: firma físicamente la *Solicitud de Apoyo* impresa (el PDF de 3
+páginas, que ya incluye la sección de dictamen). Su firma puede ir **en contra**
+del dictamen — puede autorizar algo con dictamen negativo o rechazar algo con
+dictamen positivo.
+
+Cuando el papel firmado regresa a SEDEA, un **`admin`** captura esa autorización
+en el sistema. **Ese registro digital es el candado del Folio de entrega**, no el
+resultado del dictamen.
+
+| Pieza | Dónde |
+|---|---|
+| Estado | `solicitudes.autorizada_secretario` (+ `_en`, `_por`, `_nota`), migración `020`. No hay tabla aparte: es un estado simple de la solicitud. |
+| Captura | Tarjeta **"Autorización del Secretario"** en `/solicitudes/:id`, visible **solo para `admin`**. Se puede marcar y **desmarcar** (una captura equivocada se corrige) con una nota opcional. |
+| Bitácora | Cada cambio —marcar y desmarcar— deja un renglón en `auditoria_log` con `accion = 'autorizacion_secretario'` y detalle `{folio, autorizada, anterior, nota}`. |
+| Candado (capa 1) | En `/solicitudes/:id` el botón *Folio de entrega* queda **deshabilitado** con el texto "disponible tras la autorización del Secretario". |
+| Candado (capa 2) | `GET /api/solicitudes/:id/folio` y `GET /api/solicitudes/:id/folio-entrega.pdf` responden **403 `autorizacion_secretario_pendiente`**. Entrar por URL directa a `/solicitudes/:id/folio` no sirve de nada. |
+
+`GET /api/solicitudes/:id` (E44) **no** lleva candado: el Detalle debe poder
+verse siempre. Por eso la pantalla del folio consume una ruta propia
+(`/api/solicitudes/:id/folio`) con la misma carga de datos pero gateada — así el
+bloqueo no es opcional para quien navega directo, y el resto de las pantallas
+sigue funcionando igual.
+
+Verificación de extremo a extremo: `test-autorizacion-secretario.spec.js`.
+
 ### Reglas de impresión compartidas
 
 `pwa/src/styles/impresion.css` (importado desde `global.css`) contiene el bloque
@@ -1211,7 +1240,9 @@ desactivan (ver *Administración de usuarios*).
 | POST | `/api/solicitudes` | `ventanilla`, `admin` |
 | GET | `/api/solicitudes` | `ventanilla`, `admin` (aislado por alcance) |
 | GET | `/api/solicitudes/:id` | `ventanilla`, `admin` (aislado por alcance) |
-| GET | `/api/solicitudes/:id/folio-entrega.pdf` | autenticado (PDF A4 con QR del folio) |
+| GET | `/api/solicitudes/:id/folio` | `ventanilla`, `admin` (aislado por alcance) **+ autorización del Secretario** |
+| POST | `/api/solicitudes/:id/autorizacion-secretario` | `admin` |
+| GET | `/api/solicitudes/:id/folio-entrega.pdf` | autenticado **+ autorización del Secretario** (PDF A4 con QR del folio) |
 | GET | `/api/solicitudes/:id/solicitud-completa.pdf` | `ventanilla`, `capturista`, `admin` (aislado por alcance) |
 | PATCH | `/api/solicitudes/:id/documentos/:docId` | `ventanilla`, `admin` |
 | POST | `/api/solicitudes/:id/documentos/:docId/archivo` | `ventanilla`, `admin` |

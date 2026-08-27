@@ -1,12 +1,14 @@
 // Padron de beneficiarios (solo lectura). El aislamiento por Direccion
 // Regional se aplica SIEMPRE en la capa SQL, nunca en el frontend.
 import type { FastifyInstance } from 'fastify';
+import type { PerfilUsuario } from '@sedea/shared';
 import { esquemaConsultaBeneficiarios, ROLES_CORRECCION } from '@sedea/shared';
 import { consultar, consultarUna } from '../db/pool.js';
 import { regionalForzada } from '../plugins/rbac.js';
 import { errorNoAutorizado, errorNoEncontrado, errorProhibido } from '../plugins/errores.js';
 import { registrarAuditoria } from '../plugins/auditoria.js';
 import { aplicarCorreccion } from '../servicios/correcciones.js';
+import { generarCsv, formatearFecha } from '../servicios/csv.js';
 import { ErrorApi } from '../plugins/errores.js';
 
 /**
@@ -28,6 +30,68 @@ const SELECT_BASE = `
     LEFT JOIN tipos_apoyo t ON t.id = b.tipo_apoyo_id
 `;
 
+type ConsultaBeneficiarios = ReturnType<typeof esquemaConsultaBeneficiarios.parse>;
+
+/**
+ * Traduce el filtro del padron a un WHERE parametrizado.
+ *
+ * Vive fuera del handler porque TRES endpoints deben coincidir exactamente en
+ * "que beneficiarios estoy viendo": el listado, la exportacion a CSV y la
+ * impresion de folios en lote. Si cada uno rearmara su WHERE, el CSV o el lote
+ * podrian abarcar filas que el usuario no tiene en pantalla — incluidas filas
+ * de otra Direccion Regional. El aislamiento por Regional se resuelve aqui,
+ * en la capa SQL, y `regionalForzada` gana siempre sobre el `regional_id` que
+ * mande el cliente.
+ */
+export function construirFiltrosBeneficiarios(
+  usuario: PerfilUsuario,
+  q: ConsultaBeneficiarios
+): { where: string; parametros: unknown[]; regional: number | null } {
+  const forzada = regionalForzada(usuario);
+  // Si el usuario tiene Regional forzada se ignora cualquier regional_id del cliente.
+  const regional = forzada ?? q.regional_id ?? null;
+
+  const condiciones: string[] = [];
+  const parametros: unknown[] = [];
+
+  if (regional) {
+    parametros.push(regional);
+    condiciones.push(`b.regional_id = $${parametros.length}`);
+  }
+  if (q.municipio_id) {
+    parametros.push(q.municipio_id);
+    condiciones.push(`b.municipio_id = $${parametros.length}`);
+  }
+  if (q.colonia) {
+    parametros.push(q.colonia);
+    condiciones.push(`b.colonia = $${parametros.length}`);
+  }
+  if (q.seccion) {
+    parametros.push(q.seccion);
+    condiciones.push(`b.seccion = $${parametros.length}`);
+  }
+  if (q.since) {
+    parametros.push(q.since);
+    condiciones.push(`b.actualizado_en > $${parametros.length}::timestamptz`);
+  }
+  if (q.q && q.q.trim()) {
+    parametros.push(`%${q.q.trim()}%`);
+    const i = parametros.length;
+    // Busqueda insensible a mayusculas y acentos.
+    condiciones.push(
+      `(unaccent(lower(b.nombre_completo)) LIKE unaccent(lower($${i}))
+        OR unaccent(lower(coalesce(b.curp, ''))) LIKE unaccent(lower($${i}))
+        OR unaccent(lower(b.folio)) LIKE unaccent(lower($${i})))`
+    );
+  }
+
+  return {
+    where: condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '',
+    parametros,
+    regional
+  };
+}
+
 export default async function rutasBeneficiarios(app: FastifyInstance): Promise<void> {
   app.get(
     '/api/beneficiarios',
@@ -37,45 +101,7 @@ export default async function rutasBeneficiarios(app: FastifyInstance): Promise<
     if (!usuario) throw errorNoAutorizado();
 
     const q = esquemaConsultaBeneficiarios.parse(peticion.query ?? {});
-    const forzada = regionalForzada(usuario);
-    // Si el usuario tiene Regional forzada se ignora cualquier regional_id del cliente.
-    const regional = forzada ?? q.regional_id ?? null;
-
-    const condiciones: string[] = [];
-    const parametros: unknown[] = [];
-
-    if (regional) {
-      parametros.push(regional);
-      condiciones.push(`b.regional_id = $${parametros.length}`);
-    }
-    if (q.municipio_id) {
-      parametros.push(q.municipio_id);
-      condiciones.push(`b.municipio_id = $${parametros.length}`);
-    }
-    if (q.colonia) {
-      parametros.push(q.colonia);
-      condiciones.push(`b.colonia = $${parametros.length}`);
-    }
-    if (q.seccion) {
-      parametros.push(q.seccion);
-      condiciones.push(`b.seccion = $${parametros.length}`);
-    }
-    if (q.since) {
-      parametros.push(q.since);
-      condiciones.push(`b.actualizado_en > $${parametros.length}::timestamptz`);
-    }
-    if (q.q && q.q.trim()) {
-      parametros.push(`%${q.q.trim()}%`);
-      const i = parametros.length;
-      // Busqueda insensible a mayusculas y acentos.
-      condiciones.push(
-        `(unaccent(lower(b.nombre_completo)) LIKE unaccent(lower($${i}))
-          OR unaccent(lower(coalesce(b.curp, ''))) LIKE unaccent(lower($${i}))
-          OR unaccent(lower(b.folio)) LIKE unaccent(lower($${i})))`
-      );
-    }
-
-    const where = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
+    const { where, parametros, regional } = construirFiltrosBeneficiarios(usuario, q);
 
     const totalFila = await consultarUna<{ total: number }>(
       `SELECT count(*)::int AS total FROM beneficiarios b ${where}`,
@@ -107,6 +133,101 @@ export default async function rutasBeneficiarios(app: FastifyInstance): Promise<
       has_more: desplazamiento + filas.length < total
     });
   }
+  );
+
+  // ---------------------------------------------------------------------
+  // Exportacion a CSV del filtro ACTUAL del padron (mismo criterio que
+  // /api/auditoria/export.csv). No exporta el padron completo: reusa
+  // `construirFiltrosBeneficiarios`, asi que Regional, municipio, colonia,
+  // seccion y busqueda libre aplican igual que en pantalla, y la Regional
+  // forzada del actor sigue siendo inviolable.
+  //
+  // El escape de celdas (incluida la mitigacion de CSV injection) es el de
+  // `generarCsv`; aqui no se arma texto CSV a mano.
+  // ---------------------------------------------------------------------
+  const COLUMNAS_EXPORT = [
+    'folio',
+    'nombre_completo',
+    'curp',
+    'regional',
+    'municipio',
+    'colonia',
+    'seccion',
+    'localidad',
+    'domicilio',
+    'telefono',
+    'concepto_apoyo',
+    'cantidad_asignada',
+    'total_capturas',
+    'fecha_captura'
+  ];
+
+  app.get(
+    '/api/beneficiarios/export.csv',
+    { preHandler: [app.autenticar, app.requiereRol(...ROLES_PADRON)] },
+    async (peticion, respuesta) => {
+      const usuario = peticion.usuario;
+      if (!usuario) throw errorNoAutorizado();
+
+      const q = esquemaConsultaBeneficiarios.parse(peticion.query ?? {});
+      const { where, parametros, regional } = construirFiltrosBeneficiarios(usuario, q);
+
+      // `fecha_captura` no es columna de `beneficiarios`: es la captura de
+      // campo mas reciente. Se resuelve aparte para no cambiar SELECT_BASE,
+      // que alimenta la sincronizacion offline de la PWA.
+      const filas = await consultar<any>(
+        `SELECT b.folio, b.nombre_completo, b.curp, r.nombre AS regional_nombre,
+                m.nombre AS municipio_nombre, b.colonia, b.seccion, b.localidad,
+                b.domicilio, b.telefono, t.nombre AS tipo_apoyo_nombre,
+                b.cantidad_asignada,
+                (SELECT count(*)::int FROM capturas c WHERE c.beneficiario_id = b.id)
+                  AS total_capturas,
+                (SELECT max(c.capturado_en) FROM capturas c WHERE c.beneficiario_id = b.id)
+                  AS ultima_captura_en
+           FROM beneficiarios b
+           LEFT JOIN direcciones_regionales r ON r.id = b.regional_id
+           LEFT JOIN municipios m ON m.id = b.municipio_id
+           LEFT JOIN tipos_apoyo t ON t.id = b.tipo_apoyo_id
+           ${where}
+          ORDER BY b.id
+          LIMIT 50000`,
+        parametros
+      );
+
+      const csv = generarCsv(
+        COLUMNAS_EXPORT,
+        filas.map((f) => [
+          f.folio,
+          f.nombre_completo,
+          f.curp ?? '',
+          f.regional_nombre ?? '',
+          f.municipio_nombre ?? '',
+          f.colonia ?? '',
+          f.seccion ?? '',
+          f.localidad ?? '',
+          f.domicilio ?? '',
+          f.telefono ?? '',
+          f.tipo_apoyo_nombre ?? '',
+          f.cantidad_asignada ?? '',
+          f.total_capturas,
+          formatearFecha(f.ultima_captura_en)
+        ])
+      );
+
+      await registrarAuditoria(peticion, {
+        usuarioId: usuario.id,
+        accion: 'export_csv',
+        entidad: 'beneficiario',
+        detalle: { filas: filas.length, regional_id: regional, filtros: q }
+      });
+
+      const nombre = `beneficiarios_sedea_${new Date().toISOString().slice(0, 10)}.csv`;
+      return respuesta
+        .header('content-type', 'text/csv; charset=utf-8')
+        .header('content-disposition', `attachment; filename="${nombre}"`)
+        .status(200)
+        .send(csv);
+    }
   );
 
   app.get<{ Params: { id: string } }>(

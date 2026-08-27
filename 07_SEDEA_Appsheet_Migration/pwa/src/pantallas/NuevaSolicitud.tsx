@@ -230,6 +230,14 @@ export default function NuevaSolicitud() {
       const siguientes = previas.map((fila) => {
         if (fila.cantidad_manual || !fila.tipo_apoyo_id) return fila;
         const escalon = escalonPorTipoApoyo[fila.tipo_apoyo_id];
+        // Si la superficie dejo de alcanzar el minimo, se BORRA la cantidad
+        // que se habia sugerido: dejarla ahi al lado de "No elegible" haria
+        // creer que ese numero sigue siendo valido.
+        if (escalon?.tipo === 'no_elegible') {
+          if (fila.cantidad === '') return fila;
+          cambio = true;
+          return { ...fila, cantidad: '' };
+        }
         // Solo se sugiere cantidad cuando la superficie alcanza un escalon.
         if (escalon?.tipo !== 'fijo' || String(escalon.cantidad) === fila.cantidad) return fila;
         cambio = true;
@@ -321,6 +329,7 @@ export default function NuevaSolicitud() {
           if (campo === 'tipo_apoyo_id' && !fila.cantidad_manual) {
             const escalon = escalonPorTipoApoyo[String(valor)];
             if (escalon?.tipo === 'fijo') nueva.cantidad = String(escalon.cantidad);
+            else if (escalon?.tipo === 'no_elegible') nueva.cantidad = '';
           }
 
           // La cantidad deja de autocalcularse en cuanto se escribe a mano.

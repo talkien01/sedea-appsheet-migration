@@ -258,6 +258,76 @@ guardar.
 
 ---
 
+## Un concepto sólo se puede pedir en su propio proyecto
+
+Hasta la migración `026`, la tabla `tipos_apoyo` (161 conceptos) **no tenía
+ninguna relación con `proyectos`**: era una lista plana global. El selector de
+«Concepto de apoyo» del paso 5 mostraba los 161 sin importar qué proyecto se
+hubiera elegido en el paso 1, así que una solicitud de **CFA** (semilla de
+avena) podía llevar adentro un concepto de **CFG** (semilla de garbanzo). Eso
+corrompe las estadísticas por proyecto en silencio: el concepto ajeno queda
+contado bajo el proyecto de la solicitud que lo contiene.
+
+La regla ahora es:
+
+| Caso | Qué pasa |
+| --- | --- |
+| Concepto **sin** proyecto asignado (`proyecto_id` NULL) | **Sin restricción.** Se ofrece y se acepta en cualquier proyecto. |
+| Concepto con proyecto asignado, en una solicitud de **ese** proyecto | Se permite. |
+| Concepto con proyecto asignado, en una solicitud de **otro** proyecto | **Se bloquea.** No se puede guardar. |
+
+Es el mismo criterio **«sin regla = sin restricción»** que ya usan
+`reglas_cantidad_maxima_escalon` y `documentos_requeridos`.
+
+### Alcance actual: sólo CFA y CFG
+
+El mecanismo es genérico, pero hoy **sólo dos conceptos** tienen proyecto
+asignado, porque son los dos proyectos realmente en uso:
+
+| `tipos_apoyo.clave` | Proyecto |
+| --- | --- |
+| `CFA-AVENA` | `CFA` — semilla de avena |
+| `CFG-GARBANZO` | `CFG` — semilla de garbanzo |
+
+Los otros **159 conceptos quedan en `proyecto_id` NULL** y siguen funcionando
+exactamente como antes, sin ninguna restricción nueva. La mayoría son de
+proyectos que no están en uso (PEO, CAA, DIN, PET, TR…) y no existe el mapeo
+concepto↔proyecto para ellos.
+
+**Para aplicar la regla a otro proyecto no hay que tocar código:** basta poblar
+`tipos_apoyo.proyecto_id` de esos conceptos.
+
+### Dónde está implementado
+
+1. **El backend es la defensa real.** `POST /api/solicitudes` rechaza toda la
+   solicitud con **422 `concepto_proyecto_no_coincide`**; el mensaje nombra el
+   concepto, el proyecto al que pertenece de verdad y el de la solicitud.
+2. **La PWA filtra el selector.** En `/solicitudes/nueva`, el `<select>` de
+   concepto del paso 5 **oculta** los conceptos de otro proyecto. Los que no
+   tienen proyecto asignado se siguen mostrando siempre. Si todavía no se elige
+   proyecto en el paso 1, no se filtra nada.
+3. **Al cambiar el proyecto** del paso 1 con conceptos ya elegidos, las filas
+   que quedan inválidas **se limpian** (concepto, descripción y unidad): dejar
+   puesto un concepto que ya no está en el selector sería un valor invisible que
+   el backend rechazaría hasta el guardado. Los montos capturados a mano se
+   respetan.
+
+### Solicitudes viejas que ya traen la mezcla
+
+Lo capturado **antes** de esta regla no se corrige solo ni se ignora: se lista
+para revisión manual.
+
+```
+GET /api/admin/solicitudes-proyecto-inconsistente     (sólo rol admin)
+```
+
+Es **solo lectura** —no corrige, no borra, no marca nada— y devuelve, por cada
+concepto mal ubicado: `folio`, `curp`, `nombre_solicitante`, el proyecto de la
+solicitud y el proyecto real del concepto. Todavía **no tiene pantalla**; se
+consulta por API.
+
+---
+
 ## Padrón: exportar a CSV e imprimir folios en lote
 
 En `/beneficiarios`, debajo de los filtros, hay dos acciones que operan sobre

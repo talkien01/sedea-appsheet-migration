@@ -262,6 +262,16 @@ export function IconoSello(props: Props) {
   );
 }
 
+/** Camara: "Entregar apoyos" (foto de evidencia en el momento de la entrega). */
+export function IconoCamara(props: Props) {
+  return (
+    <Base {...props}>
+      <path d="M3.5 8.5h3l1.5-2.5h8l1.5 2.5h3v10h-17z" />
+      <circle cx="12" cy="13" r="3.2" />
+    </Base>
+  );
+}
+
 /** Ojo abierto: "Ver detalle" en las filas de la bandeja de dictamen. */
 export function IconoOjo(props: Props) {
   return (

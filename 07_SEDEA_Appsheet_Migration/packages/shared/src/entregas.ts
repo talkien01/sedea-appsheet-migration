@@ -5,8 +5,14 @@
 import { z } from 'zod';
 import { esquemaUuidV4 } from './schemas.js';
 
-/** Quien puede registrar una entrega en campo: el mismo perfil que captura. */
-export const ROLES_ENTREGA = ['capturista', 'admin'] as const;
+/**
+ * Quien puede registrar una entrega en campo. Parte 2: el personal de
+ * ventanilla es quien acude fisicamente al evento a entregar el apoyo, asi que
+ * `ventanilla` entra junto con `capturista`. Sin esto la pantalla de campo
+ * apareceria en el menu de ventanilla y la cola se atoraria con 403 al
+ * sincronizar.
+ */
+export const ROLES_ENTREGA = ['ventanilla', 'capturista', 'admin'] as const;
 
 /** Los campos llegan por multipart, es decir siempre como texto. */
 const numeroDesdeTexto = z.union([z.number(), z.string()]).transform((v) => {

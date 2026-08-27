@@ -9,6 +9,8 @@ export interface Ubicacion {
 
 interface Props {
   onUbicacion: (ubicacion: Ubicacion | null) => void;
+  /** Encabezado del bloque; la pantalla de entrega del apoyo usa el suyo. */
+  titulo?: string;
 }
 
 type Nivel = 'verde' | 'ambar' | 'rojo';
@@ -19,7 +21,7 @@ function nivelPrecision(metros: number): Nivel {
   return 'rojo';
 }
 
-export default function CapturaGPS({ onUbicacion }: Props) {
+export default function CapturaGPS({ onUbicacion, titulo }: Props) {
   const [ubicacion, setUbicacion] = useState<Ubicacion | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [buscando, setBuscando] = useState(false);
@@ -80,7 +82,7 @@ export default function CapturaGPS({ onUbicacion }: Props) {
 
   return (
     <div>
-      <h2>Paso 2 · Ubicación GPS</h2>
+      <h2>{titulo ?? 'Paso 2 · Ubicación GPS'}</h2>
 
       {error && (
         <div className="mensaje error" role="alert" data-testid="error-gps">

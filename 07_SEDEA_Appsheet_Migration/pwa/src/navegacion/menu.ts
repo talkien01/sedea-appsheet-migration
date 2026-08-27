@@ -14,7 +14,8 @@ import {
   IconoSincronizar,
   IconoUsuarios,
   IconoCapas,
-  IconoSello
+  IconoSello,
+  IconoCamara
 } from '../componentes/Iconos';
 
 export type Grupo = 'Campo' | 'Gestión' | 'Ventanilla' | 'Administración';
@@ -55,9 +56,20 @@ export const DESTINOS: Destino[] = [
     ruta: '/entregas/preparar',
     etiqueta: 'Entregas',
     testId: 'nav-entregas',
-    roles: ['capturista', 'admin'],
+    roles: ['ventanilla', 'capturista', 'admin'],
     grupo: 'Campo',
     Icono: IconoSello
+  },
+  // Parte 2: la pantalla de campo. El nombre es explicito a proposito para que
+  // no haya duda de cual se toca al llegar al evento con el apoyo en la camioneta.
+  {
+    id: 'entregar-apoyos',
+    ruta: '/entregas/registrar',
+    etiqueta: 'Entregar apoyos',
+    testId: 'nav-entregar-apoyos',
+    roles: ['ventanilla', 'capturista', 'admin'],
+    grupo: 'Campo',
+    Icono: IconoCamara
   },
   {
     id: 'dashboard',

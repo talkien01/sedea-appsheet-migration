@@ -5,6 +5,11 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 
 interface Props {
   onFoto: (blob: Blob | null) => void;
+  /**
+   * Encabezado del bloque. La captura de campo lo numera como "Paso 1"; la
+   * pantalla de entrega del apoyo reusa el componente con su propio texto.
+   */
+  titulo?: string;
 }
 
 const LADO_MAXIMO = 1600;
@@ -33,7 +38,7 @@ async function comprimir(archivo: File): Promise<Blob> {
   });
 }
 
-export default function CapturaFoto({ onFoto }: Props) {
+export default function CapturaFoto({ onFoto, titulo }: Props) {
   const entrada = useRef<HTMLInputElement>(null);
   const [previa, setPrevia] = useState<string | null>(null);
   const [procesando, setProcesando] = useState(false);
@@ -72,7 +77,7 @@ export default function CapturaFoto({ onFoto }: Props) {
 
   return (
     <div>
-      <h2>Paso 1 · Fotografía de evidencia</h2>
+      <h2>{titulo ?? 'Paso 1 · Fotografía de evidencia'}</h2>
 
       {error && (
         <div className="mensaje error" role="alert">

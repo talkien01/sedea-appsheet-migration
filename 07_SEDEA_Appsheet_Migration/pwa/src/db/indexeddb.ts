@@ -51,6 +51,30 @@ export interface CapturaLocal {
  */
 export type ConceptoEntregaLocal = ConceptoPorEntregar;
 
+/**
+ * Una entrega registrada en campo, esperando su turno en la cola de subida.
+ * Misma forma que `CapturaLocal` a proposito: el motor de sincronizacion las
+ * procesa con el mismo ciclo de estados y la misma idempotencia por `uuid`.
+ */
+export interface EntregaLocal {
+  uuid: string;
+  solicitud_concepto_id: number;
+  /** Copia de los datos del concepto para poder mostrar la cola sin el paquete. */
+  folio: string;
+  beneficiario_nombre: string;
+  concepto_nombre: string;
+  foto?: Blob | null;
+  foto_url?: string | null;
+  lat: number;
+  lng: number;
+  precision_m: number;
+  observaciones: string | null;
+  entregado_en: string;
+  estado: 'pendiente' | 'sincronizando' | 'sincronizada' | 'error';
+  intentos: number;
+  error_msg?: string | null;
+}
+
 /** Metadatos del ultimo paquete descargado (registro unico, id = 1). */
 export interface EventoEntregaLocal {
   id: number; // siempre 1
@@ -70,6 +94,7 @@ class BaseCampo extends Dexie {
   capturas!: Table<CapturaLocal, string>;
   conceptos_entrega!: Table<ConceptoEntregaLocal, number>;
   evento_entrega!: Table<EventoEntregaLocal, number>;
+  entregas!: Table<EntregaLocal, string>;
 
   constructor() {
     super('sedea_campo');
@@ -88,6 +113,16 @@ class BaseCampo extends Dexie {
       capturas: 'uuid, beneficiario_id, estado, capturado_en',
       conceptos_entrega: 'solicitud_concepto_id, folio, curp, solicitud_id, tipo_apoyo_id',
       evento_entrega: 'id'
+    });
+    // v3: cola offline de entregas registradas en campo (Parte 2). Aditiva.
+    this.version(3).stores({
+      sesion: 'id',
+      beneficiarios: 'id, regional_id, municipio_id, colonia, seccion, curp, nombre_completo',
+      catalogos: '++id, grupo, clave, padre_clave',
+      capturas: 'uuid, beneficiario_id, estado, capturado_en',
+      conceptos_entrega: 'solicitud_concepto_id, folio, curp, solicitud_id, tipo_apoyo_id',
+      evento_entrega: 'id',
+      entregas: 'uuid, solicitud_concepto_id, estado, entregado_en'
     });
   }
 }

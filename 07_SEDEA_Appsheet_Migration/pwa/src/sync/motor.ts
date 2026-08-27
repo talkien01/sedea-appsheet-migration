@@ -4,8 +4,8 @@
 // - Reintentos: hasta 5 con backoff exponencial (2^n segundos).
 import { api, ErrorPeticion } from '../api/cliente';
 import { db } from '../db/indexeddb';
-import { capturasPendientes } from '../db/repositorios';
-import { marcarEstado } from './cola';
+import { capturasPendientes, entregasPendientes } from '../db/repositorios';
+import { marcarEstado, marcarEstadoEntrega } from './cola';
 import { estaEnLinea } from './estadoRed';
 
 const MAX_INTENTOS = 5;
@@ -119,12 +119,92 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
       }
       notificar();
     }
+
+    // Entregas del apoyo (Parte 2): misma cola, mismo ciclo, mismo uuid de
+    // idempotencia. Van despues de las capturas para no retrasarlas.
+    await enviarEntregas(resultado);
   } finally {
     sincronizando = false;
     notificar();
   }
 
   return resultado;
+}
+
+/**
+ * Sube las entregas registradas en campo. Un 409 `concepto_ya_entregado`
+ * significa que el concepto ya tiene entrega con OTRO uuid (p. ej. otro
+ * dispositivo se adelanto): no se resuelve reintentando, se deja en error
+ * visible.
+ */
+async function enviarEntregas(resultado: ResultadoSync): Promise<void> {
+  const pendientes = await entregasPendientes();
+
+  for (const entrega of pendientes) {
+    if (!entrega.foto) {
+      await marcarEstadoEntrega(entrega.uuid, 'error', {
+        error_msg: 'La fotografia local ya no esta disponible.'
+      });
+      resultado.fallidas++;
+      continue;
+    }
+
+    await marcarEstadoEntrega(entrega.uuid, 'sincronizando');
+    notificar();
+
+    const formulario = new FormData();
+    formulario.append('uuid', entrega.uuid);
+    formulario.append('solicitud_concepto_id', String(entrega.solicitud_concepto_id));
+    formulario.append('lat', String(entrega.lat));
+    formulario.append('lng', String(entrega.lng));
+    formulario.append('precision_m', String(entrega.precision_m));
+    formulario.append('entregado_en', entrega.entregado_en);
+    if (entrega.observaciones) formulario.append('observaciones', entrega.observaciones);
+    const archivoFoto = entrega.foto.type.startsWith('image/')
+      ? entrega.foto
+      : new Blob([entrega.foto], { type: 'image/jpeg' });
+    formulario.append('foto', archivoFoto, `${entrega.uuid}.jpg`);
+
+    let intentos = entrega.intentos ?? 0;
+    let enviado = false;
+    let ultimoError = '';
+
+    while (!enviado && intentos < MAX_INTENTOS) {
+      try {
+        const respuesta = await api.subirEntrega(formulario);
+        await db.entregas.update(entrega.uuid, {
+          estado: 'sincronizada',
+          foto: null,
+          foto_url: respuesta.foto_url,
+          error_msg: null,
+          intentos
+        });
+        if (respuesta.duplicado) resultado.duplicadas++;
+        else resultado.enviadas++;
+        enviado = true;
+      } catch (error) {
+        intentos++;
+        ultimoError =
+          error instanceof ErrorPeticion ? error.message : 'Error desconocido al sincronizar.';
+        if (error instanceof ErrorPeticion && [403, 404, 409, 422].includes(error.estado)) {
+          intentos = MAX_INTENTOS;
+          break;
+        }
+        if (intentos < MAX_INTENTOS) {
+          await esperar(Math.pow(2, intentos) * 1000);
+        }
+      }
+    }
+
+    if (!enviado) {
+      await marcarEstadoEntrega(entrega.uuid, 'error', {
+        intentos,
+        error_msg: ultimoError || 'No fue posible enviar la entrega al servidor.'
+      });
+      resultado.fallidas++;
+    }
+    notificar();
+  }
 }
 
 /** Registra los disparadores automaticos de sincronizacion. */

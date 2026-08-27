@@ -34,6 +34,7 @@ import CatalogoDocumentos from './pantallas/CatalogoDocumentos';
 import Dictamen from './pantallas/Dictamen';
 import DictamenDetalle from './pantallas/DictamenDetalle';
 import EscaneoMovil from './pantallas/EscaneoMovil';
+import RegistrarEntrega from './pantallas/RegistrarEntrega';
 
 const CAMPO = ['capturista', 'admin'];
 const AUDITORIA = ['auditor', 'admin'];
@@ -46,6 +47,9 @@ const VENTANILLA = ['ventanilla', 'capturista', 'admin'];
 // Build 13: pre-dictaminacion con IA. El rol `dictaminador` NO hereda
 // permisos de `ventanilla` (A19-12): entra a /dictamen y no a /solicitudes.
 const DICTAMEN = ['dictaminador', 'admin'];
+// Registro de entrega del apoyo: quien va al evento a entregar fisicamente.
+// Debe coincidir con ROLES_ENTREGA del backend.
+const ENTREGAS = ['ventanilla', 'capturista', 'admin'];
 
 export default function Rutas() {
   return (
@@ -57,6 +61,21 @@ export default function Rutas() {
         de la URL es la unica credencial y solo sirve para entregar un escaneo.
       */}
       <Route path="/escaneo-movil/:token" element={<EscaneoMovil />} />
+      {/*
+        Parte 2 del registro de entrega: pantalla de campo. Va FUERA del
+        cascaron a proposito (mismo patron que /escaneo-movil): en modo de
+        campo no hay barra lateral ni barra inferior, es una herramienta de un
+        solo proposito y de aqui solo se sale con el boton "Salir". Si va
+        protegida por sesion y rol: aqui si hay usuario con sesion iniciada.
+      */}
+      <Route
+        path="/entregas/registrar"
+        element={
+          <RutaProtegida roles={ENTREGAS}>
+            <RegistrarEntrega />
+          </RutaProtegida>
+        }
+      />
       <Route element={<Cascaron />}>
         <Route path="/" element={<Navigate to="/beneficiarios" replace />} />
 
@@ -72,7 +91,7 @@ export default function Rutas() {
         <Route
           path="/entregas/preparar"
           element={
-            <RutaProtegida roles={CAMPO}>
+            <RutaProtegida roles={ENTREGAS}>
               <PrepararEntrega />
             </RutaProtegida>
           }

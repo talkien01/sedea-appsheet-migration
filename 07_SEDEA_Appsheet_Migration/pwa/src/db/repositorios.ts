@@ -10,6 +10,7 @@ import {
   db,
   type CapturaLocal,
   type ConceptoEntregaLocal,
+  type EntregaLocal,
   type EntradaCatalogoLocal,
   type EventoEntregaLocal,
   type SesionLocal
@@ -259,6 +260,42 @@ export async function buscarConceptosEntrega(texto: string): Promise<ConceptoEnt
   );
 }
 
+// --------------------------------------------------------------------------
+// Entregas registradas en campo (cola offline, Parte 2)
+// --------------------------------------------------------------------------
+
+/**
+ * `solicitud_concepto_id` de los conceptos que YA se entregaron desde este
+ * dispositivo, hayan subido o no. Es lo que impide ofrecer dos veces el mismo
+ * concepto al re-escanear el folio (el servidor responderia 409).
+ */
+export async function conceptosYaEntregadosLocal(): Promise<Set<number>> {
+  const filas = await db.entregas.toArray();
+  return new Set(filas.map((e) => e.solicitud_concepto_id));
+}
+
+/**
+ * Avance del evento: cuantos conceptos del paquete descargado ya tienen
+ * entrega registrada en este dispositivo. Solo cuenta los que pertenecen al
+ * paquete actual, para que el contador "X de Y" no arrastre eventos viejos.
+ */
+export async function contarEntregasDelEvento(): Promise<number> {
+  const entregados = await conceptosYaEntregadosLocal();
+  if (entregados.size === 0) return 0;
+  const conceptos = await db.conceptos_entrega.toArray();
+  return conceptos.filter((c) => entregados.has(c.solicitud_concepto_id)).length;
+}
+
+export async function entregasPendientes(): Promise<EntregaLocal[]> {
+  const filas = await db.entregas.where('estado').anyOf('pendiente', 'error').toArray();
+  return filas.sort((a, b) => a.entregado_en.localeCompare(b.entregado_en));
+}
+
+/** Entregas que aun no llegaron al servidor (para el aviso de "faltan por subir"). */
+export async function contarEntregasPendientes(): Promise<number> {
+  return db.entregas.where('estado').anyOf('pendiente', 'sincronizando', 'error').count();
+}
+
 export async function limpiarPaqueteEntrega(): Promise<void> {
   await db.transaction('rw', db.conceptos_entrega, db.evento_entrega, async () => {
     await db.conceptos_entrega.clear();
@@ -269,7 +306,15 @@ export async function limpiarPaqueteEntrega(): Promise<void> {
 export async function limpiarBaseLocal(): Promise<void> {
   await db.transaction(
     'rw',
-    [db.beneficiarios, db.catalogos, db.capturas, db.sesion, db.conceptos_entrega, db.evento_entrega],
+    [
+      db.beneficiarios,
+      db.catalogos,
+      db.capturas,
+      db.sesion,
+      db.conceptos_entrega,
+      db.evento_entrega,
+      db.entregas
+    ],
     async () => {
       await db.beneficiarios.clear();
       await db.catalogos.clear();
@@ -277,6 +322,7 @@ export async function limpiarBaseLocal(): Promise<void> {
       await db.sesion.clear();
       await db.conceptos_entrega.clear();
       await db.evento_entrega.clear();
+      await db.entregas.clear();
     }
   );
 }

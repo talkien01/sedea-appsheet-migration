@@ -1,0 +1,140 @@
+/* ==========================================================================
+   "Entregar apoyos" (Parte 2) - modo de campo.
+
+   Deliberadamente distinto al resto de la app: pantalla completa, sin barra
+   lateral ni barra inferior, tipografia grande y botones altos. Se usa de pie,
+   en una bodega o una explanada, con una mano ocupada y el sol pegando.
+   ========================================================================== */
+
+.campo-entrega {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 20px;
+  background: var(--bg);
+  color: var(--fg);
+  overflow-y: auto;
+}
+
+.campo-entrega-barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.campo-entrega-barra strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+}
+
+.campo-entrega-evento {
+  display: block;
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+}
+
+.campo-entrega-barra button {
+  min-height: 44px;
+  padding-inline: 18px;
+}
+
+.campo-entrega-contador {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  color: var(--fg);
+}
+
+.campo-entrega-porsubir {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--fg-muted);
+}
+
+.campo-entrega-cuerpo {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.campo-entrega-cuerpo h2 {
+  margin: 4px 0 0;
+  font-size: 1.3rem;
+}
+
+/* El video ocupa lo que pueda: encuadrar el QR es la tarea principal. */
+.campo-entrega-video {
+  width: 100%;
+  max-height: 46vh;
+  border-radius: var(--r-md);
+  background: #000;
+  object-fit: cover;
+}
+
+/* Lista de conceptos / resultados: cada renglon es un blanco grande de dedo. */
+.campo-entrega-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.campo-entrega-lista > li > button {
+  width: 100%;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  background: var(--bg-elev);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+}
+
+.campo-entrega-lista > li > button:disabled {
+  opacity: 0.5;
+}
+
+.campo-entrega-lista > li > button span {
+  color: var(--fg-muted);
+  font-size: 0.9rem;
+}
+
+/* Confirmacion: los datos que el operador lee en voz alta antes de entregar. */
+.campo-entrega-datos {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.campo-entrega-datos dt {
+  color: var(--fg-muted);
+  font-size: 0.85rem;
+}
+
+.campo-entrega-datos dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.campo-entrega .acciones button {
+  min-height: 52px;
+  font-size: 1.05rem;
+}

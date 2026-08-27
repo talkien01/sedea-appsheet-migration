@@ -1576,12 +1576,36 @@ input[type='radio'] {
    columna de lectura. Es un cambio de tamano y legibilidad: la mecanica de la
    tabla (inputs + Tab nativo) no cambia. */
 
+/* `.contenido:has(.pantalla-ancha)` quita el techo base, pero las media queries
+   de `.contenido` lo vuelven a poner (1440/1760 px). Este selector es mas
+   especifico y gana en los dos sentidos: el ancho real lo pone el viewport. */
+.contenido:has(.conceptos-ancho) {
+  max-width: none;
+}
+
 .columna-pasos > .tarjeta {
   max-width: 1180px;
 }
 
 .columna-pasos > .tarjeta:has(.conceptos-ancho) {
   max-width: none;
+}
+
+/* La seccion se sale del padding de su tarjeta y del `.contenido` para llegar
+   al borde de la pantalla. No invade la columna del indice lateral (es
+   pegajoso y quedaria encima); el resto del ancho que falte lo resuelve el
+   scroll horizontal de `.tabla-contenedor`, que ya existia. */
+@media (min-width: 768px) {
+  .conceptos-ancho {
+    margin-left: -20px;
+    margin-right: -40px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .conceptos-ancho {
+    margin-right: -48px;
+  }
 }
 
 /* Columnas numericas: cifras de ancho fijo, alineadas a la derecha, para poder
@@ -1622,9 +1646,9 @@ input[type='radio'] {
 
   .tabla-conceptos input,
   .tabla-conceptos select {
-    min-height: 44px;
-    padding: 11px 12px;
-    font-size: 15.5px;
+    min-height: 48px;
+    padding: 12px 14px;
+    font-size: 16px;
   }
 
   /* Anchos minimos para que ninguna celda quede encajonada. */

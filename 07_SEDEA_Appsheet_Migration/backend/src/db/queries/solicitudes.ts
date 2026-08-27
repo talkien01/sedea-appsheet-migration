@@ -134,8 +134,15 @@ export async function tiposApoyoActivos(ids: number[]) {
  * Se devuelve la solicitud MAS ANTIGUA por concepto: es la que ventanilla debe
  * buscar en papel para saber que ya se capturo.
  */
-export async function conceptosDuplicadosPorCurp(curp: string, tiposApoyoIds: number[]) {
-  if (!curp || tiposApoyoIds.length === 0) return [];
+/**
+ * `tiposApoyoIds` vacio = sin filtro, devuelve TODOS los conceptos que esa
+ * CURP ya tiene solicitados (aviso temprano, en cuanto la CURP se completa,
+ * antes de que se elija ningun concepto en la tabla). Con la lista puesta,
+ * filtra solo a esos ids (uso: cruzar contra las filas ya elegidas).
+ */
+export async function conceptosDuplicadosPorCurp(curp: string, tiposApoyoIds: number[] = []) {
+  if (!curp) return [];
+  const filtroConcepto = tiposApoyoIds.length > 0 ? 'AND sc.tipo_apoyo_id = ANY($2::bigint[])' : '';
   return consultar<{
     tipo_apoyo_id: string;
     tipo_apoyo: string | null;
@@ -150,9 +157,9 @@ export async function conceptosDuplicadosPorCurp(curp: string, tiposApoyoIds: nu
        JOIN solicitudes s ON s.id = sc.solicitud_id
        LEFT JOIN tipos_apoyo ta ON ta.id = sc.tipo_apoyo_id
       WHERE upper(btrim(coalesce(s.curp, ''))) = $1
-        AND sc.tipo_apoyo_id = ANY($2::bigint[])
+        ${filtroConcepto}
       ORDER BY sc.tipo_apoyo_id, s.recibida_en, s.id`,
-    [curp, tiposApoyoIds]
+    filtroConcepto ? [curp, tiposApoyoIds] : [curp]
   );
 }
 

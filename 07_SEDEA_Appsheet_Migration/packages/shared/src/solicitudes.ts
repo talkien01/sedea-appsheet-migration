@@ -213,15 +213,18 @@ export const esquemaDocumentosRequeridos = z
   .strict();
 
 /**
- * Cuerpo del aviso en vivo de CURP duplicada: dada una CURP y los conceptos
- * elegidos en la tabla, responde cuales de esos conceptos YA tienen una
- * solicitud previa con esa misma CURP. Es solo lectura; el bloqueo real vive
- * en E42 (codigo `curp_concepto_duplicado`).
+ * Cuerpo del aviso en vivo de CURP duplicada. `tipos_apoyo_ids` es OPCIONAL:
+ * vacio u omitido devuelve TODOS los conceptos que esa CURP ya tiene
+ * solicitados (se dispara en cuanto la CURP queda completa, antes incluso de
+ * que se elija un concepto en la tabla); con la lista puesta, filtra solo a
+ * esos ids (uso interno del formulario para cruzar contra las filas
+ * elegidas). Es solo lectura; el bloqueo real vive en E42 (codigo
+ * `curp_concepto_duplicado`).
  */
 export const esquemaVerificarCurpConcepto = z
   .object({
     curp: z.string().min(1).max(18),
-    tipos_apoyo_ids: z.array(z.number().int().positive()).min(1)
+    tipos_apoyo_ids: z.array(z.number().int().positive()).optional().default([])
   })
   .strict();
 

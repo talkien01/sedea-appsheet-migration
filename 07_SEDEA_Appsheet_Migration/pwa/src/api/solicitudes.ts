@@ -69,13 +69,15 @@ export const apiSolicitudes = {
   },
 
   /**
-   * Aviso en vivo de CURP duplicada: por cada concepto elegido dice si esa
-   * CURP ya tiene una solicitud previa con ese mismo concepto. Es solo lectura;
-   * el bloqueo real lo hace E42 con `curp_concepto_duplicado`.
+   * Aviso en vivo de CURP duplicada. `tipos_apoyo_ids` vacio u omitido trae
+   * TODOS los conceptos que esa CURP ya tiene solicitados (aviso temprano al
+   * completar la CURP, antes de elegir concepto); con la lista puesta filtra
+   * solo a esos ids. Es solo lectura; el bloqueo real lo hace E42 con
+   * `curp_concepto_duplicado`.
    */
   verificarCurpConcepto(cuerpo: {
     curp: string;
-    tipos_apoyo_ids: number[];
+    tipos_apoyo_ids?: number[];
   }): Promise<{ conflictos: ConflictoCurpConcepto[] }> {
     return peticion('/solicitudes/verificar-curp-concepto', {
       method: 'POST',

@@ -292,51 +292,67 @@ export default function NuevaSolicitud() {
     return () => clearTimeout(temporizador);
   }, [enLinea, componenteId, solicitante.tipo_persona, proyectoId, claveConceptos]);
 
-  // --- Aviso en vivo de CURP ya registrada con el mismo concepto -----------
+  // --- Aviso en vivo de CURP ya registrada -----------------------------
   // Incidente real: ventanilla recapturo a un beneficiario (misma CURP, mismo
   // concepto) y el sistema no aviso nada hasta que casi se duplica la
-  // solicitud. En cuanto la CURP esta completa y hay al menos un concepto
-  // elegido se consulta al backend (debounce 300 ms, el mismo criterio del
-  // checklist de documentos) y los conceptos en conflicto se marcan en la
-  // tabla, deshabilitando el guardado.
-  //
-  // Da igual como llego la CURP al campo —tecleada, escaneada de la Constancia
-  // CURP con la camara o traspasada desde el celular—: aqui solo se lee el
-  // valor ya capturado en el estado.
+  // solicitud. Se dispara en cuanto la CURP queda COMPLETA (tecleada,
+  // escaneada de la Constancia CURP con la camara, o traspasada desde el
+  // celular -- aqui solo se lee el valor ya capturado en el estado, da igual
+  // como llego), SIN esperar a que se elija ningun concepto: se trae de una
+  // sola vez TODO lo que esa CURP ya tiene solicitado (`tipos_apoyo_ids`
+  // vacio = sin filtro), para que ventanilla se entere desde el principio, no
+  // hasta que ya eligio un concepto en la tabla.
   //
   // Esto es una AYUDA de captura: el bloqueo real lo hace el backend al
   // guardar (422 `curp_concepto_duplicado`), asi que un fallo de red aqui no
   // marca conflictos falsos, solo deja pasar al usuario hasta ese 422.
-  const [conflictosCurp, setConflictosCurp] = useState<Record<string, ConflictoCurpConcepto>>({});
+  const [todosConflictosCurp, setTodosConflictosCurp] = useState<
+    Record<string, ConflictoCurpConcepto>
+  >({});
   const curpNormalizada = solicitante.curp.trim().toUpperCase();
   const curpCompleta = PATRON_CURP.test(curpNormalizada);
 
   useEffect(() => {
-    if (!enLinea || !curpCompleta || claveConceptos === '') {
-      setConflictosCurp({});
+    if (!enLinea || !curpCompleta) {
+      setTodosConflictosCurp({});
       return;
     }
     const temporizador = setTimeout(() => {
       void (async () => {
         try {
           const { conflictos } = await apiSolicitudes.verificarCurpConcepto({
-            curp: curpNormalizada,
-            tipos_apoyo_ids: claveConceptos.split(',').map(Number)
+            curp: curpNormalizada
           });
           const mapa: Record<string, ConflictoCurpConcepto> = {};
           for (const c of conflictos) mapa[String(c.tipo_apoyo_id)] = c;
-          setConflictosCurp(mapa);
+          setTodosConflictosCurp(mapa);
         } catch {
           // Sin conflictos conocidos: no se inventa un bloqueo por un fallo de
           // red. Si de verdad hay duplicado, el backend lo rechaza al guardar.
-          setConflictosCurp({});
+          setTodosConflictosCurp({});
         }
       })();
     }, 300);
     return () => clearTimeout(temporizador);
-  }, [enLinea, curpCompleta, curpNormalizada, claveConceptos]);
+  }, [enLinea, curpCompleta, curpNormalizada]);
+
+  // Vista para la tabla: solo los conceptos YA elegidos en las filas que
+  // coinciden con algo de `todosConflictosCurp` -- eso es lo que bloquea el
+  // guardado en cada fila. El aviso general de arriba usa la lista completa.
+  const conflictosCurp = useMemo(() => {
+    const filtrado: Record<string, ConflictoCurpConcepto> = {};
+    for (const id of idsConceptos) {
+      const c = todosConflictosCurp[String(id)];
+      if (c) filtrado[String(id)] = c;
+    }
+    return filtrado;
+  }, [todosConflictosCurp, idsConceptos]);
 
   const hayConflictoCurp = Object.keys(conflictosCurp).length > 0;
+  const conflictosCurpSinElegir = useMemo(
+    () => Object.values(todosConflictosCurp).filter((c) => !idsConceptos.includes(c.tipo_apoyo_id)),
+    [todosConflictosCurp, idsConceptos]
+  );
 
   const cambiarSolicitante = useCallback((campo: keyof DatosSolicitante, valor: string) => {
     setSolicitante((previo) => ({ ...previo, [campo]: valor }));
@@ -716,6 +732,22 @@ export default function NuevaSolicitud() {
           municipios={catalogos?.municipios_captura ?? catalogos?.municipios ?? []}
           cambiar={cambiarSolicitante}
         />
+        {/*
+          Aviso TEMPRANO: en cuanto la CURP queda completa, antes incluso de
+          elegir un concepto en el Paso 5. No bloquea nada por si solo (esa
+          CURP puede legitimamente pedir un concepto distinto a los que ya
+          tiene) -- solo informa para que ventanilla decida con esto en la
+          mano. El bloqueo real por fila vive en el Paso 5, TablaConceptos.
+        */}
+        {conflictosCurpSinElegir.length > 0 && (
+          <div className="mensaje aviso" role="status" data-testid="aviso-curp-conceptos-previos">
+            Esta CURP ya tiene solicitud de:{' '}
+            {conflictosCurpSinElegir
+              .map((c) => `${c.tipo_apoyo ?? 'concepto'} (folio ${c.folio})`)
+              .join('; ')}
+            . Si el concepto que van a pedir es distinto, puedes continuar sin problema.
+          </div>
+        )}
       </div>
 
       {/* ---------------------------- Paso 3 ---------------------------- */}

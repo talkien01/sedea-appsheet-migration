@@ -99,9 +99,7 @@ export default function Login() {
           />
         </div>
         <h1>{NOMBRE_APP}</h1>
-        <p className="dato">
-          Evidencia de entrega de apoyos agropecuarios — SEDEA Querétaro
-        </p>
+        <p className="dato">Sistema de Programas de Apoyo a Contingencias</p>
 
         {!enLinea && (
           <div className="mensaje aviso" role="status">

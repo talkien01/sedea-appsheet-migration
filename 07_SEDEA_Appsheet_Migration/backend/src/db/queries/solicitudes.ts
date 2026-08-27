@@ -117,6 +117,45 @@ export async function tiposApoyoActivos(ids: number[]) {
   );
 }
 
+/**
+ * Conceptos que YA tienen una solicitud registrada con esta misma CURP.
+ *
+ * Regla de negocio (incidente real de ventanilla: se estuvo a punto de
+ * duplicar una solicitud): la misma CURP no puede repetir el MISMO concepto
+ * (`tipo_apoyo_id`), sin importar el estado de la solicitud previa —pendiente,
+ * dictaminada positivo o dictaminada negativo cuentan igual—. La misma CURP
+ * con OTRO concepto si es legitima y no aparece aqui. Es el mismo criterio con
+ * el que Depuracion distingue `curp_mismo_concepto` de `curp_concepto_distinto`.
+ *
+ * `curp` debe llegar ya normalizada (trim + MAYUSCULAS); la comparacion en SQL
+ * vuelve a aplicar `upper(btrim(...))` sobre la columna porque los datos
+ * migrados no garantizan ese formato.
+ *
+ * Se devuelve la solicitud MAS ANTIGUA por concepto: es la que ventanilla debe
+ * buscar en papel para saber que ya se capturo.
+ */
+export async function conceptosDuplicadosPorCurp(curp: string, tiposApoyoIds: number[]) {
+  if (!curp || tiposApoyoIds.length === 0) return [];
+  return consultar<{
+    tipo_apoyo_id: string;
+    tipo_apoyo: string | null;
+    solicitud_id: string;
+    folio: string;
+    recibida_en: string;
+  }>(
+    `SELECT DISTINCT ON (sc.tipo_apoyo_id)
+            sc.tipo_apoyo_id, ta.nombre AS tipo_apoyo,
+            s.id AS solicitud_id, s.folio, s.recibida_en
+       FROM solicitud_conceptos sc
+       JOIN solicitudes s ON s.id = sc.solicitud_id
+       LEFT JOIN tipos_apoyo ta ON ta.id = sc.tipo_apoyo_id
+      WHERE upper(btrim(coalesce(s.curp, ''))) = $1
+        AND sc.tipo_apoyo_id = ANY($2::bigint[])
+      ORDER BY sc.tipo_apoyo_id, s.recibida_en, s.id`,
+    [curp, tiposApoyoIds]
+  );
+}
+
 /** Listado paginado con el aislamiento por alcance aplicado en SQL (E43). */
 export async function listarSolicitudes(params: {
   alcance: AlcanceResuelto;

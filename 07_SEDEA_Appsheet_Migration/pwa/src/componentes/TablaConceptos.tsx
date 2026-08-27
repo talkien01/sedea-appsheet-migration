@@ -3,7 +3,7 @@
 // El total de cada fila se autocalcula como estatal + productor, pero el
 // usuario puede sobrescribirlo; una vez editado a mano, esa fila deja de
 // autocalcularse (Assumption 48: el papel admite aportaciones de terceros).
-import type { CatalogosVentanilla } from '@sedea/shared';
+import type { CatalogosVentanilla, ConflictoCurpConcepto } from '@sedea/shared';
 import { BotonIcono } from './BotonIcono';
 
 export interface FilaConcepto {
@@ -63,6 +63,12 @@ interface Props {
    * captura: el tope real lo impone el backend al guardar y al dictaminar.
    */
   escalones: Record<string, EstadoEscalonConcepto>;
+  /**
+   * Conceptos que la CURP capturada YA solicito antes, por `tipo_apoyo_id`.
+   * A diferencia de `escalones`, esto SI bloquea el guardado: la misma CURP no
+   * puede repetir el mismo concepto. Quitar la fila resuelve el conflicto.
+   */
+  conflictosCurp: Record<string, ConflictoCurpConcepto>;
   cambiar: (indice: number, campo: keyof FilaConcepto, valor: string | boolean) => void;
   agregar: () => void;
   quitar: (indice: number) => void;
@@ -77,6 +83,7 @@ export default function TablaConceptos({
   filas,
   tiposApoyo,
   escalones,
+  conflictosCurp,
   cambiar,
   agregar,
   quitar
@@ -125,6 +132,17 @@ export default function TablaConceptos({
                       </option>
                     ))}
                   </select>
+                  {conflictosCurp[fila.tipo_apoyo_id] && (
+                    <div
+                      className="mensaje error"
+                      role="alert"
+                      data-testid="aviso-curp-concepto-duplicado"
+                    >
+                      Esta CURP ya tiene una solicitud de este concepto (folio{' '}
+                      {conflictosCurp[fila.tipo_apoyo_id].folio}). Quita el concepto para
+                      continuar.
+                    </div>
+                  )}
                 </td>
                 {/*
                   La descripcion NO se captura aqui: viene del catalogo del

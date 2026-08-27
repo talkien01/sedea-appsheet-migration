@@ -212,6 +212,28 @@ export const esquemaDocumentosRequeridos = z
   })
   .strict();
 
+/**
+ * Cuerpo del aviso en vivo de CURP duplicada: dada una CURP y los conceptos
+ * elegidos en la tabla, responde cuales de esos conceptos YA tienen una
+ * solicitud previa con esa misma CURP. Es solo lectura; el bloqueo real vive
+ * en E42 (codigo `curp_concepto_duplicado`).
+ */
+export const esquemaVerificarCurpConcepto = z
+  .object({
+    curp: z.string().min(1).max(18),
+    tipos_apoyo_ids: z.array(z.number().int().positive()).min(1)
+  })
+  .strict();
+
+/** Un concepto que ya tiene solicitud previa con la misma CURP. */
+export interface ConflictoCurpConcepto {
+  tipo_apoyo_id: number;
+  tipo_apoyo: string | null;
+  solicitud_id: number;
+  folio: string;
+  recibida_en: string;
+}
+
 /** Cuerpo de E45: actualizacion de una fila del checklist. */
 export const esquemaActualizarDocumento = z
   .object({

@@ -18,6 +18,7 @@ import {
   esquemaActualizarDocumento,
   esquemaCrearSolicitud,
   esquemaDocumentosRequeridos,
+  esquemaVerificarCurpConcepto,
   normalizarTelefono,
   type EntradaCrearSolicitud,
   type PerfilUsuario,
@@ -52,6 +53,7 @@ import {
   catalogosVentanilla,
   componenteActivo,
   conceptosDeSolicitud,
+  conceptosDuplicadosPorCurp,
   documentoDeSolicitud,
   documentosDeSolicitud,
   insertarBeneficiarioDeSolicitud,
@@ -274,6 +276,35 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
   });
 
   // -------------------------------------------------------------------------
+  // Aviso en vivo de CURP duplicada. Igual que E41: es una consulta de
+  // existencia, NO aplica restriccion de alcance (una solicitud previa de otra
+  // Regional bloquea igual, y ocultarla solo lograria que ventanilla se
+  // enterara hasta el 422 del guardado).
+  //
+  // Solo responde `tipo_apoyo_id` + folio + fecha: nada del solicitante previo.
+  // -------------------------------------------------------------------------
+  app.post('/api/solicitudes/verificar-curp-concepto', protegida, async (peticion, respuesta) => {
+    const parseado = esquemaVerificarCurpConcepto.safeParse(peticion.body ?? {});
+    if (!parseado.success) throw traducirFalloZod(parseado.error);
+
+    const curp = textoMayus(parseado.data.curp);
+    if (!curp || !PATRON_CURP.test(curp)) {
+      throw error422('curp_invalida', 'La CURP no tiene el formato correcto.');
+    }
+
+    const filas = await conceptosDuplicadosPorCurp(curp, parseado.data.tipos_apoyo_ids);
+    return respuesta.status(200).send({
+      conflictos: filas.map((f) => ({
+        tipo_apoyo_id: Number(f.tipo_apoyo_id),
+        tipo_apoyo: f.tipo_apoyo,
+        solicitud_id: Number(f.solicitud_id),
+        folio: f.folio,
+        recibida_en: f.recibida_en
+      }))
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // E42 - Alta de la solicitud. Una sola transaccion: folio, solicitud,
   // conceptos, documentos, beneficiarios derivados y bitacora.
   // -------------------------------------------------------------------------
@@ -392,6 +423,30 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
     for (const id of idsConceptos) {
       if (!mapaApoyos.has(id)) {
         throw error422('tipo_apoyo_invalido', 'El concepto de apoyo seleccionado no existe.');
+      }
+    }
+
+    // --- CURP ya registrada con el mismo concepto (defensa real) -----------
+    // Incidente real de ventanilla: se capturo un beneficiario y al recapturarlo
+    // (misma CURP, mismo concepto) el sistema no aviso nada. Aqui se rechaza
+    // TODA la solicitud: cuenta cualquier solicitud previa sin importar su
+    // estado, y la misma CURP con OTRO concepto sigue siendo legitima.
+    // El aviso en vivo de la PWA es solo para enterarse antes; el bloqueo es este.
+    if (curp) {
+      const duplicados = await conceptosDuplicadosPorCurp(curp, idsConceptos);
+      if (duplicados.length > 0) {
+        const detalle = duplicados
+          .map((d) => {
+            const nombre =
+              d.tipo_apoyo ?? mapaApoyos.get(Number(d.tipo_apoyo_id))?.nombre ?? 'concepto';
+            return `${nombre} (folio ${d.folio})`;
+          })
+          .join('; ');
+        throw error422(
+          'curp_concepto_duplicado',
+          `Esta CURP ya tiene una solicitud registrada para: ${detalle}. ` +
+            'Quita ese concepto para continuar; la misma CURP sí puede solicitar otro concepto distinto.'
+        );
       }
     }
 

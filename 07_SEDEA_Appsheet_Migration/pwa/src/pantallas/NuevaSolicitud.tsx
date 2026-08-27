@@ -8,7 +8,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   cantidadPorEscalon,
+  PATRON_CURP,
   type CatalogosVentanilla,
+  type ConflictoCurpConcepto,
   type DocumentoRequeridoCalculado,
   type RespuestaAltaSolicitud,
   type TipoPersona
@@ -290,6 +292,52 @@ export default function NuevaSolicitud() {
     return () => clearTimeout(temporizador);
   }, [enLinea, componenteId, solicitante.tipo_persona, proyectoId, claveConceptos]);
 
+  // --- Aviso en vivo de CURP ya registrada con el mismo concepto -----------
+  // Incidente real: ventanilla recapturo a un beneficiario (misma CURP, mismo
+  // concepto) y el sistema no aviso nada hasta que casi se duplica la
+  // solicitud. En cuanto la CURP esta completa y hay al menos un concepto
+  // elegido se consulta al backend (debounce 300 ms, el mismo criterio del
+  // checklist de documentos) y los conceptos en conflicto se marcan en la
+  // tabla, deshabilitando el guardado.
+  //
+  // Da igual como llego la CURP al campo —tecleada, escaneada de la Constancia
+  // CURP con la camara o traspasada desde el celular—: aqui solo se lee el
+  // valor ya capturado en el estado.
+  //
+  // Esto es una AYUDA de captura: el bloqueo real lo hace el backend al
+  // guardar (422 `curp_concepto_duplicado`), asi que un fallo de red aqui no
+  // marca conflictos falsos, solo deja pasar al usuario hasta ese 422.
+  const [conflictosCurp, setConflictosCurp] = useState<Record<string, ConflictoCurpConcepto>>({});
+  const curpNormalizada = solicitante.curp.trim().toUpperCase();
+  const curpCompleta = PATRON_CURP.test(curpNormalizada);
+
+  useEffect(() => {
+    if (!enLinea || !curpCompleta || claveConceptos === '') {
+      setConflictosCurp({});
+      return;
+    }
+    const temporizador = setTimeout(() => {
+      void (async () => {
+        try {
+          const { conflictos } = await apiSolicitudes.verificarCurpConcepto({
+            curp: curpNormalizada,
+            tipos_apoyo_ids: claveConceptos.split(',').map(Number)
+          });
+          const mapa: Record<string, ConflictoCurpConcepto> = {};
+          for (const c of conflictos) mapa[String(c.tipo_apoyo_id)] = c;
+          setConflictosCurp(mapa);
+        } catch {
+          // Sin conflictos conocidos: no se inventa un bloqueo por un fallo de
+          // red. Si de verdad hay duplicado, el backend lo rechaza al guardar.
+          setConflictosCurp({});
+        }
+      })();
+    }, 300);
+    return () => clearTimeout(temporizador);
+  }, [enLinea, curpCompleta, curpNormalizada, claveConceptos]);
+
+  const hayConflictoCurp = Object.keys(conflictosCurp).length > 0;
+
   const cambiarSolicitante = useCallback((campo: keyof DatosSolicitante, valor: string) => {
     setSolicitante((previo) => ({ ...previo, [campo]: valor }));
   }, []);
@@ -371,6 +419,9 @@ export default function NuevaSolicitud() {
   const puedeGuardar =
     declaracion &&
     !guardando &&
+    // Un concepto ya solicitado por esta CURP no se puede guardar: hay que
+    // quitarlo de la tabla. El backend lo rechaza igual (422).
+    !hayConflictoCurp &&
     programaId !== '' &&
     componenteId !== '' &&
     proyectoId !== '' &&
@@ -827,6 +878,7 @@ export default function NuevaSolicitud() {
           filas={conceptos}
           tiposApoyo={catalogos?.tipos_apoyo ?? []}
           escalones={escalonPorTipoApoyo}
+          conflictosCurp={conflictosCurp}
           cambiar={cambiarConcepto}
           agregar={agregarConcepto}
           quitar={quitarConcepto}
@@ -858,6 +910,15 @@ export default function NuevaSolicitud() {
           }
           alAceptarDeclaracion={setDeclaracion}
         />
+
+        {/* El detalle por concepto vive en la tabla del paso 5; aqui solo se
+            explica por que el boton quedo deshabilitado. */}
+        {hayConflictoCurp && (
+          <div className="mensaje error" role="alert" data-testid="bloqueo-curp-duplicada">
+            No se puede guardar: esta CURP ya tiene una solicitud registrada con alguno de los
+            conceptos del paso 5. Quítalo de la tabla para continuar.
+          </div>
+        )}
 
         <div className="acciones">
           <button

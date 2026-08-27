@@ -5,6 +5,7 @@
 // red, la pantalla muestra el aviso y no llama a estas funciones.
 import type {
   CatalogosVentanilla,
+  ConflictoCurpConcepto,
   DetalleSolicitudApi,
   DocumentoRequeridoCalculado,
   DocumentoSolicitud,
@@ -62,6 +63,21 @@ export const apiSolicitudes = {
     tipos_apoyo_ids?: number[];
   }): Promise<{ documentos: DocumentoRequeridoCalculado[]; total: number }> {
     return peticion('/solicitudes/documentos-requeridos', {
+      method: 'POST',
+      body: JSON.stringify(cuerpo)
+    });
+  },
+
+  /**
+   * Aviso en vivo de CURP duplicada: por cada concepto elegido dice si esa
+   * CURP ya tiene una solicitud previa con ese mismo concepto. Es solo lectura;
+   * el bloqueo real lo hace E42 con `curp_concepto_duplicado`.
+   */
+  verificarCurpConcepto(cuerpo: {
+    curp: string;
+    tipos_apoyo_ids: number[];
+  }): Promise<{ conflictos: ConflictoCurpConcepto[] }> {
+    return peticion('/solicitudes/verificar-curp-concepto', {
       method: 'POST',
       body: JSON.stringify(cuerpo)
     });

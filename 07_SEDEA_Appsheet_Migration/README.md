@@ -200,6 +200,46 @@ Es una función solo de front-end: no hay endpoint nuevo, usa el mismo `POST
 
 ---
 
+## Padrón: exportar a CSV e imprimir folios en lote
+
+En `/beneficiarios`, debajo de los filtros, hay dos acciones que operan sobre
+**el filtro que está en pantalla** (Regional, municipio, colonia, sección y
+búsqueda), no sobre el padrón completo. Ambas requieren conexión: las resuelve
+el backend, que es quien tiene el padrón entero y quien aplica el candado por
+Dirección Regional.
+
+| Botón | Endpoint | Qué baja |
+|---|---|---|
+| Exportar a CSV | `GET /api/beneficiarios/export.csv` | `beneficiarios_sedea_AAAA-MM-DD.csv` |
+| Imprimir folios de entrega | `POST /api/solicitudes/lote/folio-entrega.pdf` | `folios_entrega_AAAA-MM-DD.pdf` |
+
+Detalles que conviene conocer:
+
+- **El chip Pendientes/Capturados no viaja al servidor.** "Capturado" es un
+  estado local de ese dispositivo; el backend no lo conoce. Los demás filtros
+  sí se respetan.
+- **El CSV** trae folio, nombre, CURP, Regional, municipio, colonia, sección,
+  localidad, domicilio, teléfono, concepto de apoyo, cantidad asignada, total
+  de capturas y fecha de la última captura. Sale con BOM UTF-8 y con la
+  mitigación de *CSV injection* del generador compartido (`generarCsv()`): una
+  celda que empiece con `= + - @` se prefija con apóstrofo, salvo que sea un
+  número puro.
+- **El PDF en lote** arma un solo documento con el Folio de entrega de cada
+  beneficiario (Carta horizontal: hoja 1 con datos y QR, hoja 2 con el folio
+  gigante que sirve de separador en la mesa de entrega).
+- **Solo entran los folios con `autorizada_secretario = true`.** Un
+  beneficiario filtrado sin esa autorización **se omite del PDF**, no rompe el
+  lote. La pantalla avisa cuántos entraron y cuántos se omitieron.
+- **Tope de 300 folios por impresión** (`MAX_FOLIOS_LOTE`). Arriba de eso el
+  backend responde 413 pidiendo acotar el filtro, en vez de ponerse a dibujar
+  cientos de hojas en memoria.
+- **Candado por Regional.** Un usuario con Regional forzada (todos menos
+  `admin`) solo exporta e imprime la suya, aunque mande otro `regional_id` a
+  mano: el filtro se resuelve en SQL con la misma función que alimenta el
+  listado.
+
+---
+
 ## Importación del padrón y catálogos
 
 El importador **no tiene ningún nombre de columna escrito en el código**: el mapeo
@@ -1040,6 +1080,65 @@ servidor y no deben quedar como fantasmas locales.
 
 Verificación de extremo a extremo: `test-entrega-preparar-evento.spec.js`.
 
+### Registro de entrega del apoyo (Parte 2: pantalla de campo "Entregar apoyos")
+
+La pantalla que se usa **en el momento de entregar**, con el productor enfrente
+y el apoyo en la camioneta. Entra por el menú **Entregar apoyos** (grupo *Campo*,
+roles `ventanilla` / `capturista` / `admin`) o directo en `/entregas/registrar`.
+
+**Modo de campo.** Es la única pantalla de la app, junto con `/escaneo-movil`,
+que vive **fuera del cascarón**: sin barra lateral y sin barra inferior. Se usa
+de pie, en una bodega o una explanada, con una mano ocupada, así que es una
+herramienta de un solo propósito con botones altos y de ahí solo se sale con el
+botón **Salir**. La ruta sí está protegida por sesión y rol.
+
+**Todo el flujo es offline.** Lee de IndexedDB lo que dejó `/entregas/preparar`
+y escribe en la cola local; la red solo hace falta para *vaciar* la cola. Si el
+folio no está en el paquete descargado, no se entrega.
+
+| Paso | Qué pasa |
+|---|---|
+| 1. Escanear folio | Cámara + jsQR sobre el QR del **Folio de entrega** impreso. El QR trae el folio tal cual; se busca con `conceptosPorFolio(folio)`. |
+| 1b. Sin QR legible | Botón *buscar por nombre*: `buscarConceptosEntrega(texto)` sobre nombre / folio / CURP del paquete local. |
+| 1c. Folio ajeno | Si el folio no está en el paquete (otro evento, otro concepto, o sin autorizar) sale un **aviso** y la cámara sigue lista. La pantalla no se rompe. |
+| 2. Elegir concepto | Si el folio trae **más de un** concepto pendiente (avena y garbanzo son entregas independientes) se pide elegir cuál se entrega **ahora**. Con uno solo, se salta este paso. |
+| 3. Confirmar | Nombre, folio, concepto, cantidad + unidad y municipio, para leerlos en voz alta antes de soltar el apoyo. |
+| 4. Foto + GPS | Reusa `CapturaFoto` y `CapturaGPS` de las capturas de campo. La foto debe mostrar **beneficiario, apoyo y folio impreso juntos**. |
+| 5. Guardar | `uuid` generado en el cliente, fila en la cola local y regreso automático al escaneo, listo para el siguiente. |
+
+**Mensajes de cierre**, según haya señal en ese instante: *"Entrega registrada y
+sincronizada"* o *"Entrega registrada, se subirá cuando haya señal"*.
+
+**Contador visible** en todo momento: *"X de Y entregas registradas de este
+evento"* (`contarEntregasDelEvento()` / `contarConceptosEntrega()`), más *"N por
+subir"* cuando la cola no está vacía. Un concepto ya entregado desde este
+dispositivo no se vuelve a ofrecer al re-escanear el folio: sale marcado como
+*ya entregado*.
+
+**Cola offline** — Dexie **v3** (aditiva), tabla `entregas`, calcada de
+`capturas`:
+
+| Tabla | Clave | Índices | Contenido |
+|---|---|---|---|
+| `entregas` | `uuid` | `solicitud_concepto_id`, `estado`, `entregado_en` | `uuid`, `solicitud_concepto_id`, copia de `folio` / `beneficiario_nombre` / `concepto_nombre`, `foto` (Blob), `foto_url`, `lat`, `lng`, `precision_m`, `observaciones`, `entregado_en`, `estado`, `intentos`, `error_msg`. |
+
+La vacía el **mismo** motor de sincronización de las capturas
+(`pwa/src/sync/motor.ts`), con los mismos disparadores: arranque, evento
+`online`, botón manual y repaso cada 20 s. Al éxito se libera el Blob y se
+guarda la `foto_url` remota. Un **409 `concepto_ya_entregado`** no se reintenta
+(no se arregla con red): queda en `error` visible, igual que un 403/404/422.
+
+`ROLES_ENTREGA` incluye `ventanilla` además de `capturista` y `admin`: es el
+personal de ventanilla el que acude al evento a entregar.
+
+Verificación de extremo a extremo: `test-entrega-registrar-campo.js`. Es un
+script de Node con la biblioteca de Playwright (no el runner), porque necesita
+leer IndexedDB, cortar la red a media entrega y volver a conectarla:
+
+```bash
+node test-entrega-registrar-campo.js
+```
+
 ### Reglas de impresión compartidas
 
 `pwa/src/styles/impresion.css` (importado desde `global.css`) contiene el bloque
@@ -1284,8 +1383,8 @@ desactivan (ver *Administración de usuarios*).
 | GET | `/api/solicitudes/:id/solicitud-completa.pdf` | `ventanilla`, `capturista`, `admin` (aislado por alcance) |
 | PATCH | `/api/solicitudes/:id/documentos/:docId` | `ventanilla`, `admin` |
 | POST | `/api/solicitudes/:id/documentos/:docId/archivo` | `ventanilla`, `admin` |
-| POST | `/api/entregas` | `capturista`, `admin` (multipart, idempotente por `uuid`) **+ autorización del Secretario** |
-| GET | `/api/entregas/preparar-evento` | `capturista`, `admin` (paquete offline del evento de entrega) |
+| POST | `/api/entregas` | `ventanilla`, `capturista`, `admin` (multipart, idempotente por `uuid`) **+ autorización del Secretario** |
+| GET | `/api/entregas/preparar-evento` | `ventanilla`, `capturista`, `admin` (paquete offline del evento de entrega) |
 | GET | `/api/usuarios/:id/alcance` | `admin` |
 | POST | `/api/dictamen/predictaminar` | `dictaminador`, `admin` |
 | GET | `/api/dictamen/bandeja` | `dictaminador`, `admin` |

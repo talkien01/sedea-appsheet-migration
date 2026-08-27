@@ -1645,20 +1645,19 @@ input[type='radio'] {
   max-width: none;
 }
 
-/* La seccion se sale del padding de su tarjeta y del `.contenido` para llegar
-   al borde de la pantalla. No invade la columna del indice lateral (es
-   pegajoso y quedaria encima); el resto del ancho que falte lo resuelve el
-   scroll horizontal de `.tabla-contenedor`, que ya existia. */
+/* La seccion se sale del PADDING de su tarjeta (queda al ras del borde de la
+   tarjeta, usando todo su ancho) pero YA NO mas alla de eso: un margen mayor
+   al padding (-40/-48px, antes) hacia que el borde derecho de la tabla -y el
+   boton de basura, ultima columna- quedara literalmente fuera del recuadro
+   blanco visible, flotando sobre el fondo gris de la pagina (bug real
+   reportado con captura). `.tarjeta` no crece para seguir ese sangrado -solo
+   se le quita el `max-width`-, asi que el margen no puede ser mayor que su
+   propio padding. El resto del ancho que falte lo resuelve el scroll
+   horizontal de `.tabla-contenedor`, que ya existia. */
 @media (min-width: 768px) {
   .conceptos-ancho {
     margin-left: -20px;
-    margin-right: -40px;
-  }
-}
-
-@media (min-width: 1024px) {
-  .conceptos-ancho {
-    margin-right: -48px;
+    margin-right: -20px;
   }
 }
 

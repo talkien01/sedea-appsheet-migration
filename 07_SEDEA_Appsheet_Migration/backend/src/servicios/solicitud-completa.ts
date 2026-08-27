@@ -9,6 +9,7 @@
 // palabra.
 import PDFDocument from 'pdfkit';
 import { pool } from '../db/pool.js';
+import { hayLogos, membrete } from './logos.js';
 
 // ---------------------------------------------------------------------------
 // Datos
@@ -199,20 +200,39 @@ const ANCHO = 595.28 - MARGEN * 2; // 523.28
 
 type Doc = InstanceType<typeof PDFDocument>;
 
-/** Encabezado repetido en las 3 paginas. Devuelve la Y donde sigue el cuerpo. */
-function encabezado(doc: Doc, folio: string, fechaRecepcion: string): number {
+/**
+ * Encabezado repetido en las 3 paginas. Devuelve la Y donde sigue el cuerpo.
+ *
+ * En la primera pagina los logotipos oficiales van DENTRO de la misma banda de
+ * 46 pt, ocupando el hueco de las tres lineas de texto que hacian de membrete
+ * ("SECRETARÍA DE DESARROLLO AGROPECUARIO / QUERÉTARO / Gobierno del Estado").
+ * Sustituirlas en su sitio en vez de apilar el membrete encima es deliberado:
+ * este PDF es una replica fiel del formato en papel y cualquier corrimiento
+ * vertical se arrastraria por las tres paginas. La Y de retorno no cambia.
+ *
+ * Las paginas 2 y 3 conservan el membrete tipografico: el grafico solo va en
+ * la primera, como en la papeleria oficial.
+ */
+function encabezado(doc: Doc, folio: string, fechaRecepcion: string, primera = false): number {
   const y = MARGEN;
   doc.font('Helvetica-Bold').fontSize(10).fillColor('#000');
   doc.text(`FOLIO: ${folio}`, MARGEN, y + 8, { width: 200 });
 
   const xDer = MARGEN + ANCHO - 250;
-  doc.font('Helvetica-Bold').fontSize(8);
-  doc.text('SECRETARÍA DE DESARROLLO AGROPECUARIO', xDer, y, { width: 250, align: 'right' });
-  doc.font('Helvetica-Bold').fontSize(9);
-  doc.text('QUERÉTARO', xDer, y + 11, { width: 250, align: 'right' });
-  doc.font('Helvetica').fontSize(7);
-  doc.text('Gobierno del Estado', xDer, y + 21, { width: 250, align: 'right' });
-  doc.font('Helvetica').fontSize(8);
+  const conLogos = primera && hayLogos();
+
+  if (conLogos) {
+    membrete(doc, xDer, y, 250, 28);
+  } else {
+    doc.font('Helvetica-Bold').fontSize(8);
+    doc.text('SECRETARÍA DE DESARROLLO AGROPECUARIO', xDer, y, { width: 250, align: 'right' });
+    doc.font('Helvetica-Bold').fontSize(9);
+    doc.text('QUERÉTARO', xDer, y + 11, { width: 250, align: 'right' });
+    doc.font('Helvetica').fontSize(7);
+    doc.text('Gobierno del Estado', xDer, y + 21, { width: 250, align: 'right' });
+  }
+
+  doc.font('Helvetica').fontSize(8).fillColor('#000');
   doc.text(`Fecha de recepción: ${fechaRecepcion}`, xDer, y + 32, { width: 250, align: 'right' });
 
   const yLinea = y + 46;
@@ -332,7 +352,7 @@ function filaTabla(
 
 function pagina1(doc: Doc, d: DatosSolicitudCompleta): void {
   const s = d.solicitud;
-  let y = encabezado(doc, txt(s.folio), txt(s.recibida_fecha));
+  let y = encabezado(doc, txt(s.folio), txt(s.recibida_fecha), true);
 
   doc.font('Helvetica-Bold').fontSize(13).fillColor('#000');
   doc.text('SOLICITUD DE APOYO', MARGEN, y, { width: ANCHO, align: 'center' });

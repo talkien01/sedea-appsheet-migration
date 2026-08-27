@@ -2,6 +2,7 @@
 import PDFDocument from 'pdfkit';
 import { rutaAbsolutaDesdeUrl } from './almacenamiento.js';
 import { formatearFecha } from './csv.js';
+import { hayLogos, membrete } from './logos.js';
 
 export interface DatosExpediente {
   beneficiario: {
@@ -44,15 +45,25 @@ export function generarExpedientePdf(datos: DatosExpediente): Promise<Buffer> {
 
       const b = datos.beneficiario;
 
-      // Encabezado
-      doc.fontSize(16).text('SEDEA - Expediente de evidencia de entrega', { align: 'center' });
-      doc.moveDown(0.3);
-      doc
-        .fontSize(9)
-        .fillColor('#555')
-        .text('Secretaria de Desarrollo Agropecuario del Estado de Queretaro', { align: 'center' });
-      doc.moveDown(1);
-      doc.fillColor('#000');
+      // Encabezado. Con los logotipos oficiales sobra la linea "Secretaria de
+      // Desarrollo Agropecuario del Estado de Queretaro": el lockup ya la trae.
+      if (hayLogos()) {
+        const yFin = membrete(doc, 40, 40, 515, 30);
+        doc.fontSize(16).fillColor('#000').text('Expediente de evidencia de entrega', 40, yFin + 12, {
+          width: 515,
+          align: 'center'
+        });
+        doc.moveDown(1);
+      } else {
+        doc.fontSize(16).text('SEDEA - Expediente de evidencia de entrega', { align: 'center' });
+        doc.moveDown(0.3);
+        doc
+          .fontSize(9)
+          .fillColor('#555')
+          .text('Secretaria de Desarrollo Agropecuario del Estado de Queretaro', { align: 'center' });
+        doc.moveDown(1);
+        doc.fillColor('#000');
+      }
 
       // Datos del beneficiario
       doc.fontSize(12).text('Datos del beneficiario');

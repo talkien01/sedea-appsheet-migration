@@ -15,6 +15,7 @@ import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { ETIQUETAS_NOMBRE_SOLICITANTE, type TipoPersona } from '@sedea/shared';
 import { pool } from '../db/pool.js';
+import { hayLogos, membrete } from './logos.js';
 
 /** Un renglon del apoyo entregado: que es y cuanto, en unidades fisicas. */
 export interface ConceptoFolio {
@@ -230,12 +231,22 @@ function dibujarConceptos(doc: Doc, datos: DatosFolioEntrega, x: number, y: numb
  */
 export function dibujarFolioEntrega(doc: Doc, datos: DatosFolioEntrega, qr: Buffer): void {
   // ---------------- Hoja 1: datos + QR ----------------
-  doc.fillColor('#FF5A1F').fontSize(20).font('Helvetica-Bold')
-    .text('SEDEA', MARGEN, MARGEN, { width: ANCHO_UTIL, align: 'center' });
-  doc.fillColor('#000000').fontSize(10).font('Helvetica')
-    .text('Secretaría de Desarrollo Agropecuario', { width: ANCHO_UTIL, align: 'center' });
-  doc.fontSize(14).font('Helvetica-Bold')
-    .text('FOLIO DE ENTREGA DE APOYO', { width: ANCHO_UTIL, align: 'center' });
+  // Membrete: los logotipos oficiales sustituyen al rotulo naranja "SEDEA" y a
+  // la linea "Secretaría de Desarrollo Agropecuario", que el propio lockup ya
+  // trae impresa. Si los PNG faltaran se vuelve al rotulo tipografico, para
+  // que un folio de entrega nunca deje de imprimirse por un archivo ausente.
+  if (hayLogos()) {
+    const yFin = membrete(doc, MARGEN, MARGEN, ANCHO_UTIL, 30);
+    doc.fillColor('#000000').fontSize(14).font('Helvetica-Bold')
+      .text('FOLIO DE ENTREGA DE APOYO', MARGEN, yFin + 10, { width: ANCHO_UTIL, align: 'center' });
+  } else {
+    doc.fillColor('#FF5A1F').fontSize(20).font('Helvetica-Bold')
+      .text('SEDEA', MARGEN, MARGEN, { width: ANCHO_UTIL, align: 'center' });
+    doc.fillColor('#000000').fontSize(10).font('Helvetica')
+      .text('Secretaría de Desarrollo Agropecuario', { width: ANCHO_UTIL, align: 'center' });
+    doc.fontSize(14).font('Helvetica-Bold')
+      .text('FOLIO DE ENTREGA DE APOYO', { width: ANCHO_UTIL, align: 'center' });
+  }
 
   const yLinea = doc.y + 6;
   doc.moveTo(MARGEN, yLinea).lineTo(MARGEN + ANCHO_UTIL, yLinea).lineWidth(2).stroke('#000000');

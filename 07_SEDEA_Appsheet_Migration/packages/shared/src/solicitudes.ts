@@ -325,6 +325,15 @@ export interface CatalogosVentanilla {
      * que sea identica en todas las solicitudes del mismo concepto.
      */
     descripcion?: string | null;
+    /**
+     * Proyecto dueño del concepto (migracion 026). `null` = concepto sin
+     * proyecto definido: se ofrece en cualquier solicitud, sin restriccion
+     * (mismo criterio "sin regla = sin restriccion" de `escalones_cantidad`).
+     * Con valor, el concepto SOLO pertenece a ese proyecto: el selector del
+     * Paso 5 lo oculta cuando la solicitud es de otro proyecto y el alta lo
+     * rechaza con 422 `concepto_proyecto_no_coincide`.
+     */
+    proyecto_id?: number | null;
     escalones_cantidad?: EscalonCantidadMaxima[] | null;
   }[];
   tipos_persona: { clave: TipoPersona; nombre: string }[];

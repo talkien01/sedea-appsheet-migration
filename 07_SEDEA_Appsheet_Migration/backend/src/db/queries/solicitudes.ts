@@ -36,7 +36,7 @@ export async function catalogosVentanilla() {
         'SELECT id, nombre, regional_id, siglas_folio FROM municipios WHERE activo ORDER BY nombre'
       ),
       consultar<any>(
-        `SELECT t.id, t.clave, t.nombre, t.unidad_medida, t.descripcion,
+        `SELECT t.id, t.clave, t.nombre, t.unidad_medida, t.descripcion, t.proyecto_id,
                 COALESCE(e.escalones, '[]'::json) AS escalones_cantidad
            FROM tipos_apoyo t
            LEFT JOIN LATERAL (
@@ -84,9 +84,10 @@ export async function catalogosDelAlta(datos: {
     consultarUna<any>('SELECT id, clave FROM componentes WHERE id = $1 AND activo', [
       datos.componente_id
     ]),
-    consultarUna<any>('SELECT id, clave, prefijo_folio, modalidad_id FROM proyectos WHERE id = $1 AND activo', [
-      datos.proyecto_id
-    ]),
+    consultarUna<any>(
+      'SELECT id, clave, nombre, prefijo_folio, modalidad_id FROM proyectos WHERE id = $1 AND activo',
+      [datos.proyecto_id]
+    ),
     consultarUna<FilaVentanilla>(
       'SELECT id, clave, nombre, regional_id, clave_folio, es_central FROM ventanillas WHERE id = $1 AND activo',
       [datos.ventanilla_id]
@@ -108,11 +109,30 @@ export async function municipioActivo(id: number) {
   );
 }
 
-/** Conceptos de apoyo activos entre los ids pedidos. */
+/**
+ * Conceptos de apoyo activos entre los ids pedidos.
+ *
+ * `proyecto_id` (migracion 026) viaja junto con la clave y el nombre del
+ * proyecto dueño para que el alta pueda armar un mensaje de rechazo que diga
+ * a que proyecto pertenece de verdad el concepto. Va en NULL en los conceptos
+ * sin proyecto definido, que no tienen ninguna restriccion.
+ */
 export async function tiposApoyoActivos(ids: number[]) {
   if (ids.length === 0) return [];
-  return consultar<{ id: number; nombre: string; unidad_medida: string | null }>(
-    'SELECT id, nombre, unidad_medida FROM tipos_apoyo WHERE id = ANY($1::bigint[]) AND activo',
+  return consultar<{
+    id: number;
+    nombre: string;
+    unidad_medida: string | null;
+    proyecto_id: number | null;
+    proyecto_clave: string | null;
+    proyecto_nombre: string | null;
+  }>(
+    `SELECT t.id, t.nombre, t.unidad_medida, t.proyecto_id,
+            p.clave  AS proyecto_clave,
+            p.nombre AS proyecto_nombre
+       FROM tipos_apoyo t
+       LEFT JOIN proyectos p ON p.id = t.proyecto_id
+      WHERE t.id = ANY($1::bigint[]) AND t.activo`,
     [ids]
   );
 }

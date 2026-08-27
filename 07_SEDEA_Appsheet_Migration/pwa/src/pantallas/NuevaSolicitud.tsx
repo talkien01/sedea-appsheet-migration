@@ -249,6 +249,32 @@ export default function NuevaSolicitud() {
     });
   }, [escalonPorTipoApoyo]);
 
+  // Si se cambia el proyecto del Paso 1 DESPUES de haber elegido conceptos,
+  // las filas cuyo concepto pertenece a otro proyecto se limpian: el concepto
+  // deja de estar en el selector, asi que dejarlo puesto seria un valor
+  // invisible e invalido que el backend rechazaria hasta el guardado. Se
+  // limpia solo lo que depende del concepto (descripcion y unidad vienen del
+  // catalogo); los montos capturados a mano se respetan.
+  useEffect(() => {
+    const proyecto = proyectoId ? Number(proyectoId) : null;
+    if (proyecto === null) return;
+    const tipos = catalogos?.tipos_apoyo ?? [];
+    if (tipos.length === 0) return;
+    setConceptos((previas) => {
+      let cambio = false;
+      const siguientes = previas.map((fila) => {
+        if (!fila.tipo_apoyo_id) return fila;
+        const tipo = tipos.find((t) => String(t.id) === String(fila.tipo_apoyo_id));
+        // Concepto sin proyecto definido: sin restriccion, no se toca.
+        if (!tipo || tipo.proyecto_id === null || tipo.proyecto_id === undefined) return fila;
+        if (tipo.proyecto_id === proyecto) return fila;
+        cambio = true;
+        return { ...fila, tipo_apoyo_id: '', descripcion: '', unidad_medida: '' };
+      });
+      return cambio ? siguientes : previas;
+    });
+  }, [proyectoId, catalogos]);
+
   const idsConceptos = useMemo(
     () => conceptos.map((c) => Number(c.tipo_apoyo_id)).filter((n) => Number.isInteger(n) && n > 0),
     [conceptos]
@@ -915,6 +941,7 @@ export default function NuevaSolicitud() {
           tiposApoyo={catalogos?.tipos_apoyo ?? []}
           escalones={escalonPorTipoApoyo}
           conflictosCurp={conflictosCurp}
+          proyectoId={proyectoId ? Number(proyectoId) : null}
           cambiar={cambiarConcepto}
           agregar={agregarConcepto}
           quitar={quitarConcepto}

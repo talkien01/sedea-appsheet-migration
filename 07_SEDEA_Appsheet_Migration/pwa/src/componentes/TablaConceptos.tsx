@@ -69,6 +69,14 @@ interface Props {
    * puede repetir el mismo concepto. Quitar la fila resuelve el conflicto.
    */
   conflictosCurp: Record<string, ConflictoCurpConcepto>;
+  /**
+   * Proyecto elegido en el Paso 1, o `null` si todavia no se elige. Recorta el
+   * selector: un concepto con `proyecto_id` definido solo se ofrece cuando la
+   * solicitud es de ESE proyecto. Los conceptos con `proyecto_id` null (la
+   * mayoria del catalogo, sin relacion a proyecto todavia) se ofrecen siempre,
+   * y sin proyecto elegido no se filtra nada.
+   */
+  proyectoId: number | null;
   cambiar: (indice: number, campo: keyof FilaConcepto, valor: string | boolean) => void;
   agregar: () => void;
   quitar: (indice: number) => void;
@@ -84,12 +92,23 @@ export default function TablaConceptos({
   tiposApoyo,
   escalones,
   conflictosCurp,
+  proyectoId,
   cambiar,
   agregar,
   quitar
 }: Props) {
   const suma = (campo: keyof FilaConcepto) =>
     filas.reduce((acumulado, f) => acumulado + aNumero(String(f[campo])), 0);
+
+  // Conceptos ofrecibles en una solicitud de este proyecto: los que no tienen
+  // proyecto definido (sin regla = sin restriccion) mas los de ESTE proyecto.
+  // Sin proyecto elegido todavia, el selector se comporta como siempre.
+  const tiposOfrecibles =
+    proyectoId === null
+      ? tiposApoyo
+      : tiposApoyo.filter(
+          (t) => t.proyecto_id === null || t.proyecto_id === undefined || t.proyecto_id === proyectoId
+        );
 
   return (
     // `pantalla-ancha` libera el techo de ancho de `.contenido`; `conceptos-ancho`
@@ -126,7 +145,7 @@ export default function TablaConceptos({
                     onChange={(e) => cambiar(indice, 'tipo_apoyo_id', e.target.value)}
                   >
                     <option value="">Selecciona un concepto</option>
-                    {tiposApoyo.map((t) => (
+                    {tiposOfrecibles.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.nombre}
                       </option>

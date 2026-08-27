@@ -426,6 +426,38 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       }
     }
 
+    // --- El concepto debe pertenecer al proyecto de la solicitud (026) -----
+    // Hallazgo real: `tipos_apoyo` era una lista plana sin relacion a
+    // `proyectos`, asi que una solicitud de CFA (avena) podia llevar adentro
+    // un concepto de CFG (garbanzo). El concepto ajeno quedaba contado bajo el
+    // proyecto de la solicitud y corrompia las estadisticas por proyecto en
+    // silencio. Aqui se rechaza TODA la solicitud.
+    //
+    // Solo aplica a los conceptos que YA tienen `proyecto_id` poblado (hoy
+    // nada mas CFA-AVENA y CFG-GARBANZO). Los conceptos con `proyecto_id` NULL
+    // —los otros 159 del catalogo, de proyectos que no estan en uso— NO tienen
+    // ninguna restriccion: mismo criterio "sin regla = sin restriccion" de
+    // `reglas_cantidad_maxima_escalon` y `documentos_requeridos`. Poblar la
+    // relacion de otro proyecto en el futuro activa la regla sin tocar codigo.
+    const proyectoSolicitudId = Number(proyecto.id);
+    for (const id of idsConceptos) {
+      const apoyo = mapaApoyos.get(id);
+      if (!apoyo || apoyo.proyecto_id === null || apoyo.proyecto_id === undefined) continue;
+      if (Number(apoyo.proyecto_id) === proyectoSolicitudId) continue;
+      const proyectoDelConcepto = apoyo.proyecto_clave
+        ? `${apoyo.proyecto_clave} (${apoyo.proyecto_nombre ?? ''})`.trim()
+        : 'otro proyecto';
+      const proyectoDeLaSolicitud = proyecto.clave
+        ? `${proyecto.clave} (${proyecto.nombre ?? ''})`.trim()
+        : 'el proyecto seleccionado';
+      throw error422(
+        'concepto_proyecto_no_coincide',
+        `El concepto «${apoyo.nombre}» pertenece al proyecto ${proyectoDelConcepto}, ` +
+          `pero esta solicitud es del proyecto ${proyectoDeLaSolicitud}. ` +
+          'Quita ese concepto o captura la solicitud en su proyecto correspondiente.'
+      );
+    }
+
     // --- CURP ya registrada con el mismo concepto (defensa real) -----------
     // Incidente real de ventanilla: se capturo un beneficiario y al recapturarlo
     // (misma CURP, mismo concepto) el sistema no aviso nada. Aqui se rechaza

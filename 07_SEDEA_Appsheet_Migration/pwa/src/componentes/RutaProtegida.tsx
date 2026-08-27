@@ -1,6 +1,6 @@
 // Guarda de rutas: exige sesion y, opcionalmente, un rol permitido.
 import type { ReactNode } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useSesion } from '../App';
 
 interface Props {
@@ -15,13 +15,17 @@ interface Props {
 
 export default function RutaProtegida({ children, roles, permiteCambioPendiente }: Props) {
   const { perfil, cargando } = useSesion();
+  const ubicacion = useLocation();
 
   if (cargando) {
     return <p className="vacio">Cargando...</p>;
   }
 
   if (!perfil) {
-    return <Navigate to="/login" replace />;
+    // Se guarda la ruta pedida (ej. el QR de /entregas/registrar) para volver
+    // ahi despues de iniciar sesion, en vez de caer siempre en la pantalla
+    // por default del rol (ver Login.tsx, destinoPorRol).
+    return <Navigate to="/login" state={{ desde: ubicacion.pathname }} replace />;
   }
 
   // Guarda global del cambio obligatorio: el backend responde 403 igual, esto

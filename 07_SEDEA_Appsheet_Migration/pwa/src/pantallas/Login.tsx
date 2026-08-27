@@ -1,7 +1,7 @@
 // Pantalla de inicio de sesion. Permite entrar sin red si ya existe una
 // sesion local vigente (el JWT dura 12 h).
 import { useEffect, useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useSesion } from '../App';
 import { ErrorPeticion, NOMBRE_APP } from '../api/cliente';
 import { contarBeneficiarios, sesionVigente } from '../db/repositorios';
@@ -13,9 +13,16 @@ import ToggleTema from '../componentes/ToggleTema';
  * Destino tras iniciar sesion segun el rol: cada perfil aterriza en su propia
  * seccion en vez de en el padron de campo (que no todos pueden ver).
  */
-async function destinoPorRol(perfilUsuario: PerfilUsuario | null): Promise<string> {
-  // Build 4: la contrasena temporal manda sobre el destino por rol.
+async function destinoPorRol(
+  perfilUsuario: PerfilUsuario | null,
+  desde: string | null = null
+): Promise<string> {
+  // Build 4: la contrasena temporal manda sobre el destino por rol, y sobre
+  // "desde" tambien (no se puede saltar el cambio obligatorio ni con un QR).
   if (perfilUsuario?.debe_cambiar_password === true) return '/cambiar-password';
+  // La ruta que pidio RutaProtegida (ej. el QR de /entregas/registrar) gana
+  // sobre el destino por default del rol.
+  if (desde) return desde;
   // Build 6: el usuario de ventanilla aterriza en su modulo.
   if (perfilUsuario?.rol === 'ventanilla') return '/solicitudes';
   if (perfilUsuario?.rol === 'editor_datos') return '/depuracion';
@@ -27,6 +34,7 @@ async function destinoPorRol(perfilUsuario: PerfilUsuario | null): Promise<strin
 export default function Login() {
   const { iniciarSesion, perfil, avisoSesion, limpiarAvisoSesion } = useSesion();
   const navegar = useNavigate();
+  const ubicacion = useLocation();
   const enLinea = useEstadoRed();
 
   const [usuario, setUsuario] = useState('');
@@ -34,15 +42,21 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
+  // Si RutaProtegida redirigio para aca por falta de sesion (ej. el QR de
+  // /entregas/registrar), se vuelve ahi tras iniciar sesion en vez de caer
+  // siempre en la pantalla por default del rol. El propio RutaProtegida de
+  // destino valida el rol; si no corresponde, cae a /sin-permiso solo.
+  const desde = (ubicacion.state as { desde?: string } | null)?.desde ?? null;
+
   // Si ya hay sesion vigente en IndexedDB se entra directo (modo offline).
   useEffect(() => {
     void (async () => {
       const sesion = await sesionVigente();
       if (sesion) {
-        navegar(await destinoPorRol(sesion.perfil), { replace: true });
+        navegar(await destinoPorRol(sesion.perfil, desde), { replace: true });
       }
     })();
-  }, [navegar, perfil]);
+  }, [navegar, perfil, desde]);
 
   const enviar = async (evento: FormEvent) => {
     evento.preventDefault();
@@ -60,7 +74,7 @@ export default function Login() {
     try {
       limpiarAvisoSesion();
       const usuarioAutenticado = await iniciarSesion(usuario.trim(), password);
-      navegar(await destinoPorRol(usuarioAutenticado), { replace: true });
+      navegar(await destinoPorRol(usuarioAutenticado, desde), { replace: true });
     } catch (fallo) {
       if (fallo instanceof ErrorPeticion) {
         if (fallo.estado === 401) setError('Usuario o contraseña incorrectos.');

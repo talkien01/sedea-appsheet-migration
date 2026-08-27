@@ -1645,21 +1645,18 @@ input[type='radio'] {
   max-width: none;
 }
 
-/* La seccion se sale del PADDING de su tarjeta (queda al ras del borde de la
-   tarjeta, usando todo su ancho) pero YA NO mas alla de eso: un margen mayor
-   al padding (-40/-48px, antes) hacia que el borde derecho de la tabla -y el
-   boton de basura, ultima columna- quedara literalmente fuera del recuadro
-   blanco visible, flotando sobre el fondo gris de la pagina (bug real
-   reportado con captura). `.tarjeta` no crece para seguir ese sangrado -solo
-   se le quita el `max-width`-, asi que el margen no puede ser mayor que su
-   propio padding. El resto del ancho que falte lo resuelve el scroll
-   horizontal de `.tabla-contenedor`, que ya existia. */
-@media (min-width: 768px) {
-  .conceptos-ancho {
-    margin-left: -20px;
-    margin-right: -20px;
-  }
-}
+/* Antes esta seccion cancelaba el padding de su tarjeta con margen negativo
+   para "llegar al borde" -- se veia desprolija, sin aire, distinta a como
+   respiran los demas pasos (2, 6, etc.) dentro de SU tarjeta, y encima un
+   margen mayor al padding hacia que el boton de basura quedara literalmente
+   fuera del recuadro visible (bug real, dos veces reportado con capturas).
+   Ahora esta seccion NO se sale del padding de su tarjeta -mismo respiro que
+   cualquier otro paso-: la tarjeta si puede ser mas ancha que las demas
+   (`max-width: none` en la regla de arriba), pero el contenido queda inset
+   igual que en todos lados. Si la tabla no cabe, `.tabla-contenedor` ya
+   scrollea horizontal por su cuenta (overflow-x: auto, con su propio borde
+   redondeado) -- eso se ve como un panel con scroll, no como algo que se
+   sale de la tarjeta. */
 
 /* Columnas numericas: cifras de ancho fijo, alineadas a la derecha, para poder
    comparar montos de un vistazo. */

@@ -219,6 +219,45 @@ las ya capturadas conservan el texto con el que se guardaron.
 
 ---
 
+## Una CURP no puede repetir el mismo concepto
+
+Ventanilla capturó un beneficiario y, al capturarlo otra vez con la **misma
+CURP y el mismo concepto**, el sistema no avisaba nada: se estuvo a punto de
+duplicar la solicitud. Hasta entonces la única detección de CURP duplicada
+vivía en **Depuración** y solo aplicaba a las cargas masivas por CSV.
+
+La regla ahora es:
+
+| Caso | Qué pasa |
+| --- | --- |
+| Misma CURP + **mismo** concepto (`tipo_apoyo_id`) | **Se bloquea.** No se puede guardar. |
+| Misma CURP + concepto **distinto** | Se permite: es legítimo (avena un ciclo, garbanzo otro). |
+
+Cuenta **cualquier** solicitud previa con esa CURP y ese concepto, sin importar
+su estado: pendiente, dictaminada positivo o dictaminada negativo bloquean
+igual. Es el mismo criterio con el que Depuración distingue
+`curp_mismo_concepto` de `curp_concepto_distinto`.
+
+Está implementado como defensa en profundidad:
+
+1. **El backend es la defensa real.** `POST /api/solicitudes` rechaza toda la
+   solicitud con **422 `curp_concepto_duplicado`**, y el mensaje nombra el
+   concepto y el **folio** de la solicitud que ya existe, para que ventanilla
+   sepa cuál buscar en papel.
+2. **La PWA avisa antes de llenar el formulario.** En `/solicitudes/nueva`, en
+   cuanto la CURP está completa y hay conceptos elegidos, consulta
+   `POST /api/solicitudes/verificar-curp-concepto` (solo lectura, con debounce
+   de 300 ms). Los conceptos en conflicto se marcan en rojo en la tabla del
+   paso 5 y **Guardar solicitud** queda deshabilitado hasta quitarlos.
+
+El aviso funciona igual con la CURP **tecleada a mano** o **escaneada** de la
+Constancia CURP (cámara del equipo o traspaso desde el celular): las dos vías
+escriben en el mismo campo y la verificación lee ese valor. Si el aviso no
+alcanza a salir (sin red, condición de carrera), el backend rechaza igual al
+guardar.
+
+---
+
 ## Padrón: exportar a CSV e imprimir folios en lote
 
 En `/beneficiarios`, debajo de los filtros, hay dos acciones que operan sobre

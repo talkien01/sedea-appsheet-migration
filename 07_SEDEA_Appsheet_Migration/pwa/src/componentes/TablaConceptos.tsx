@@ -134,7 +134,7 @@ export default function TablaConceptos({
                   </select>
                   {conflictosCurp[fila.tipo_apoyo_id] && (
                     <div
-                      className="mensaje error"
+                      className="mensaje error aviso-curp-duplicada"
                       role="alert"
                       data-testid="aviso-curp-concepto-duplicado"
                     >

@@ -198,6 +198,25 @@ del mismo componente y la misma modalidad.
 Es una función solo de front-end: no hay endpoint nuevo, usa el mismo `POST
 /api/admin/catalogos/:entidad` del alta.
 
+### Descripción homologada del concepto de apoyo
+
+El formulario de **Conceptos de apoyo** tiene un campo **Descripción**
+(`tipos_apoyo.descripcion`, migración `024`). Es opcional y admite hasta 2 000
+caracteres.
+
+Ese texto es **el único** que se ve en la columna *Descripción* de la tabla de
+conceptos al capturar una solicitud (`/solicitudes/nueva`, paso 5): ahí se
+muestra **en modo lectura**, ventanilla no lo redacta ni lo puede sobrescribir.
+Los conceptos sin descripción muestran `—` y la solicitud se guarda igual (el
+dato sigue siendo opcional).
+
+Es a propósito distinto de *Cantidad* y de *Inversión total*, que sí se
+autocompletan y admiten captura a mano (`cantidad_manual` / `total_manual`):
+esos valores varían legítimamente de un solicitante a otro, la descripción del
+concepto no. **La única forma de cambiarla es editar el concepto aquí**, y al
+hacerlo queda igual para todas las solicitudes nuevas que usen ese concepto —
+las ya capturadas conservan el texto con el que se guardaron.
+
 ---
 
 ## Padrón: exportar a CSV e imprimir folios en lote

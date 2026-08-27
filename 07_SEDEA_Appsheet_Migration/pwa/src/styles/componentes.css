@@ -1682,12 +1682,16 @@ input[type='radio'] {
 /* Descripcion del concepto: viene del catalogo y es de solo lectura, asi que
    se lee como texto y no como campo capturable. */
 .tabla-conceptos .descripcion-concepto {
+  /* Sin anchos propios: la columna 2 ya tiene su porcentaje en el
+     `table-layout: fixed` de abajo, y forzar un min/max-width aqui lo rompia
+     (el texto se salia encima de la columna Cantidad). Solo se pide que
+     ajuste de linea dentro de su celda. */
   display: block;
-  min-width: 160px;
-  max-width: 320px;
   color: var(--color-texto-suave, #555);
   font-size: 13px;
   line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .tabla-conceptos .ayuda-maximo {

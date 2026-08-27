@@ -323,6 +323,19 @@ td.acciones {
   padding-bottom: 4px;
 }
 
+/* Acciones sobre el filtro completo (exportar CSV, imprimir folios en lote).
+   En movil los botones se apilan a ancho completo para ser tocables. */
+.acciones-lote {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0 8px;
+}
+
+.acciones-lote button {
+  flex: 1 1 260px;
+}
+
 /* -------------------------------- Chips ---------------------------------- */
 
 .chips {

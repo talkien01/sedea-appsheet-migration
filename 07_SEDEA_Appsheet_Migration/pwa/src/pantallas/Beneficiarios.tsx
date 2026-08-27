@@ -4,10 +4,23 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Beneficiario } from '@sedea/shared';
 import { useSesion } from '../App';
 import ListaBeneficiarios from '../componentes/ListaBeneficiarios';
-import { catalogosPorGrupo, buscarBeneficiarios, contarBeneficiarios } from '../db/repositorios';
+import { catalogosPorGrupo, buscarBeneficiarios, contarBeneficiarios, obtenerSesion } from '../db/repositorios';
+import { URL_API } from '../api/cliente';
 import type { EntradaCatalogoLocal } from '../db/indexeddb';
 
 type Estado = 'todos' | 'pendientes' | 'capturados';
+
+/** Dispara la descarga de un blob ya obtenido, sin dejar el objeto URL colgando. */
+function descargarBlob(blob: Blob, nombre: string): void {
+  const enlace = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  enlace.href = url;
+  enlace.download = nombre;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  URL.revokeObjectURL(url);
+}
 
 export default function Beneficiarios() {
   const { perfil } = useSesion();
@@ -79,6 +92,92 @@ export default function Beneficiarios() {
   useEffect(() => {
     void recargar();
   }, [recargar]);
+
+  // ---------------------------------------------------------------------
+  // Exportar / imprimir el filtro ACTUAL.
+  //
+  // Ambas acciones son en linea: el CSV y el PDF los arma el backend, que es
+  // quien tiene el padron completo y quien aplica el candado por Regional.
+  // Se le mandan los mismos filtros que estan en pantalla; el chip
+  // pendientes/capturados NO viaja porque "capturado" es un estado local de
+  // este dispositivo y el servidor no lo conoce (se avisa en pantalla).
+  // ---------------------------------------------------------------------
+  const [trabajando, setTrabajando] = useState<null | 'csv' | 'pdf'>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
+
+  const filtroServidor = useMemo(() => {
+    const p: Record<string, string> = {};
+    if (regionalId) p.regional_id = String(regionalId);
+    if (municipioId) p.municipio_id = String(municipioId);
+    if (coloniaValor) p.colonia = coloniaValor;
+    if (seccionValor) p.seccion = seccionValor;
+    if (texto.trim()) p.q = texto.trim();
+    return p;
+  }, [regionalId, municipioId, coloniaValor, seccionValor, texto]);
+
+  const exportarCsv = async () => {
+    setTrabajando('csv');
+    setAviso(null);
+    setErrorAccion(null);
+    try {
+      const sesion = await obtenerSesion();
+      const p = new URLSearchParams(filtroServidor);
+      const respuesta = await fetch(`${URL_API}/beneficiarios/export.csv?${p.toString()}`, {
+        headers: sesion?.token ? { Authorization: `Bearer ${sesion.token}` } : undefined
+      });
+      if (!respuesta.ok) throw new Error('export');
+      descargarBlob(
+        await respuesta.blob(),
+        `beneficiarios_sedea_${new Date().toISOString().slice(0, 10)}.csv`
+      );
+    } catch {
+      setErrorAccion('No fue posible generar el archivo CSV. Revisa tu conexión.');
+    } finally {
+      setTrabajando(null);
+    }
+  };
+
+  const imprimirLote = async () => {
+    setTrabajando('pdf');
+    setAviso(null);
+    setErrorAccion(null);
+    try {
+      const sesion = await obtenerSesion();
+      const respuesta = await fetch(`${URL_API}/solicitudes/lote/folio-entrega.pdf`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(sesion?.token ? { Authorization: `Bearer ${sesion.token}` } : {})
+        },
+        body: JSON.stringify(filtroServidor)
+      });
+      if (!respuesta.ok) {
+        // El backend explica en espanol el lote vacio y el exceso de folios;
+        // ese mensaje es mas util que uno generico.
+        const cuerpo = (await respuesta.json().catch(() => null)) as {
+          error?: { mensaje?: string };
+        } | null;
+        setErrorAccion(cuerpo?.error?.mensaje ?? 'No fue posible generar los folios de entrega.');
+        return;
+      }
+      const incluidos = Number(respuesta.headers.get('x-folios-incluidos') ?? 0);
+      const omitidos = Number(respuesta.headers.get('x-folios-omitidos') ?? 0);
+      descargarBlob(
+        await respuesta.blob(),
+        `folios_entrega_${new Date().toISOString().slice(0, 10)}.pdf`
+      );
+      setAviso(
+        omitidos > 0
+          ? `${incluidos} folio(s) en el PDF. Se omitieron ${omitidos} sin autorización del Secretario.`
+          : `${incluidos} folio(s) en el PDF.`
+      );
+    } catch {
+      setErrorAccion('No fue posible generar los folios de entrega. Revisa tu conexión.');
+    } finally {
+      setTrabajando(null);
+    }
+  };
 
   return (
     <>
@@ -197,6 +296,46 @@ export default function Beneficiarios() {
             </button>
           ))}
         </div>
+
+        <div className="acciones-lote">
+          <button
+            type="button"
+            className="secundario"
+            data-testid="btn-exportar-beneficiarios-csv"
+            disabled={trabajando !== null}
+            onClick={() => void exportarCsv()}
+          >
+            {trabajando === 'csv' ? 'Generando CSV…' : '⬇️ Exportar a CSV'}
+          </button>
+          <button
+            type="button"
+            className="secundario"
+            data-testid="btn-imprimir-lote-folios"
+            disabled={trabajando !== null}
+            onClick={() => void imprimirLote()}
+          >
+            {trabajando === 'pdf'
+              ? 'Generando folios…'
+              : `🖨️ Imprimir folios de entrega de los ${filas.length} filtrados`}
+          </button>
+        </div>
+
+        <p className="dato">
+          Ambas acciones usan los filtros de Regional, municipio, colonia, sección y búsqueda, y
+          requieren conexión. El chip Pendientes/Capturados no aplica: es un estado de este
+          dispositivo. En el PDF solo entran los beneficiarios con autorización del Secretario.
+        </p>
+
+        {errorAccion && (
+          <div className="mensaje error" role="alert" data-testid="error-acciones-lote">
+            {errorAccion}
+          </div>
+        )}
+        {aviso && (
+          <div className="mensaje" role="status" data-testid="aviso-acciones-lote">
+            {aviso}
+          </div>
+        )}
       </div>
 
       <div className="tarjeta">

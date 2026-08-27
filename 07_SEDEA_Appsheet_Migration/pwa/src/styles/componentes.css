@@ -1705,15 +1705,44 @@ input[type='radio'] {
     font-size: 16px;
   }
 
-  /* Anchos minimos para que ninguna celda quede encajonada. Calibrados para
-     que las 7 columnas quepan sin scroll en un monitor de 1920 px, que es el
-     de ventanilla; por debajo de eso `.tabla-contenedor` desplaza en lugar de
-     comprimir los campos. */
-  .tabla-conceptos td:nth-child(1) { min-width: 240px; }
-  .tabla-conceptos td:nth-child(2) { min-width: 190px; }
-  .tabla-conceptos td:nth-child(3) { min-width: 120px; }
-  .tabla-conceptos td:nth-child(4) { min-width: 100px; }
+  /* `table-layout: fixed` + porcentajes en vez de solo min-width: con
+     min-width el navegador repartia el sobrante de `.conceptos-ancho` (que
+     libera el ancho completo del viewport) a su criterio, y como las
+     columnas de montos empiezan vacias se llevaban casi todo el espacio
+     sobrante -> huecos enormes entre columnas en monitores anchos. Con
+     table-layout fijo las 7 columnas guardan SIEMPRE la misma proporcion
+     entre si, esten vacias o no. El contenedor pone el techo maximo. */
+  .tabla-conceptos {
+    table-layout: fixed;
+    width: 100%;
+    /* Piso de legibilidad: por debajo de esto las columnas se comprimen
+       hasta encimarse (regresion real detectada en 1024px). Con esto,
+       `.tabla-contenedor` vuelve a desplazar horizontalmente en vez de
+       aplastar el contenido, igual que antes de pasar a table-layout fixed. */
+    min-width: 1120px;
+  }
+
+  .tabla-conceptos th:nth-child(1),
+  .tabla-conceptos td:nth-child(1) { width: 21%; }
+  .tabla-conceptos th:nth-child(2),
+  .tabla-conceptos td:nth-child(2) { width: 17%; }
+  .tabla-conceptos th:nth-child(3),
+  .tabla-conceptos td:nth-child(3) { width: 10%; }
+  .tabla-conceptos th:nth-child(4),
+  .tabla-conceptos td:nth-child(4) { width: 8%; }
+  .tabla-conceptos th:nth-child(5),
   .tabla-conceptos td:nth-child(5),
-  .tabla-conceptos td:nth-child(6),
-  .tabla-conceptos td:nth-child(7) { min-width: 140px; }
+  .tabla-conceptos th:nth-child(6),
+  .tabla-conceptos td:nth-child(6) { width: 14%; }
+  .tabla-conceptos th:nth-child(7),
+  .tabla-conceptos td:nth-child(7) { width: 13%; }
+  .tabla-conceptos th:nth-child(8),
+  .tabla-conceptos td:nth-child(8) { width: 44px; }
+
+  /* Techo maximo: por debajo, la tabla se ajusta al contenedor angosto de
+     siempre; por encima (pantallas ultra anchas), deja de crecer en vez de
+     estirar las columnas vacias hasta el borde. */
+  .conceptos-ancho .tabla-contenedor {
+    max-width: 1500px;
+  }
 }

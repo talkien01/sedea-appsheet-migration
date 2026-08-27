@@ -115,6 +115,7 @@ export default function TablaConceptos({
                     data-testid="input-concepto-descripcion"
                     aria-label="Descripción del concepto"
                     type="text"
+                    placeholder="Detalle del concepto (opcional)"
                     value={fila.descripcion}
                     onChange={(e) => cambiar(indice, 'descripcion', e.target.value)}
                   />

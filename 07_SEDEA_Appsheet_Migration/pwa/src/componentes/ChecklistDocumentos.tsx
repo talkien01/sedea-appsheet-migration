@@ -12,6 +12,8 @@ interface Props {
   documentos: DocumentoRequeridoCalculado[];
   recibidos: Record<string, boolean>;
   calculando: boolean;
+  /** Si el calculo del checklist fallo (red/backend), no un simple "0 documentos". */
+  error?: string | null;
   declaracion: boolean;
   alMarcar: (requisito: string, recibido: boolean) => void;
   alAceptarDeclaracion: (aceptada: boolean) => void;
@@ -21,6 +23,7 @@ export default function ChecklistDocumentos({
   documentos,
   recibidos,
   calculando,
+  error,
   declaracion,
   alMarcar,
   alAceptarDeclaracion
@@ -37,6 +40,12 @@ export default function ChecklistDocumentos({
       </p>
       {calculando && <p className="vacio">Actualizando la lista de documentos…</p>}
 
+      {error && !calculando && (
+        <div className="mensaje error" role="alert" data-testid="error-documentos-requeridos">
+          {error}
+        </div>
+      )}
+
       <ul data-testid="lista-documentos" className="lista-documentos">
         {documentos.map((d) => (
           <li key={d.requisito} data-testid="item-documento">
@@ -51,7 +60,7 @@ export default function ChecklistDocumentos({
             </label>
           </li>
         ))}
-        {total === 0 && !calculando && (
+        {total === 0 && !calculando && !error && (
           <li className="vacio">
             Selecciona componente y tipo de persona para ver los documentos requeridos.
           </li>

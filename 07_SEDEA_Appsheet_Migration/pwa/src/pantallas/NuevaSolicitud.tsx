@@ -131,6 +131,11 @@ export default function NuevaSolicitud() {
   const [documentos, setDocumentos] = useState<DocumentoRequeridoCalculado[]>([]);
   const [recibidos, setRecibidos] = useState<Record<string, boolean>>({});
   const [calculandoDocs, setCalculandoDocs] = useState(false);
+  // Bug real detectado en produccion (caso bguillen): antes, un fallo de red o
+  // del backend al calcular el checklist dejaba `documentos` en [] igual que
+  // "todavia no elegiste componente", sin avisar. Ventanilla daba de alta la
+  // solicitud pensando que ese concepto simplemente no pedia documentos.
+  const [errorDocumentos, setErrorDocumentos] = useState<string | null>(null);
   const [declaracion, setDeclaracion] = useState(false);
 
   // --- Catalogos: si el alcance deja una sola opcion, queda preseleccionada.
@@ -231,6 +236,7 @@ export default function NuevaSolicitud() {
   // --- Checklist: se recalcula (debounce 300 ms) cuando cambia el componente,
   // el tipo de persona, el proyecto o los conceptos seleccionados.
   useEffect(() => {
+    setErrorDocumentos(null);
     if (!enLinea || !componenteId) {
       setDocumentos([]);
       return;
@@ -246,8 +252,16 @@ export default function NuevaSolicitud() {
             tipos_apoyo_ids: claveConceptos ? claveConceptos.split(',').map(Number) : []
           });
           setDocumentos(respuesta.documentos);
-        } catch {
+        } catch (fallo) {
+          // No se deja `documentos` en [] en silencio: eso se veia identico a
+          // "este concepto no pide documentos" (Assumption real: 0 pendientes
+          // es un resultado valido del calculo, un error de red no lo es).
           setDocumentos([]);
+          setErrorDocumentos(
+            fallo instanceof ErrorPeticion
+              ? `No se pudo calcular la lista de documentos requeridos: ${fallo.message}`
+              : 'No se pudo calcular la lista de documentos requeridos. Revisa tu conexión e inténtalo de nuevo.'
+          );
         } finally {
           setCalculandoDocs(false);
         }
@@ -814,6 +828,7 @@ export default function NuevaSolicitud() {
           documentos={documentos}
           recibidos={recibidos}
           calculando={calculandoDocs}
+          error={errorDocumentos}
           declaracion={declaracion}
           alMarcar={(requisito, marcado) =>
             setRecibidos((previos) => ({ ...previos, [requisito]: marcado }))

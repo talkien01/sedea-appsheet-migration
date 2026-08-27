@@ -6731,3 +6731,585 @@ Este rubric se verifica contra el código **ya construido**; no describe trabajo
 
 **Definición de "terminado" (Sección 20):** pasan los **41** criterios (601–641) **y** siguen pasando
 los 600 anteriores. Total acumulado: **641** criterios.
+# SPEC — Sección 21 (retroactiva): Entrega física del apoyo — del folio a la evidencia en campo
+
+> **Cómo se integra este archivo:** su contenido se anexa **al final de `SPEC.md`**, después de
+> `## 20.8 Rubric de evaluación — Sección 20 (criterios 601–641)`. No modifica ninguna sección
+> previa. Se mantiene como archivo de sección aparte (mismo patrón que `SPEC_SECCION_14_JERARQUIA.md`
+> y §20) para no reescribir las 6 700+ líneas ya validadas de `SPEC.md`.
+>
+> **Naturaleza de esta sección: RETROACTIVA.** Documenta funcionalidad **ya construida, ya
+> commiteada y ya verificada** en el árbol de trabajo (`94a1683`, `64d7765`, `8147961`, `2e5ab68`,
+> `269470c`, `57b6996`, `68e04be`, `0a5b9fd`, `5b0cfb9`, `d87ff65`, `00f984a`, `7d655d5`, `d0ae3ef`,
+> `4c68146`, `3bc7d4c`, `945dc2b`, `661c270`). No es un encargo de construcción: es el contrato
+> congelado de lo que existe hoy en el código, con un rubric que el Evaluator puede correr **ahora**
+> contra el sistema corriendo. Cualquier cambio futuro en este flujo debe seguir pasando los
+> criterios 642–726.
+
+---
+
+## 21.1 Objetivo
+
+Cerrar el ciclo de vida de una solicitud de apoyo: **de la autorización final del Secretario a la
+entrega física del apoyo en manos del productor, con evidencia fotográfica y coordenadas
+capturadas en campo, sin señal**.
+
+La sección cubre cinco bloques ya implementados:
+
+1. **Folio de entrega rediseñado** — documento Carta horizontal, con conceptos en cantidad + unidad
+   física (nunca en dinero) y una segunda hoja que solo lleva el folio en letra gigante.
+2. **PDF oficial "Solicitud de Apoyo"** — réplica de 3 páginas del formato de gobierno, con el texto
+   legal verbatim y las erratas de espaciado del original corregidas.
+3. **Autorización del Secretario** — candado manual, independiente del dictamen, que habilita el
+   Folio de entrega y el registro de entregas.
+4. **Registro de entrega del apoyo** — tabla `entregas_apoyo`, endpoints `POST /api/entregas` y
+   `GET /api/entregas/preparar-evento`, pantalla de precarga `/entregas/preparar` y pantalla de
+   campo `/entregas/registrar` con cola offline.
+5. **Beneficiarios: exportar CSV + imprimir folios en lote** — ambas acciones respetan el filtro
+   activo de la pantalla; el lote omite (no aborta) a quien no tiene autorización.
+
+---
+
+## 21.2 Decisiones de producto (tomadas por el usuario, ya aplicadas)
+
+- **D21-1. La autorización del Secretario ocurre EN PAPEL, fuera del sistema.** El Secretario firma
+  la *Solicitud de Apoyo* impresa. Lo que el sistema guarda es la **captura** de esa firma. Por eso
+  no hay flujo de aprobación, ni bandeja, ni notificación: es un estado simple de la solicitud
+  (`solicitudes.autorizada_secretario`) y no una tabla con historial propio; el rastro de cada
+  marcado y desmarcado vive en `auditoria_log` con acción `autorizacion_secretario`.
+- **D21-2. La autorización del Secretario es INDEPENDIENTE del dictamen.** El dictamen
+  (`dictamenes`) es informativo/interno: le dice al área operativa si el expediente cumple. El
+  Secretario puede autorizar una solicitud con dictamen negativo o negarse a autorizar una con
+  dictamen positivo; el sistema no valida coherencia entre ambos y no bloquea ninguna combinación.
+  El campo `autorizada_secretario_nota` existe justo para documentar esas divergencias
+  ("autorizado a pesar de dictamen negativo, ver folio X").
+- **D21-3. Lo que habilita el Folio de entrega es la autorización, no el dictamen.** Sin
+  `autorizada_secretario = TRUE` no hay pantalla de folio, ni PDF de folio, ni registro de entrega,
+  ni inclusión en el lote de impresión.
+- **D21-4. Solo `admin` captura o quita la autorización.** Es la decisión más alta del proceso. Se
+  permite **desmarcar** porque una captura equivocada debe poder corregirse; al desmarcar se limpian
+  fecha y autor para que el estado vigente no sugiera una autorización inexistente.
+- **D21-5. El candado no es de permisos, es de proceso.** Ni siquiera `admin` puede leer el folio de
+  una solicitud sin autorización capturada: el 403 se emite por estado, no por rol.
+- **D21-6. El candado va en una ruta propia, no en un flag sobre el detalle.**
+  `GET /api/solicitudes/:id` (detalle general) **sigue abierto siempre**; el candado vive en
+  `GET /api/solicitudes/:id/folio`, que devuelve exactamente la misma carga. Si el candado viviera
+  en el detalle, la pantalla de solicitud dejaría de verse; si viviera en un query param, sería
+  opcional para quien navega directo.
+- **D21-7. Bloqueo en dos capas.** Backend (403 `autorizacion_secretario_pendiente`) **y** frontend
+  (botón deshabilitado con explicación). El frontend solo oculta el camino; el candado real es el
+  backend.
+- **D21-8. El Folio de entrega documenta el apoyo FÍSICO, no su valor en dinero.** Se firma al
+  recibir costales u obra; el monto confundía en ventanilla. El documento **no contiene ningún `$`
+  ni la palabra `MXN`**: cada concepto se lista con cantidad + unidad de medida.
+- **D21-9. Carta horizontal, no A4 vertical.** En horizontal el ancho sobra y el alto escasea: los
+  datos del beneficiario, los del apoyo y el QR van en tres columnas en vez de apilarse.
+- **D21-10. El folio también es banner en la página 1.** Antes era un renglón de texto que se perdía
+  entre el resto; ahora ocupa su propia franja de ancho completo, con la etiqueta chica arriba.
+- **D21-11. Página 2: solo el folio, en letra gigante.** Sirve de separador visible del expediente
+  en la mesa de entrega. El tamaño de letra se **calcula** a partir del largo real del folio
+  (`--folio-chars` en la PWA, cálculo equivalente en PDFKit) para que un folio más largo no desborde
+  la hoja.
+- **D21-12. El `@page` del folio no pisa el compartido.** `styles/impresion.css` declara `size: A4`
+  para todas las pantallas imprimibles (la carátula de expediente depende de eso). El folio declara
+  su propio `@page { size: letter landscape }` dentro de un `<style>` del componente, que solo existe
+  en el DOM mientras esa ruta está montada.
+- **D21-13. El PDF oficial copia el texto legal verbatim.** La única corrección autorizada sobre el
+  formato en papel es el **espacio faltante** en las concatenaciones del original
+  (`comercialesilícitas` → `comerciales ilícitas`, `deQuerétaro` → `de Querétaro`). No se cambia
+  ninguna palabra, ni se parafrasea, ni se moderniza la redacción.
+- **D21-14. Las firmas cierran la página 2, no abren la página 3.** En el original las firmas del
+  solicitante y del funcionario receptor quedaban descolgadas al inicio de la hoja 3; ahora van
+  inmediatamente después de las declaraciones, en la misma hoja que se firma. La página 3 empieza
+  directo con la barra "DATOS PARA LLENAR POR EL ÁREA OPERATIVA DE LA SEDEA" y la sección
+  "7. DICTAMEN DE LA SOLICITUD".
+- **D21-15. El comprobante del beneficiario no va en blanco.** A diferencia del papel, el sistema sí
+  sabe quién recibió la solicitud y cuándo: el funcionario receptor (`capturado_por`) y la fecha de
+  recepción se imprimen ya resueltos.
+- **D21-16. El grano de la entrega es el CONCEPTO, no la solicitud.** Garbanzo y avena de la misma
+  solicitud son dos entregas independientes: distinto día, distinto camión, distinta evidencia.
+- **D21-17. Sin entregas parciales.** Un concepto se entrega completo o no se entrega. Por eso
+  `entregas_apoyo` **no tiene columna de cantidad entregada**: la existencia de la fila ES el hecho,
+  y `solicitud_concepto_id` es `UNIQUE`.
+- **D21-18. La entrega vive dentro de la MISMA PWA, no en una app aparte.** Decisión de arquitectura
+  explícita: construir una segunda aplicación obligaría a duplicar sesión, IndexedDB, cola offline,
+  captura de foto, captura de GPS y escáner de QR — infraestructura que ya existe y ya está probada
+  en Capturas. Se reusa tal cual (Dexie v3, tabla `entregas`, mismo motor de sincronización, mismo
+  `uuid` de cliente como clave de idempotencia).
+- **D21-19. La pantalla de campo vive FUERA del cascarón.** Sin barra lateral ni barra inferior:
+  es una herramienta de un solo propósito que se usa de pie, en una bodega, con una mano ocupada.
+  Se sale solo con el botón "Salir" (mismo patrón que `/escaneo-movil/:token`).
+- **D21-20. Lo que se lleva al evento es el paquete, no la app.** Si el folio no está en el paquete
+  descargado, no se entrega. La descarga es un acto deliberado con señal, previo a salir a campo.
+- **D21-21. La foto de evidencia debe mostrar beneficiario + apoyo + folio impreso juntos.** Es la
+  instrucción literal en pantalla; el sistema no la valida (no hay visión por computadora), la
+  exige el procedimiento.
+- **D21-22. El CSV de beneficiarios respeta el filtro en pantalla.** No exporta el padrón completo:
+  reusa `construirFiltrosBeneficiarios`, la misma función del listado, y la Regional forzada del
+  actor gana siempre sobre cualquier `regional_id` que mande el cliente.
+- **D21-23. El lote de folios OMITE, no aborta.** En la mesa de entrega el operador filtra por
+  municipio, no por estado de autorización: romper el lote entero por un expediente pendiente lo
+  obligaría a adivinar cuál es. Los omitidos se declaran en cabeceras (`x-folios-incluidos` /
+  `x-folios-omitidos`) y se muestran en pantalla.
+- **D21-24. Tope de 300 folios por lote.** Cada folio son dos hojas más un QR renderizado; un filtro
+  sin acotar mantendría al proceso dibujando miles de páginas en memoria. 300 ≈ 600 hojas: más de lo
+  que cabe en una charola de impresora.
+
+---
+
+## 21.3 Modelo de datos
+
+### 21.3.1 `solicitudes` — columnas nuevas (`db/migrations/020_autorizacion_secretario.sql`)
+
+Migración **aditiva e idempotente** (`ADD COLUMN IF NOT EXISTS`): no toca ninguna columna existente.
+Las solicitudes ya capturadas quedan en `FALSE`, que es el estado correcto (nadie capturó su firma).
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `autorizada_secretario` | `BOOLEAN NOT NULL DEFAULT FALSE` | Candado del Folio de entrega. Independiente del dictamen. |
+| `autorizada_secretario_en` | `TIMESTAMPTZ` | `now()` al marcar; `NULL` al desmarcar. |
+| `autorizada_secretario_por` | `BIGINT REFERENCES usuarios(id)` | Quien capturó; `NULL` al desmarcar. |
+| `autorizada_secretario_nota` | `TEXT` | Nota opcional, máx. 2 000 caracteres (recorte en el endpoint). |
+
+`obtenerSolicitud()` (`backend/src/db/queries/solicitudes.ts`) resuelve además
+`autorizada_secretario_por_usuario` con `LEFT JOIN usuarios ua ON ua.id = s.autorizada_secretario_por`.
+
+### 21.3.2 `entregas_apoyo` (`db/migrations/021_entregas_apoyo.sql`)
+
+Migración **aditiva**: solo crea una tabla nueva.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `uuid` | `UUID PRIMARY KEY` | Lo genera el **cliente** en campo. Clave de idempotencia de la cola offline, igual que `capturas.uuid`. |
+| `solicitud_concepto_id` | `BIGINT NOT NULL UNIQUE REFERENCES solicitud_conceptos(id) ON DELETE CASCADE` | `UNIQUE` = sin entregas parciales ni repetidas. |
+| `foto_url` | `TEXT NOT NULL` | Ruta servida por `/media/*`, igual que las capturas. |
+| `foto_hash` | `TEXT` | Hash devuelto por `guardarFoto`. |
+| `geom` | `geometry(Point, 4326) NOT NULL` | `ST_SetSRID(ST_MakePoint(lng, lat), 4326)`. |
+| `lat` / `lng` | `DOUBLE PRECISION NOT NULL` | |
+| `precision_m` | `REAL NOT NULL` | |
+| `observaciones` | `TEXT` | Máx. 500 caracteres (esquema Zod). |
+| `entregado_en` | `TIMESTAMPTZ NOT NULL` | Momento real de la entrega, lo fija el dispositivo. |
+| `entregado_por` | `BIGINT NOT NULL REFERENCES usuarios(id)` | |
+| `dispositivo` | `TEXT` | `user-agent` recortado a 200 caracteres. |
+| `creado_en` | `TIMESTAMPTZ NOT NULL DEFAULT now()` | Momento en que llegó al servidor (puede ser días después). |
+
+Índices: `idx_entregas_apoyo_geom` (GIST), `idx_entregas_apoyo_usuario`, `idx_entregas_apoyo_fecha`.
+
+**No hay columna de cantidad entregada** (D21-17).
+
+### 21.3.3 IndexedDB — Dexie v3 (`pwa/src/db/indexeddb.ts`)
+
+Versión **aditiva** sobre la v2; las tablas previas se declaran igual y Dexie conserva sus datos.
+
+| Tabla | Índices | Contenido |
+|---|---|---|
+| `conceptos_entrega` (v2) | `solicitud_concepto_id, folio, curp, solicitud_id, tipo_apoyo_id` | Paquete descargado; tipo `ConceptoEntregaLocal = ConceptoPorEntregar`. |
+| `evento_entrega` (v2) | `id` | Registro único `id = 1` con metadatos del paquete (`EventoEntregaLocal`). |
+| `entregas` (**v3**) | `uuid, solicitud_concepto_id, estado, entregado_en` | Cola offline (`EntregaLocal`), estados `pendiente | sincronizando | sincronizada | error`. |
+
+### 21.3.4 Tipos compartidos (`packages/shared/src/entregas.ts`)
+
+- `ROLES_ENTREGA = ['ventanilla', 'capturista', 'admin']`.
+- `esquemaEntregaApoyo` (Zod): `uuid` (v4), `solicitud_concepto_id` (int > 0), `lat` (−90..90),
+  `lng` (−180..180), `precision_m` (0..100000), `entregado_en` (ISO 8601 parseable),
+  `observaciones` (≤ 500, opcional/nullable). Todos los numéricos aceptan texto (llegan por
+  multipart).
+- `RespuestaEntregaApoyo`, `ConceptoPorEntregar`, `PaqueteEventoEntrega`.
+
+---
+
+## 21.4 Contrato de endpoints
+
+Formato de error uniforme del sistema: `{"error":{"codigo","mensaje","detalles"}}`.
+
+### E61 — `GET /api/solicitudes/:id/folio`
+
+| | |
+|---|---|
+| Auth | `app.autenticar` + guard `soloVentanilla` (mismo que E44) |
+| Respuesta 200 | `{ solicitud, conceptos, documentos, beneficiarios }` — **idéntica** a `GET /api/solicitudes/:id` |
+| 403 | `autorizacion_secretario_pendiente` · «El Folio de entrega se habilita hasta que se capture la autorización del Secretario.» |
+| 403 | `fuera_de_alcance` (roles no `admin` fuera de su alcance) |
+| 404 | `no_encontrado` |
+
+`GET /api/solicitudes/:id` (E44) **no** tiene el candado y sigue respondiendo 200 siempre.
+
+### E62 — `POST /api/solicitudes/:id/autorizacion-secretario`
+
+| | |
+|---|---|
+| Auth | `app.autenticar` + `app.requiereRol('admin')` |
+| Cuerpo | `{ "autorizada": boolean, "nota"?: string \| null }` |
+| 200 | `{ ok: true, solicitud: { id, autorizada_secretario, autorizada_secretario_en, autorizada_secretario_por, autorizada_secretario_nota } }` |
+| 422 | `payload_invalido` si `autorizada` no es booleano o `nota` no es texto |
+| 404 | `no_encontrado` |
+| Efectos | Al marcar: `en = now()`, `por = usuario.id`. Al desmarcar: `en = NULL`, `por = NULL`. Siempre escribe `nota` (recortada a 2 000). Todo en una transacción con `auditoria_log` acción `autorizacion_secretario`, detalle `{ folio, autorizada, anterior, nota }`. |
+
+### E63 — `GET /api/solicitudes/:id/solicitud-completa.pdf`
+
+| | |
+|---|---|
+| Auth | mismo guard que E44 (`soloVentanilla` + alcance para no-admin) |
+| 200 | `content-type: application/pdf`, `content-disposition: inline; filename="solicitud_<folio saneado>.pdf"` |
+| Contenido | Exactamente **3 páginas A4** generadas por `generarSolicitudCompletaPdf()` |
+| Sin candado | El acuse se imprime en ventanilla al recibir; **no** depende de la autorización del Secretario |
+
+### E64 — `GET /api/solicitudes/:id/folio-entrega.pdf`
+
+| | |
+|---|---|
+| Auth | `app.autenticar` |
+| 200 | `application/pdf`, `attachment; filename="folio_<id>.pdf"`, **2 páginas** Carta horizontal |
+| 400 | `id_invalido` |
+| 403 | `autorizacion_secretario_pendiente` |
+| 404 | `no_encontrado` |
+
+### E65 — `POST /api/solicitudes/lote/folio-entrega.pdf`
+
+| | |
+|---|---|
+| Auth | `app.autenticar` + roles `capturista, auditor, ventanilla, admin` |
+| Cuerpo | JSON con el **mismo filtro** que el listado del padrón (`esquemaConsultaBeneficiarios`) |
+| Resolución | `construirFiltrosBeneficiarios(usuario, q)` + `JOIN solicitudes s ON s.id = b.solicitud_id` (los beneficiarios sin `solicitud_id` no cuentan ni como incluidos ni como omitidos) |
+| 200 | PDF único; `attachment; filename="folios_entrega_<YYYY-MM-DD>.pdf"`; cabeceras `x-folios-incluidos`, `x-folios-omitidos` y `access-control-expose-headers: x-folios-incluidos, x-folios-omitidos` |
+| 409 | `sin_folios_autorizados` cuando ninguna de las filas del filtro tiene `autorizada_secretario = TRUE` |
+| 413 | `lote_demasiado_grande` cuando el filtro abarca más de `MAX_FOLIOS_LOTE = 300` |
+| Auditoría | `export_pdf` / entidad `solicitud`, detalle `{ tipo: 'lote_folio_entrega', incluidos, omitidos, regional_id, filtros }` |
+
+### E66 — `POST /api/entregas`
+
+| | |
+|---|---|
+| Auth | `app.autenticar` + `app.requiereRol(...ROLES_ENTREGA)` |
+| Formato | `multipart/form-data` (calcado de `POST /api/capturas`) |
+| Campos | `uuid`, `solicitud_concepto_id`, `lat`, `lng`, `precision_m`, `entregado_en`, `observaciones?`, archivo `foto` |
+| 201 | `{ uuid, solicitud_concepto_id, foto_url, duplicado: false }` |
+| 200 | `{ ..., duplicado: true }` cuando el `uuid` ya existía (idempotencia: no reescribe la foto ni revalida) |
+| 409 | `concepto_ya_entregado` cuando el concepto ya tiene entrega con **otro** `uuid` |
+| 403 | `autorizacion_secretario_pendiente` (mismo `exigirAutorizacionSecretario`) |
+| 403 | `prohibido` si la solicitud es de otra Regional que la forzada del usuario |
+| 404 | `no_encontrado` si el `solicitud_concepto_id` no existe |
+| 422 | `validacion` si faltan campos, si la foto falta, no es `image/*` o excede `config.maxSubidaMb` |
+| Orden | idempotencia → foto → existencia/alcance → candado del Secretario → unicidad del concepto → `guardarFoto` → `INSERT ... ON CONFLICT (uuid) DO NOTHING` → auditoría `entrega_apoyo_registrada` |
+
+### E67 — `GET /api/entregas/preparar-evento?tipo_apoyo_id=&regional_id=`
+
+| | |
+|---|---|
+| Auth | `app.autenticar` + `app.requiereRol(...ROLES_ENTREGA)` |
+| `tipo_apoyo_id` | **obligatorio**; 422 `validacion` si falta; 404 si no existe el tipo de apoyo |
+| `regional_id` | opcional; la Regional forzada del usuario **gana siempre** |
+| 200 | `PaqueteEventoEntrega`: `{ generado_en, filtro: { tipo_apoyo_id, tipo_apoyo_nombre, regional_id, regional_nombre }, total, conceptos[] }` |
+| Filtro SQL | `sc.tipo_apoyo_id = $1 AND s.autorizada_secretario = TRUE AND ea.uuid IS NULL` (LEFT JOIN a `entregas_apoyo`), orden `s.folio, sc.orden` |
+| Grano | **un renglón por concepto**, no por solicitud |
+
+---
+
+## 21.5 Pantallas
+
+### 21.5.1 Folio de entrega — `pwa/src/componentes/FolioEntrega.tsx` (ruta `/solicitudes/:id/folio`)
+
+- Consume `apiSolicitudes.folio(id)` (E61, la ruta **con** candado). Si el backend responde 403,
+  pinta `[data-testid="folio-error"]` con el mensaje del backend y no arma el documento.
+- Página 1: encabezado SEDEA → **banner del folio** (`.folio-folio` con
+  `[data-testid="folio-numero"]`) → cuerpo en rejilla de 3 columnas
+  (`grid-template-columns: 1fr 2fr 190px`): datos del beneficiario | datos del apoyo | QR.
+- Tabla de conceptos `[data-testid="folio-conceptos"]` con encabezados `Concepto`, `Cantidad`,
+  `Unidad de medida` y una fila `[data-testid="folio-concepto"]` por concepto
+  (`folio-cantidad`, `folio-unidad`). Cantidad formateada `es-MX` con
+  `maximumFractionDigits: 3` (1.000 → «1»).
+- Página 2: `[data-testid="folio-pagina2"]` con `[data-testid="folio-gigante"]`, tamaño
+  `calc(240mm / var(--folio-chars, 19) * 1.5)`; `--folio-chars` se inyecta como variable inline con
+  el largo real del folio.
+- `@media print` del componente: `@page { size: letter landscape; margin: 10mm }`, oculta acciones,
+  `nav` y migas, y da a la página 2 `break-before: page` con centrado vertical.
+- Nombre mostrado: para `moral`/`grupo` manda `razon_social` y `nombre_solicitante` pasa a mostrarse
+  como representante (`[data-testid="folio-representante"]`, etiqueta de
+  `ETIQUETAS_NOMBRE_SOLICITANTE`); en persona física no aparece esa línea.
+- El PDF servidor (`backend/src/servicios/folio-entrega.ts`) dibuja el **mismo** documento con
+  PDFKit (`LETTER` + `layout: 'landscape'`, `Courier-Bold` para el folio) y `dibujarFolioEntrega()`
+  está separado de `generarFolioEntregaPdf()` a propósito para que el lote y el individual no puedan
+  divergir.
+
+### 21.5.2 Detalle de solicitud — `pwa/src/pantallas/DetalleSolicitud.tsx`
+
+- `[data-testid="btn-folio-entrega"]`: si `autorizada_secretario === true` es un `Link` a
+  `/solicitudes/:id/folio`; si no, es un `button` **deshabilitado** con
+  `title="Disponible tras la autorización del Secretario"` y texto
+  «📄 Folio de Entrega — disponible tras la autorización del Secretario».
+- `[data-testid="btn-solicitud-pdf"]`: `<a target="_blank">` a
+  `/api/solicitudes/:id/solicitud-completa.pdf` con token resuelto. Documento **distinto** al folio.
+- `[data-testid="tarjeta-autorizacion-secretario"]`: **solo para `admin`**. Contiene
+  `[data-testid="estado-autorizacion-secretario"]`, `[data-testid="input-nota-autorizacion"]`
+  (`maxLength=2000`) y, según el estado, `[data-testid="btn-marcar-autorizacion"]` o
+  `[data-testid="btn-quitar-autorizacion"]`.
+
+### 21.5.3 Preparar evento — `pwa/src/pantallas/PrepararEntrega.tsx` (`/entregas/preparar`)
+
+Dentro del cascarón. Roles `ventanilla, capturista, admin`. Selecciona concepto
+(`entrega-tipo-apoyo`, obligatorio) y Regional opcional (`entrega-regional`), descarga con
+`entrega-descargar` (deshabilitado sin señal o sin concepto) y guarda el paquete en IndexedDB
+reemplazándolo por completo. Segunda tarjeta con el estado local: `entrega-total-local`,
+`entrega-concepto-local`, `entrega-regional-local`, `entrega-descargado-en` y botón para borrar el
+paquete local.
+
+### 21.5.4 Entregar apoyos — `pwa/src/pantallas/RegistrarEntrega.tsx` (`/entregas/registrar`)
+
+**Fuera del cascarón** (sin sidebar ni barra inferior), protegida por sesión y rol
+(`ENTREGAS = ['ventanilla','capturista','admin']`, espejo de `ROLES_ENTREGA`).
+
+Flujo, pensado para repetirse decenas de veces seguidas:
+
+1. **escanear** — cámara con `useEscanerQr` (`[data-testid="entrega-video"]`); el QR del folio trae
+   el folio tal cual. Fallback manual `entrega-abrir-busqueda` → `entrega-busqueda` (mínimo 3
+   caracteres, busca por nombre, folio o CURP en el paquete local, máx. 20 resultados). Si el
+   dispositivo no tiene paquete: `[data-testid="entrega-sin-paquete"]`.
+2. **elegir** — solo si el folio tiene **más de un** concepto pendiente
+   (`[data-testid="entrega-conceptos"]`, botones `entrega-concepto-<id>`, deshabilitados los ya
+   entregados). Con un solo pendiente se salta directo a confirmar.
+3. **confirmar** — `[data-testid="entrega-confirmacion"]` con nombre, folio, concepto, cantidad y
+   municipio; botones «Tomar foto» (`entrega-tomar-foto`) y «No es este».
+4. **evidencia** — `CapturaFoto` («Foto: beneficiario, apoyo y folio impreso») + `CapturaGPS` +
+   observaciones opcionales (`entrega-observaciones`, `maxLength=500`).
+   `[data-testid="entrega-confirmar"]` está deshabilitado mientras falte foto **o** ubicación.
+5. **guardar** — `encolarEntrega()` escribe en Dexie con `uuid` v4 de cliente y estado `pendiente`;
+   con señal dispara `sincronizarPendientes()` sin bloquear; la pantalla vuelve al paso de escaneo.
+
+Barra y contadores permanentes: `entrega-evento-nombre`, `entrega-contador` («X de Y entregas
+registradas de este evento»), `entrega-por-subir`, `entrega-sin-senal`, `entrega-exito`,
+`entrega-aviso`, y `entrega-salir` (navega a `/entregas/preparar`).
+
+La cola la sube `enviarEntregas()` en `pwa/src/sync/motor.ts`, después de las capturas, con el mismo
+ciclo de estados y `MAX_INTENTOS`; un 409 `concepto_ya_entregado` se deja en error visible porque no
+se resuelve reintentando.
+
+### 21.5.5 Menú (`pwa/src/navegacion/menu.ts`)
+
+Dos destinos nuevos en el grupo **Campo**, roles `ventanilla, capturista, admin`:
+
+| id | ruta | etiqueta | testId |
+|---|---|---|---|
+| `entregas` | `/entregas/preparar` | Entregas | `nav-entregas` |
+| `entregar-apoyos` | `/entregas/registrar` | Entregar apoyos | `nav-entregar-apoyos` |
+
+### 21.5.6 Beneficiarios — `pwa/src/pantallas/Beneficiarios.tsx`
+
+Bloque `.acciones-lote` con dos botones, mutuamente bloqueantes mientras uno trabaja:
+
+- `[data-testid="btn-exportar-beneficiarios-csv"]` → `GET /api/beneficiarios/export.csv` con
+  `filtroServidor` (regional, municipio, colonia, sección, texto). El chip pendientes/capturados
+  **no** viaja: es estado local del dispositivo.
+- `[data-testid="btn-imprimir-lote-folios"]` → `POST /api/solicitudes/lote/folio-entrega.pdf` con el
+  mismo `filtroServidor` en el cuerpo; lee `x-folios-incluidos` / `x-folios-omitidos` y muestra
+  `[data-testid="aviso-acciones-lote"]`; los errores del backend (409 / 413) se muestran verbatim en
+  `[data-testid="error-acciones-lote"]`.
+
+---
+
+## 21.6 Archivos tocados
+
+| Archivo | Acción |
+|---|---|
+| `db/migrations/020_autorizacion_secretario.sql` | NUEVO (aditivo, idempotente) |
+| `db/migrations/021_entregas_apoyo.sql` | NUEVO (aditivo) |
+| `packages/shared/src/entregas.ts` | NUEVO (`ROLES_ENTREGA`, `esquemaEntregaApoyo`, tipos del paquete) |
+| `backend/src/rutas/entregas.ts` | NUEVO (E66, E67) |
+| `backend/src/rutas/folio-entrega.ts` | MODIF: candado del Secretario + lote (E64, E65, `MAX_FOLIOS_LOTE`) |
+| `backend/src/servicios/folio-entrega.ts` | MODIF: Carta horizontal, banner, conceptos físicos, hoja 2 gigante, `dibujarFolioEntrega` reutilizable, `generarFolioEntregaLotePdf` |
+| `backend/src/servicios/solicitud-completa.ts` | NUEVO/MODIF: réplica de 3 páginas, firmas al final de la p. 2, comprobante resuelto |
+| `backend/src/rutas/solicitudes.ts` | MODIF: `exigirAutorizacionSecretario`, E61, E62, E63 |
+| `backend/src/rutas/beneficiarios.ts` | MODIF: `construirFiltrosBeneficiarios` exportada y compartida por listado, CSV y lote |
+| `backend/src/db/queries/solicitudes.ts` | MODIF: `autorizada_secretario_por_usuario` |
+| `backend/src/server.ts` | MODIF: registro de `rutasEntregas` y `rutasFolioEntrega` |
+| `pwa/src/componentes/FolioEntrega.tsx` | MODIF: rediseño completo (Carta horizontal, banner, página 2) |
+| `pwa/src/pantallas/DetalleSolicitud.tsx` | MODIF: tarjeta de autorización + botón de folio con candado |
+| `pwa/src/pantallas/PrepararEntrega.tsx`, `pwa/src/pantallas/RegistrarEntrega.tsx`, `pwa/src/styles/campo-entrega.css` | NUEVOS |
+| `pwa/src/componentes/usoEscanerQr.ts` | Extraído de `EscanerCurpQr` para reusar el escáner |
+| `pwa/src/db/indexeddb.ts`, `pwa/src/db/repositorios.ts`, `pwa/src/sync/cola.ts`, `pwa/src/sync/motor.ts` | MODIF: Dexie v3, tabla `entregas`, cola y motor |
+| `pwa/src/rutas.tsx`, `pwa/src/navegacion/menu.ts`, `pwa/src/api/cliente.ts`, `pwa/src/api/solicitudes.ts` | MODIF: rutas, menú y clientes de API |
+| `pwa/src/pantallas/Beneficiarios.tsx` | MODIF: exportar CSV filtrado + imprimir folios en lote |
+| `pwa/src/styles/impresion.css` | **sin cambios** (sigue declarando `size: A4` para el resto de impresiones) |
+
+Comandos sin cambios: `cd backend && npm run dev | npm run typecheck`,
+`cd pwa && npm run dev | npm run typecheck | npm run build`. Migraciones: se aplican con el runner
+existente (`020` y `021` son aditivas y se pueden correr sobre una base con datos).
+
+---
+
+## 21.7 Assumptions de la sección 21 (continúa la numeración de §20.7)
+
+- **A21-1.** La autorización del Secretario no se versiona: solo hay estado vigente. El historial de
+  marcados/desmarcados se reconstruye desde `auditoria_log`, no desde `solicitudes`.
+- **A21-2.** No existe rol `secretario` en el sistema. Quien captura es `admin`, en nombre del
+  Secretario; el documento firmado en papel es la evidencia legal, no el registro digital.
+- **A21-3.** El candado se evalúa por estado, no por rol: `admin` recibe el mismo 403 que un
+  `ventanilla` si la solicitud no está autorizada.
+- **A21-4.** `GET /api/solicitudes/:id/solicitud-completa.pdf` **no** lleva candado: es el acuse que
+  se entrega al ciudadano al recibir la solicitud, mucho antes de la autorización.
+- **A21-5.** El PDF oficial se genera con `margin: 0` y bloques de posición fija para garantizar
+  exactamente 3 páginas; un texto largo se recorta con `ellipsis` en vez de disparar un salto de
+  página que rompería la paginación del formato oficial.
+- **A21-6.** El catálogo de componentes y de ventanillas del PDF se consulta en vivo: si mañana se
+  da de alta un componente, aparece solo en el formato, sin tocar código.
+- **A21-7.** Si la solicitud no tiene dictamen registrado, la sección 7 del PDF va en blanco para
+  llenarse a mano; el dictamen de IA (`predictamenes_ia`) **nunca** se imprime ahí.
+- **A21-8.** El QR del folio codifica **el folio en texto plano**, no una URL ni un token: debe poder
+  leerse con cualquier lector y funcionar sin red.
+- **A21-9.** El folio gigante usa fuente monoespaciada (`--font-mono` en la PWA, `Courier-Bold` en
+  el PDF) porque el cálculo del tamaño supone un avance de ~0.6 em por glifo; con una fuente
+  proporcional el ancho dejaría de ser predecible.
+- **A21-10.** La página 2 se imprime siempre, incluso para folios cortos: su función es ser separador
+  físico del expediente, no ahorrar papel.
+- **A21-11.** El paquete offline se **reemplaza** por completo en cada descarga: los conceptos ya
+  entregados dejan de venir del servidor y no deben quedar como fantasmas en el dispositivo.
+- **A21-12.** El contador «X de Y» solo cuenta conceptos que pertenecen al paquete actual, para que
+  no arrastre eventos viejos.
+- **A21-13.** El bloqueo local de reentrega (`conceptosYaEntregadosLocal`) es por dispositivo. Si
+  otro dispositivo se adelantó, el servidor responde 409 y la entrega queda en error visible: no se
+  reintenta sola.
+- **A21-14.** La entrega no tiene pantalla de edición ni de baja: es un hecho con evidencia, no un
+  registro editable. Corregir implica intervención de base de datos y queda fuera de esta sección.
+- **A21-15.** No hay endpoint de consulta/listado de entregas (`GET /api/entregas`): el reporte de
+  entregas queda fuera del alcance de esta sección.
+- **A21-16.** `entregado_en` lo fija el dispositivo (puede venir desfasado si el reloj está mal);
+  `creado_en` conserva el momento real de llegada al servidor para poder auditar la diferencia.
+- **A21-17.** La foto de evidencia no se valida por contenido: el sistema no comprueba que aparezcan
+  beneficiario, apoyo y folio; eso lo asegura el procedimiento y la revisión posterior.
+- **A21-18.** El lote se pide con **filtros**, nunca con una lista de ids del cliente: así el lote no
+  puede abarcar filas que el usuario no tiene en pantalla y la Regional forzada se aplica en SQL.
+- **A21-19.** Beneficiarios sin `solicitud_id` (padrón importado que nunca pasó por ventanilla) no
+  entran en el lote ni cuentan como omitidos: no tienen folio de entrega que imprimir.
+- **A21-20.** El CSV exporta hasta 50 000 filas (`LIMIT 50000`) y el escape de celdas —incluida la
+  mitigación de CSV injection— es el de `generarCsv`; aquí no se arma texto CSV a mano.
+- **A21-21.** El chip local pendientes/capturados no viaja al servidor en CSV ni en lote porque
+  «capturado» es un estado del dispositivo; la pantalla lo advierte por escrito.
+- **A21-22.** El tope de 300 folios se evalúa sobre el **total del filtro** (incluidos los que se
+  omitirán por falta de autorización), no sobre los incluidos: es un límite de trabajo de la
+  consulta, no del documento.
+
+---
+
+## 21.8 Rubric de evaluación — Sección 21 (criterios 642–726)
+
+Salvo indicación contraria: PWA en `http://localhost:5173`, backend en `http://localhost:3000`,
+viewport de escritorio **1440×900**. `S_AUT` = una solicitud con `autorizada_secretario = TRUE`;
+`S_NOAUT` = una solicitud con `autorizada_secretario = FALSE`. Los PDF se inspeccionan con
+`pdfinfo` / `pdftotext` (o equivalente). Este rubric se verifica contra el código **ya construido**;
+no describe trabajo pendiente.
+
+### Folio de entrega: formato, conceptos y página 2 (642–660)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 642 | `/solicitudes/<S_AUT>/folio` renderiza `[data-testid="folio-entrega"]` y no muestra `[data-testid="folio-error"]`. | Playwright |
+| 643 | El bloque `<style>` del componente contiene `size: letter landscape` dentro de un `@page`: `grep -c "size: letter landscape" pwa/src/componentes/FolioEntrega.tsx` ≥ 1. | grep |
+| 644 | `pwa/src/styles/impresion.css` sigue declarando `size: A4` y **no** contiene `letter landscape` (`grep -c "letter landscape" pwa/src/styles/impresion.css` === 0). | grep |
+| 645 | El `@page` del folio viaja con la pantalla: al navegar a otra ruta imprimible (carátula de expediente), `document.body.innerHTML` **no** contiene `letter landscape`; al volver al folio, sí. | Playwright |
+| 646 | El `innerText` de `[data-testid="folio-entrega"]` **no** casa `/\$|MXN/`. | Playwright |
+| 647 | `grep -E "monto_estatal|monto_productor|monto_total" pwa/src/componentes/FolioEntrega.tsx` devuelve **0** coincidencias. | grep |
+| 648 | `[data-testid="folio-conceptos"]` existe y sus `th` son, en orden, `Concepto`, `Cantidad`, `Unidad de medida`. | Playwright |
+| 649 | El número de `[data-testid="folio-concepto"]` es igual al `length` del array `conceptos` de `GET /api/solicitudes/<S_AUT>/folio`. | Playwright + curl con Bearer |
+| 650 | Cada fila de concepto tiene un `[data-testid="folio-cantidad"]` y un `[data-testid="folio-unidad"]` no vacíos. | Playwright |
+| 651 | Para un concepto con `cantidad = 1.000` en BD, `folio-cantidad` muestra exactamente `1` (no `1.000`). | Playwright + curl |
+| 652 | `[data-testid="folio-numero"]` existe en la página 1, su texto es igual a `solicitud.folio` de la API y su `font-size` computado es ≥ 40 px. | Playwright |
+| 653 | El elemento `[data-testid="folio-entrega"]` tiene la variable inline `--folio-chars` con valor igual a `String(folio.length)`. | Playwright, `getAttribute('style')` |
+| 654 | `[data-testid="folio-pagina2"]` existe y contiene `[data-testid="folio-gigante"]` cuyo texto es idéntico al de `folio-numero`. | Playwright |
+| 655 | El `font-size` computado de `folio-gigante` es **mayor** que el de `folio-numero`. | Playwright |
+| 656 | `grep -c "calc(240mm / var(--folio-chars, 19) \* 1.5)" pwa/src/componentes/FolioEntrega.tsx` ≥ 1 (el tamaño se calcula por largo de folio, no es fijo). | grep |
+| 657 | La rejilla del cuerpo es de 3 columnas: el `grid-template-columns` computado de `.folio-cuerpo` produce 3 valores. | Playwright |
+| 658 | Existe un `img[alt="QR con folio"]` cuyo `src` empieza con `data:image/png`. | Playwright |
+| 659 | En una solicitud de tipo `moral` o `grupo` con `razon_social`, `folio-nombre` muestra la razón social y existe `[data-testid="folio-representante"]`; en una de tipo `fisica`, `folio-representante` **no** existe. | Playwright + curl |
+| 660 | `GET /api/solicitudes/<S_AUT>/folio-entrega.pdf` responde 200 `application/pdf`, el PDF tiene **2 páginas**, tamaño **792 × 612 pt** (Carta horizontal), y su texto extraído contiene el folio y **no** contiene `$` ni `MXN`. | curl + `pdfinfo` + `pdftotext` |
+
+### PDF oficial "Solicitud de Apoyo" (661–671)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 661 | `GET /api/solicitudes/:id/solicitud-completa.pdf` con token válido responde 200, `content-type: application/pdf` y `content-disposition` que empieza con `inline; filename="solicitud_`. | curl |
+| 662 | El PDF tiene **exactamente 3 páginas**, todas tamaño A4 (595 × 842 pt). | `pdfinfo` |
+| 663 | Sin token responde 401 y con un usuario de rol no autorizado responde 403. | curl |
+| 664 | El texto extraído contiene `comerciales ilícitas` y **no** contiene `comercialesilícitas`. | `pdftotext` + grep |
+| 665 | El texto extraído no contiene ninguna concatenación sin espacio del original: `grep -E "deQuerétaro|delEstado|laSecretaría"` devuelve 0. | `pdftotext` + grep |
+| 666 | El texto extraído contiene las 7 declaraciones (marcadores `a.` a `g.`) bajo el título `6. DECLARACIONES DEL SOLICITANTE`. | `pdftotext` |
+| 667 | En la **página 2** aparecen `Nombre y firma del solicitante` y `Nombre y firma del funcionario receptor de la solicitud`. | `pdftotext -f 2 -l 2` |
+| 668 | En la **página 3** **no** aparece `Nombre y firma del solicitante`. | `pdftotext -f 3 -l 3` |
+| 669 | La página 3 empieza con `DATOS PARA LLENAR POR EL ÁREA OPERATIVA DE LA SEDEA` seguido de `7. DICTAMEN DE LA SOLICITUD` (ambos en las primeras líneas del texto de esa página). | `pdftotext -f 3 -l 3` |
+| 670 | La página 3 contiene `COMPROBANTE DEL BENEFICIARIO`, y junto a `Datos del funcionario receptor de la solicitud:` aparece el `nombre_completo` del usuario `capturado_por` de la solicitud (no queda en blanco). | `pdftotext` + curl a `GET /api/solicitudes/:id` |
+| 671 | En el comprobante, `Fecha de recepción:` va seguida de la fecha de `recibida_en` en formato `DD/MM/YYYY` (no en blanco). | `pdftotext` + curl |
+
+### Autorización del Secretario: modelo, endpoint y candado (672–692)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 672 | Las cuatro columnas existen en `solicitudes` con los tipos declarados: `autorizada_secretario` (`boolean`, `NOT NULL`, default `false`), `autorizada_secretario_en` (`timestamptz`), `autorizada_secretario_por` (`bigint`, FK a `usuarios`), `autorizada_secretario_nota` (`text`). | `psql \d+ solicitudes` |
+| 673 | Volver a aplicar `020_autorizacion_secretario.sql` sobre una base ya migrada no falla (es idempotente). | `psql -f` |
+| 674 | `POST /api/solicitudes/:id/autorizacion-secretario` como `admin` con `{"autorizada":true}` responde 200 con `ok:true` y `solicitud.autorizada_secretario === true`, `autorizada_secretario_en` no nulo y `autorizada_secretario_por` igual al id del admin. | curl |
+| 675 | El mismo POST con `{"autorizada":false}` responde 200 y deja `autorizada_secretario_en` y `autorizada_secretario_por` en `null`. | curl + `psql` |
+| 676 | Con `{"autorizada":true,"nota":"prueba"}` la nota queda guardada en `autorizada_secretario_nota`. | curl + `psql` |
+| 677 | Con `{"autorizada":"si"}` responde **422** con `error.codigo === "payload_invalido"`; con `{"autorizada":true,"nota":123}` también 422 `payload_invalido`. | curl |
+| 678 | Sobre un id inexistente responde **404** `no_encontrado`. | curl |
+| 679 | Como usuario de rol `ventanilla` (o `capturista`, `auditor`, `dictaminador`) responde **403**; sin token, **401**. | curl |
+| 680 | Cada llamada exitosa agrega una fila en `auditoria_log` con `accion = 'autorizacion_secretario'`, `entidad = 'solicitud'` y `detalle` con las claves `folio`, `autorizada`, `anterior` y `nota`. | `psql` |
+| 681 | `GET /api/solicitudes/<S_NOAUT>/folio` responde **403** con `error.codigo === "autorizacion_secretario_pendiente"` y mensaje que contiene «se habilita hasta que se capture la autorización del Secretario». | curl |
+| 682 | El mismo 403 se produce **también para `admin`** (el candado es de proceso, no de rol). | curl con token de admin |
+| 683 | `GET /api/solicitudes/<S_NOAUT>` (detalle general) responde **200** para el mismo usuario y la misma solicitud. | curl |
+| 684 | `GET /api/solicitudes/<S_AUT>/folio` responde 200 y su cuerpo tiene las mismas claves que el detalle: `solicitud`, `conceptos`, `documentos`, `beneficiarios`. | curl |
+| 685 | `GET /api/solicitudes/<S_NOAUT>/folio-entrega.pdf` responde **403** `autorizacion_secretario_pendiente`; con `S_AUT` responde 200 `application/pdf`. | curl |
+| 686 | En el detalle de `S_NOAUT`, `[data-testid="btn-folio-entrega"]` es un `button` con `disabled` y `title="Disponible tras la autorización del Secretario"`. | Playwright |
+| 687 | En el detalle de `S_AUT`, `[data-testid="btn-folio-entrega"]` es un `<a>` cuyo `href` termina en `/solicitudes/<id>/folio`. | Playwright |
+| 688 | Navegando por URL directa a `/solicitudes/<S_NOAUT>/folio` la pantalla muestra `[data-testid="folio-error"]` y **no** existe `[data-testid="folio-entrega"]`. | Playwright |
+| 689 | `[data-testid="tarjeta-autorizacion-secretario"]` existe autenticado como `admin` y **no existe** autenticado como `ventanilla`. | Playwright, dos sesiones |
+| 690 | En `S_NOAUT` la tarjeta muestra `estado-autorizacion-secretario` con el texto `No autorizada aún` y existe `[data-testid="btn-marcar-autorizacion"]` (y **no** `btn-quitar-autorizacion`). | Playwright |
+| 691 | Pulsando `btn-marcar-autorizacion` con texto en `input-nota-autorizacion`, la tarjeta pasa a mostrar `Sí, capturada` con fecha y usuario, aparece la nota, y `btn-folio-entrega` deja de estar deshabilitado (se vuelve enlace) sin recargar la página. | Playwright |
+| 692 | Pulsando `btn-quitar-autorizacion` la tarjeta vuelve a `No autorizada aún` y `btn-folio-entrega` vuelve a estar `disabled`. | Playwright |
+
+### Registro de entrega: modelo y endpoints (693–708)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 693 | La tabla `entregas_apoyo` existe con PK `uuid` y restricción **UNIQUE** sobre `solicitud_concepto_id`, y **no** tiene ninguna columna de cantidad entregada. | `psql \d+ entregas_apoyo` |
+| 694 | `entregas_apoyo.geom` es `geometry(Point,4326)` `NOT NULL` y existe el índice GIST `idx_entregas_apoyo_geom`; existen también `idx_entregas_apoyo_usuario` e `idx_entregas_apoyo_fecha`. | `psql` |
+| 695 | `foto_url`, `lat`, `lng`, `precision_m`, `entregado_en` y `entregado_por` son `NOT NULL`. | `psql` |
+| 696 | `POST /api/entregas` con multipart válido (uuid v4 nuevo, concepto de `S_AUT`, foto JPEG, lat/lng/precision, `entregado_en` ISO) responde **201** con `{uuid, solicitud_concepto_id, foto_url, duplicado:false}` y crea la fila. | curl `-F` + `psql` |
+| 697 | Reenviar exactamente la misma petición (mismo `uuid`) responde **200** con `duplicado: true` y **no** crea una segunda fila (`SELECT count(*) FROM entregas_apoyo` no cambia). | curl + `psql` |
+| 698 | Enviar el **mismo `solicitud_concepto_id` con otro `uuid`** responde **409** con `error.codigo === "concepto_ya_entregado"`. | curl |
+| 699 | Un concepto de `S_NOAUT` responde **403** `autorizacion_secretario_pendiente` y no crea fila. | curl + `psql` |
+| 700 | Sin archivo `foto` responde **422** `validacion` con mensaje sobre la fotografía obligatoria; con un archivo `text/plain` responde 422 con mensaje sobre imagen. | curl |
+| 701 | Con `uuid` que no es v4, o `lat = 200`, responde **422** `validacion` con `detalles` que identifica el campo. | curl |
+| 702 | Con un `solicitud_concepto_id` inexistente responde **404** `no_encontrado`. | curl |
+| 703 | Con rol `auditor` (fuera de `ROLES_ENTREGA`) responde **403**; sin token, **401**. | curl |
+| 704 | Cada entrega exitosa agrega una fila en `auditoria_log` con `accion = 'entrega_apoyo_registrada'`, `entidad = 'entrega_apoyo'` y detalle con `solicitud_concepto_id`, `solicitud_id`, `folio`, `lat`, `lng`, `precision_m`. | `psql` |
+| 705 | `GET /api/entregas/preparar-evento` sin `tipo_apoyo_id` responde **422** `validacion`; con un `tipo_apoyo_id` inexistente responde **404**. | curl |
+| 706 | Con un `tipo_apoyo_id` válido responde 200 con las claves `generado_en`, `filtro` (`tipo_apoyo_id`, `tipo_apoyo_nombre`, `regional_id`, `regional_nombre`), `total` y `conceptos`, y `total === conceptos.length`. | curl |
+| 707 | Todos los `conceptos` devueltos corresponden a solicitudes con `autorizada_secretario = TRUE`, y ninguno tiene fila en `entregas_apoyo`; tras registrar la entrega de uno de ellos, ese `solicitud_concepto_id` desaparece de la respuesta siguiente. | curl + `psql` |
+| 708 | Con un usuario de Regional forzada, la respuesta ignora un `regional_id` de otra Regional: todos los `conceptos.regional_id` son los de la Regional del usuario. | curl con dos tokens |
+
+### Registro de entrega: pantallas y cola offline (709–719)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 709 | Autenticado como `ventanilla` (o `capturista` / `admin`), el menú contiene `[data-testid="nav-entregas"]` con texto `Entregas` y `[data-testid="nav-entregar-apoyos"]` con texto `Entregar apoyos`; como `auditor`, ninguno de los dos existe. | Playwright, dos sesiones |
+| 710 | `/entregas/preparar` renderiza los selects `entrega-tipo-apoyo` y `entrega-regional`, y `[data-testid="entrega-descargar"]` está `disabled` mientras no se elija concepto. | Playwright |
+| 711 | Eligiendo un concepto y pulsando `entrega-descargar`, aparece `[data-testid="entrega-mensaje"]` con el texto `Paquete descargado:` y `[data-testid="entrega-total-local"]` muestra un número igual al `total` de `GET /api/entregas/preparar-evento` con ese filtro. | Playwright + curl |
+| 712 | Tras descargar, IndexedDB `sedea_campo` está en versión **3** y tiene los almacenes `conceptos_entrega`, `evento_entrega` y `entregas`. | Playwright, `indexedDB.databases()` / `page.evaluate` |
+| 713 | `/entregas/registrar` renderiza `[data-testid="pantalla-registrar-entrega"]` y **no** existe la barra lateral del cascarón (`[data-testid="nav-beneficiarios"]` no está en el DOM). | Playwright |
+| 714 | Con la base local vacía (paquete borrado), `/entregas/registrar` muestra `[data-testid="entrega-sin-paquete"]`. | Playwright |
+| 715 | Con paquete descargado, `[data-testid="entrega-contador"]` muestra `0 de <total> entregas registradas de este evento` y `[data-testid="entrega-evento-nombre"]` muestra el nombre del concepto del paquete. | Playwright |
+| 716 | Usando la búsqueda manual (`entrega-abrir-busqueda` → `entrega-busqueda`) con menos de 3 caracteres no hay resultados; con el nombre de un beneficiario del paquete aparece `entrega-resultado-<id>`; con un texto sin coincidencias aparece `[data-testid="entrega-busqueda-vacia"]`. | Playwright |
+| 717 | Seleccionando un beneficiario cuyo folio tiene **un solo** concepto pendiente se llega directo a `[data-testid="entrega-confirmacion"]`; con **dos o más**, primero aparece `[data-testid="entrega-conceptos"]` con un botón por concepto. | Playwright, con datos de ambos casos |
+| 718 | En el paso de evidencia, `[data-testid="entrega-confirmar"]` está `disabled` mientras falte foto o ubicación, y se habilita cuando ambas están presentes. | Playwright |
+| 719 | Con el navegador en modo offline, al confirmar una entrega la pantalla muestra `[data-testid="entrega-exito"]` con el texto `se subirá cuando haya señal`, el contador `entrega-por-subir` aumenta, y al volver a estar en línea la entrega llega a `entregas_apoyo` con el mismo `uuid` que quedó en IndexedDB. | Playwright (`context.setOffline`) + `psql` |
+
+### Beneficiarios: CSV filtrado e impresión en lote (720–726)
+
+| # | Criterio | Cómo verificar |
+|---|---|---|
+| 720 | En `/beneficiarios` existen `[data-testid="btn-exportar-beneficiarios-csv"]` y `[data-testid="btn-imprimir-lote-folios"]`, y el texto del segundo contiene el número de filas filtradas visibles. | Playwright |
+| 721 | `GET /api/beneficiarios/export.csv` responde 200 con `content-type: text/csv; charset=utf-8`, `content-disposition` `attachment; filename="beneficiarios_sedea_<YYYY-MM-DD>.csv"` y encabezado exacto `folio,nombre_completo,curp,regional,municipio,colonia,seccion,localidad,domicilio,telefono,concepto_apoyo,cantidad_asignada,total_capturas,fecha_captura`. | curl |
+| 722 | El CSV respeta el filtro: el número de filas de datos con `?municipio_id=<M>` es igual al `total` de `GET /api/beneficiarios?municipio_id=<M>` y **menor** que el del padrón sin filtro (cuando existe más de un municipio). | curl |
+| 723 | Con un usuario de Regional forzada, pedir `export.csv?regional_id=<otra>` devuelve únicamente filas de su propia Regional. | curl con dos tokens |
+| 724 | `POST /api/solicitudes/lote/folio-entrega.pdf` con un filtro que abarca solicitudes autorizadas y no autorizadas responde 200 `application/pdf` con `x-folios-incluidos` igual al número de autorizadas, `x-folios-omitidos` igual al de no autorizadas, y el PDF tiene `2 × incluidos` páginas. | curl `-D -` + `pdfinfo` |
+| 725 | Con un filtro donde ninguna solicitud está autorizada responde **409** `sin_folios_autorizados`; con un filtro que abarca más de 300 beneficiarios con solicitud responde **413** `lote_demasiado_grande`. | curl |
+| 726 | Desde la pantalla, tras pulsar `btn-imprimir-lote-folios` con omitidos > 0, aparece `[data-testid="aviso-acciones-lote"]` con el texto `Se omitieron <N> sin autorización del Secretario.`; ante un 409/413 aparece `[data-testid="error-acciones-lote"]` con el mensaje textual del backend. | Playwright |
+
+**Total de la sección: 85 criterios (642–726). Acumulado del proyecto: 726 criterios.**

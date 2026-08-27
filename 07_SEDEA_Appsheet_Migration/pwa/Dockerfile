@@ -17,7 +17,7 @@ COPY packages/shared packages/shared
 COPY pwa pwa
 
 ARG VITE_API_URL=/api
-ARG VITE_APP_NOMBRE="SEDEA Campo"
+ARG VITE_APP_NOMBRE="SISPACQ ver. 5.0"
 ARG VITE_TILE_URL="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_APP_NOMBRE=$VITE_APP_NOMBRE

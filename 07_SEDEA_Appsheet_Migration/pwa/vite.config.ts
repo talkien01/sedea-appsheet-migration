@@ -13,8 +13,8 @@ export default defineConfig({
       devOptions: { enabled: true, type: 'module' },
       includeAssets: ['icon-192.png', 'icon-512.png'],
       manifest: {
-        name: 'SEDEA Campo - Evidencia de entrega',
-        short_name: 'SEDEA Campo',
+        name: 'SISPACQ ver. 5.0 - Evidencia de entrega',
+        short_name: 'SISPACQ',
         description:
           'Captura offline de evidencia fotografica y geolocalizada de entrega de apoyos agropecuarios.',
         lang: 'es-MX',

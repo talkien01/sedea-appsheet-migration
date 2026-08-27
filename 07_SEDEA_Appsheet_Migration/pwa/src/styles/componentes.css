@@ -767,6 +767,13 @@ td img.miniatura {
   box-shadow: var(--shadow-pop);
 }
 
+/* Titulos de la portada (nombre del sistema y subtitulo) centrados; el resto
+   del formulario (labels, inputs, mensajes) sigue alineado a la izquierda. */
+.login-caja h1,
+.login-caja > p.dato {
+  text-align: center;
+}
+
 /* Fondo decorativo de rejilla: SOLO /login y /sin-permiso (A15-13). */
 .pantalla-rejilla {
   position: relative;

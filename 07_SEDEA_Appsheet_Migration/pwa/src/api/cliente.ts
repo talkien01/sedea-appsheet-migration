@@ -38,7 +38,7 @@ import type {
 import { obtenerSesion } from '../db/repositorios';
 
 export const URL_API: string = import.meta.env.VITE_API_URL || '/api';
-export const NOMBRE_APP: string = import.meta.env.VITE_APP_NOMBRE || 'SEDEA Campo';
+export const NOMBRE_APP: string = import.meta.env.VITE_APP_NOMBRE || 'SISPACQ ver. 5.0';
 export const URL_TILES: string =
   import.meta.env.VITE_TILE_URL || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 

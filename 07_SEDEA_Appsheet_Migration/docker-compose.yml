@@ -67,7 +67,7 @@ services:
       dockerfile: pwa/Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-/api}
-        VITE_APP_NOMBRE: ${VITE_APP_NOMBRE:-SEDEA Campo}
+        VITE_APP_NOMBRE: ${VITE_APP_NOMBRE:-SISPACQ ver. 5.0}
         VITE_TILE_URL: ${VITE_TILE_URL:-https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png}
     restart: unless-stopped
     depends_on:

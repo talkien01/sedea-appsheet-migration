@@ -27,6 +27,11 @@ export const FRASE_CONFIRMACION_REINICIO = 'BORRAR TODOS LOS DATOS';
  *     todas las tablas referenciantes estan incluidas).
  *   - `importaciones` es padre de `beneficiarios`, `staging_beneficiarios` y
  *     `staging_catalogos`: si se vacia, las tres deben ir en la misma lista.
+ *   - `entregas_apoyo.solicitud_concepto_id -> solicitud_conceptos(id)`: si
+ *     falta de esta lista, Postgres rechaza TODO el TRUNCATE con "cannot
+ *     truncate a table referenced in a foreign key constraint" (bug real
+ *     encontrado en produccion: esta tabla se agrego en un build posterior a
+ *     esta lista y nunca se sincronizo).
  *   - `auditoria_log` solo referencia `usuarios`, asi que NO bloquea el truncate
  *     y la bitacora del reinicio sobrevive.
  *
@@ -39,6 +44,8 @@ export const TABLAS_REINICIO_DATOS_PRUEBA: readonly string[] = [
   // Dictamen (Build 13): hijos de solicitudes, ambos con ON DELETE CASCADE.
   'dictamenes',
   'predictamenes_ia',
+  // Entrega fisica del apoyo: hija de solicitud_conceptos.
+  'entregas_apoyo',
   // Detalle de la solicitud de ventanilla (Build 6).
   'solicitud_documentos',
   'solicitud_conceptos',

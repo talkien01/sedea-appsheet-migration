@@ -17,6 +17,7 @@
 -- Que SI borra (todas las tablas de datos capturados):
 --   - dictamenes
 --   - predictamenes_ia
+--   - entregas_apoyo
 --   - solicitud_documentos
 --   - solicitud_conceptos
 --   - solicitudes
@@ -96,7 +97,7 @@ SELECT
 -- (prefijo, regional, municipio, anio). Al vaciarla, la siguiente solicitud
 -- real vuelve a generar el folio -0001-.
 -- ---------------------------------------------------------------------
-TRUNCATE TABLE dictamenes, predictamenes_ia, solicitud_documentos, solicitud_conceptos, solicitudes, capturas, staging_beneficiarios, staging_catalogos, importaciones, beneficiarios, sesiones_escaneo_curp, solicitud_folios RESTART IDENTITY;
+TRUNCATE TABLE dictamenes, predictamenes_ia, entregas_apoyo, solicitud_documentos, solicitud_conceptos, solicitudes, capturas, staging_beneficiarios, staging_catalogos, importaciones, beneficiarios, sesiones_escaneo_curp, solicitud_folios RESTART IDENTITY;
 
 COMMIT;
 
@@ -106,6 +107,8 @@ COMMIT;
 SELECT 'dictamenes' AS tabla, count(*) AS filas FROM dictamenes
 UNION ALL
 SELECT 'predictamenes_ia' AS tabla, count(*) AS filas FROM predictamenes_ia
+UNION ALL
+SELECT 'entregas_apoyo' AS tabla, count(*) AS filas FROM entregas_apoyo
 UNION ALL
 SELECT 'solicitud_documentos' AS tabla, count(*) AS filas FROM solicitud_documentos
 UNION ALL

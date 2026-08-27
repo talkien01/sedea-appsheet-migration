@@ -11,7 +11,7 @@ import {
   type MunicipioVentanilla,
   type TipoPersona
 } from '@sedea/shared';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ESTILO_MAYUSCULAS, aMayusculas } from './campoMayusculas';
 import EscanerCurpQr from './EscanerCurpQr';
 import VincularCelular from './VincularCelular';
@@ -40,9 +40,17 @@ interface Props {
   valores: DatosSolicitante;
   municipios: MunicipioVentanilla[];
   cambiar: (campo: keyof DatosSolicitante, valor: string) => void;
+  /**
+   * Contenido opcional que se pinta justo debajo del campo CURP (ej. el
+   * aviso de "esta CURP ya tiene otra solicitud"). Va aqui y no despues de
+   * `<SeccionSolicitante>` porque 2.1 y 2.2 viven en el mismo componente: si
+   * se pintara afuera, quedaria hasta el fondo de la tarjeta, lejos del
+   * campo que lo origina.
+   */
+  avisoCurp?: ReactNode;
 }
 
-export default function SeccionSolicitante({ valores, municipios, cambiar }: Props) {
+export default function SeccionSolicitante({ valores, municipios, cambiar, avisoCurp }: Props) {
   // Persona moral y grupo de productores comparten los campos de razon social
   // y numero de integrantes; la persona fisica ni siquiera los renderiza.
   const esColectiva = valores.tipo_persona === 'moral' || valores.tipo_persona === 'grupo';
@@ -228,6 +236,7 @@ export default function SeccionSolicitante({ valores, municipios, cambiar }: Pro
             style={ESTILO_MAYUSCULAS}
             onChange={(e) => cambiar('curp', aMayusculas(e.target.value))}
           />
+          {avisoCurp}
         </div>
       </div>
 

@@ -731,23 +731,27 @@ export default function NuevaSolicitud() {
           valores={solicitante}
           municipios={catalogos?.municipios_captura ?? catalogos?.municipios ?? []}
           cambiar={cambiarSolicitante}
+          avisoCurp={
+            /*
+              Aviso TEMPRANO: en cuanto la CURP queda completa, antes incluso
+              de elegir un concepto en el Paso 5. No bloquea nada por si solo
+              (esa CURP puede legitimamente pedir un concepto distinto a los
+              que ya tiene) -- solo informa para que ventanilla decida con
+              esto en la mano, justo debajo del campo CURP (no hasta el fondo
+              de la tarjeta, para que sea imposible pasarlo por alto). El
+              bloqueo real por fila vive en el Paso 5, TablaConceptos.
+            */
+            conflictosCurpSinElegir.length > 0 ? (
+              <div className="mensaje aviso" role="status" data-testid="aviso-curp-conceptos-previos">
+                Esta CURP ya tiene solicitud de:{' '}
+                {conflictosCurpSinElegir
+                  .map((c) => `${c.tipo_apoyo ?? 'concepto'} (folio ${c.folio})`)
+                  .join('; ')}
+                . Si el concepto que van a pedir es distinto, puedes continuar sin problema.
+              </div>
+            ) : undefined
+          }
         />
-        {/*
-          Aviso TEMPRANO: en cuanto la CURP queda completa, antes incluso de
-          elegir un concepto en el Paso 5. No bloquea nada por si solo (esa
-          CURP puede legitimamente pedir un concepto distinto a los que ya
-          tiene) -- solo informa para que ventanilla decida con esto en la
-          mano. El bloqueo real por fila vive en el Paso 5, TablaConceptos.
-        */}
-        {conflictosCurpSinElegir.length > 0 && (
-          <div className="mensaje aviso" role="status" data-testid="aviso-curp-conceptos-previos">
-            Esta CURP ya tiene solicitud de:{' '}
-            {conflictosCurpSinElegir
-              .map((c) => `${c.tipo_apoyo ?? 'concepto'} (folio ${c.folio})`)
-              .join('; ')}
-            . Si el concepto que van a pedir es distinto, puedes continuar sin problema.
-          </div>
-        )}
       </div>
 
       {/* ---------------------------- Paso 3 ---------------------------- */}

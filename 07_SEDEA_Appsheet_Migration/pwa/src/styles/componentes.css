@@ -1701,6 +1701,17 @@ input[type='radio'] {
   text-align: right;
 }
 
+/* La superficie capturada no alcanza el minimo del concepto: se avisa en rojo
+   porque no es una sugerencia, es un motivo de rechazo al guardar. */
+.tabla-conceptos .ayuda-no-elegible {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  text-align: right;
+  color: var(--color-error, #b3261e);
+  font-weight: 600;
+}
+
 /* Densidad: campos mas grandes que el resto del formulario, porque esta tabla
    se captura mirando el papel (Build 11, criterio de densidad de UI). */
 @media (min-width: 768px) {

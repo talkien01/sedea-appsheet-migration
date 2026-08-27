@@ -945,57 +945,82 @@ documentos. Si un dato del beneficiario derivado está mal, se corrige por
 
 El documento oficial *"Compra y distribución de semilla para establecimiento de
 cultivos forrajeros"* (Programa Apoyo al Campo Queretano 2026) publica el apoyo
-máximo como una tabla de rangos de superficie. Esa tabla **es exactamente una
-recta**, así que el sistema guarda la fórmula y no los rangos:
+como una **tabla de escalones fijos**, no como una fórmula: dentro de cada rango
+de superficie se entrega **siempre la misma cantidad**, sin interpolar.
 
-| Concepto | Clave en `tipos_apoyo` | kg por hectárea | Tope de superficie | Máximo absoluto |
-|---|---|---|---|---|
-| Semilla de avena | `CFA-AVENA` | 100 | 2 ha | 200 kg |
-| Semilla de garbanzo | `CFG-GARBANZO` | 50 | 2 ha | 100 kg |
+| Superficie acreditada | Avena (`CFA-AVENA`) | Garbanzo (`CFG-GARBANZO`) |
+|---|---|---|
+| ≥ 0.25 ha y ≤ 0.5 ha | 50 kg | 25 kg |
+| > 0.5 ha y ≤ 1 ha | 100 kg | 50 kg |
+| > 1 ha y ≤ 1.5 ha | 150 kg | 75 kg |
+| > 1.5 ha y ≤ 2 ha | 200 kg | 100 kg |
 
-`cantidad_máxima = min(superficie_ha, tope_hectareas) × kg_por_hectarea`
+Dos reglas de borde, ambas explícitas en el documento:
+
+- **Superficie menor a 0.25 ha → el concepto NO es elegible.** No es "sin
+  restricción": se rechaza con **422 `superficie_insuficiente`**, con la misma
+  severidad que exceder el máximo.
+- **Superficie mayor a 2 ha → queda topada en el último escalón** (200 kg de
+  avena / 100 kg de garbanzo). Las 2 ha son un techo real: una solicitud de
+  5 ha recibe exactamente lo mismo que una de 2 ha.
 
 La **superficie** es `agr_superficie_total_ha` de la sección 3 (Actividad
 económica): es la *"superficie acreditada por el solicitante"* del documento
 oficial, o sea la del predio que respalda el documento de propiedad o posesión,
 no la que planea sembrar. Si la ventanilla solo capturó la superficie de
 siembra, se usa esa como respaldo para no bloquear la captura. **Sin superficie
-capturada no hay tope**: no hay contra qué calcularlo.
+capturada no hay validación**: no hay contra qué calcular.
 
-### Cómo dar de alta la regla de otro concepto
+### Cómo dar de alta los escalones de otro concepto
 
-El mecanismo es genérico: vive en la tabla `reglas_cantidad_maxima`, con una
-fila por concepto (`tipo_apoyo_id` único). Para agregar otro concepto **no hace
-falta tocar código**, basta una fila:
+El mecanismo es genérico: vive en la tabla `reglas_cantidad_maxima_escalon`,
+con una fila por escalón (`UNIQUE (tipo_apoyo_id, superficie_desde)`). Para
+agregar otro concepto **no hace falta tocar código**, basta insertar sus filas:
 
 ```sql
-INSERT INTO reglas_cantidad_maxima (tipo_apoyo_id, kg_por_hectarea, tope_hectareas)
-SELECT id, 100, 2 FROM tipos_apoyo WHERE clave = 'MI-CLAVE'
-ON CONFLICT (tipo_apoyo_id) DO UPDATE
-  SET kg_por_hectarea = EXCLUDED.kg_por_hectarea,
-      tope_hectareas  = EXCLUDED.tope_hectareas;
+INSERT INTO reglas_cantidad_maxima_escalon
+  (tipo_apoyo_id, superficie_desde, superficie_hasta, cantidad)
+SELECT id, v.desde, v.hasta, v.cantidad
+FROM tipos_apoyo, (VALUES (0.25, 0.5, 50.0), (0.5, 1.0, 100.0)) AS v(desde, hasta, cantidad)
+WHERE clave = 'MI-CLAVE'
+ON CONFLICT ON CONSTRAINT reglas_cantidad_maxima_escalon_unico DO UPDATE
+  SET superficie_hasta = EXCLUDED.superficie_hasta,
+      cantidad         = EXCLUDED.cantidad;
 ```
 
-Los conceptos **sin** fila en `reglas_cantidad_maxima` no se validan: conservan
-el comportamiento de siempre, sin ningún tope.
+`superficie_desde` es inclusivo en el **primer** escalón del concepto (define la
+superficie mínima para ser elegible) y exclusivo en los demás, igual que está
+escrito el documento. El cálculo elige el escalón con el `superficie_hasta` más
+chico que alcance a cubrir la superficie, así que los límites nunca quedan
+ambiguos: 0.5 ha cae en el primer escalón y 0.51 ha en el segundo.
+
+Los conceptos **sin** filas en `reglas_cantidad_maxima_escalon` no se validan:
+conservan el comportamiento de siempre, sin ningún tope y sin mínimo.
 
 ### Dónde se aplica
 
-1. **Al capturar** (`POST /api/solicitudes`). Si la cantidad excede el máximo,
-   responde **422 `cantidad_excede_maximo`** con el máximo permitido en el
+1. **Al capturar** (`POST /api/solicitudes`). Superficie por debajo del mínimo →
+   **422 `superficie_insuficiente`**; cantidad por encima del valor fijo del
+   escalón → **422 `cantidad_excede_maximo`**, con el valor permitido en el
    mensaje.
 2. **Al confirmar un dictamen positivo** (`POST /api/dictamen/:id/confirmar`).
-   Mismo cálculo y mismo código de error: un dictaminador no puede aprobar una
+   Mismo cálculo y mismos códigos de error: un dictaminador no puede aprobar una
    solicitud que rompe la regla. Un dictamen **negativo** no se bloquea —
-   rechazar por exceso es justo uno de los motivos legítimos para negarlo.
+   rechazar por exceso o por superficie insuficiente es justo uno de los motivos
+   legítimos para negarlo.
 3. **En la PWA** (paso 5 de Nueva Solicitud). Al elegir avena o garbanzo con una
-   superficie ya capturada, el campo **Cantidad** se autocompleta con el máximo
-   y se resugiere si cambia la superficie. Es solo una ayuda de captura: si el
-   usuario escribe la cantidad a mano, deja de autocalcularse (mismo criterio
-   que `monto_total`), y **el tope real siempre lo impone el backend**.
+   superficie ya capturada, el campo **Cantidad** se autocompleta con la
+   cantidad fija del escalón (0.3 ha de avena → 50 kg, no 30) y se resugiere si
+   cambia la superficie. Si la superficie no alcanza el mínimo, la fila muestra
+   *"No elegible: superficie mínima 0.25 ha"* y **no** se autocompleta nada. Es
+   solo una ayuda de captura: si el usuario escribe la cantidad a mano deja de
+   autocalcularse (mismo criterio que `monto_total`), y **el tope real siempre
+   lo impone el backend**.
 
-El cálculo vive en una sola función, `maximoPorSuperficie()` de
-`@sedea/shared`, que comparten los tres caminos.
+El cálculo vive en una sola función, `cantidadPorEscalon()` de `@sedea/shared`,
+que comparten los tres caminos. Nueva Solicitud es una pantalla **en línea**
+(D32): no encola nada en IndexedDB, así que los escalones no se replican al
+almacenamiento local.
 
 ---
 

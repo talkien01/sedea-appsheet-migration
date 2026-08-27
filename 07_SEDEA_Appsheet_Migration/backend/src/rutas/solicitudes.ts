@@ -35,8 +35,8 @@ import {
 } from '../servicios/alcance.js';
 import { calcularDocumentosRequeridos } from '../servicios/documentos.js';
 import {
-  primerExcesoDeCantidad,
-  reglasCantidadMaxima,
+  primerProblemaDeCantidad,
+  escalonesCantidadMaxima,
   superficieAcreditada
 } from '../servicios/cantidadMaxima.js';
 import { generarSolicitudCompletaPdf } from '../servicios/solicitud-completa.js';
@@ -410,22 +410,23 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       }
     }
 
-    // --- Cantidad maxima por superficie (regla de catalogo) ----------------
-    // Solo aplica a los conceptos con fila en `reglas_cantidad_maxima`; los
-    // demas conservan el comportamiento historico (sin tope).
-    const reglasCantidad = await reglasCantidadMaxima();
-    if (reglasCantidad.size > 0) {
-      const exceso = primerExcesoDeCantidad(
+    // --- Cantidad maxima por superficie (escalones de catalogo) ------------
+    // Solo aplica a los conceptos con escalones en
+    // `reglas_cantidad_maxima_escalon`; los demas conservan el comportamiento
+    // historico (sin tope).
+    const escalonesCantidad = await escalonesCantidadMaxima();
+    if (escalonesCantidad.size > 0) {
+      const problema = primerProblemaDeCantidad(
         datos.conceptos.map((c) => ({
           tipo_apoyo_id: c.tipo_apoyo_id,
           cantidad: Number(c.cantidad),
           nombre: mapaApoyos.get(c.tipo_apoyo_id)?.nombre ?? null,
           unidad_medida: c.unidad_medida ?? mapaApoyos.get(c.tipo_apoyo_id)?.unidad_medida ?? null
         })),
-        reglasCantidad,
+        escalonesCantidad,
         superficieAcreditada(datos.actividad ?? {})
       );
-      if (exceso) throw error422('cantidad_excede_maximo', exceso.mensaje);
+      if (problema) throw error422(problema.codigo, problema.mensaje);
     }
 
     // --- Alcance (D36). El admin nunca recibe 403 por alcance --------------

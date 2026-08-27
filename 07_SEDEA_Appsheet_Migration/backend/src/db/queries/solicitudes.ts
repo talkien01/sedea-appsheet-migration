@@ -37,10 +37,19 @@ export async function catalogosVentanilla() {
       ),
       consultar<any>(
         `SELECT t.id, t.clave, t.nombre, t.unidad_medida, t.descripcion,
-                r.kg_por_hectarea::float8 AS kg_por_hectarea,
-                r.tope_hectareas::float8  AS tope_hectareas
+                COALESCE(e.escalones, '[]'::json) AS escalones_cantidad
            FROM tipos_apoyo t
-           LEFT JOIN reglas_cantidad_maxima r ON r.tipo_apoyo_id = t.id
+           LEFT JOIN LATERAL (
+             SELECT json_agg(
+                      json_build_object(
+                        'superficie_desde', x.superficie_desde::float8,
+                        'superficie_hasta', x.superficie_hasta::float8,
+                        'cantidad',         x.cantidad::float8
+                      ) ORDER BY x.superficie_hasta
+                    ) AS escalones
+               FROM reglas_cantidad_maxima_escalon x
+              WHERE x.tipo_apoyo_id = t.id
+           ) e ON TRUE
           WHERE t.activo
           ORDER BY t.nombre`
       )

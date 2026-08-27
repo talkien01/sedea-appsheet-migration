@@ -284,9 +284,10 @@ export interface CatalogosVentanilla {
    */
   municipios_captura: MunicipioVentanilla[];
   /**
-   * `kg_por_hectarea` y `tope_hectareas` vienen de `reglas_cantidad_maxima` y
-   * son null en los conceptos sin regla de cantidad maxima. La UI los usa solo
-   * para sugerir la cantidad; el tope real lo impone el backend (E42 y E58).
+   * `escalones_cantidad` viene de `reglas_cantidad_maxima_escalon` y va vacio
+   * en los conceptos sin regla de cantidad maxima. La UI lo usa solo para
+   * sugerir la cantidad y avisar cuando la superficie no alcanza; el tope real
+   * lo impone el backend (E42 y E58).
    */
   tipos_apoyo: {
     id: number;
@@ -299,8 +300,7 @@ export interface CatalogosVentanilla {
      * que sea identica en todas las solicitudes del mismo concepto.
      */
     descripcion?: string | null;
-    kg_por_hectarea?: number | null;
-    tope_hectareas?: number | null;
+    escalones_cantidad?: EscalonCantidadMaxima[] | null;
   }[];
   tipos_persona: { clave: TipoPersona; nombre: string }[];
   alcance: AlcanceUsuario;
@@ -431,30 +431,73 @@ export function proyectosAplicables(
 }
 
 // --------------------------------------------------------------------------
-// Regla de cantidad maxima por superficie (tabla `reglas_cantidad_maxima`).
-// Formula unica compartida por el backend (validacion en E42 y E58) y la PWA
-// (autocompletado del campo Cantidad en la tabla de conceptos).
+// Cantidad maxima por superficie: ESCALONES FIJOS
+// (tabla `reglas_cantidad_maxima_escalon`).
+//
+// El documento oficial no define una recta sino rangos de superficie: dentro
+// de cada rango se entrega SIEMPRE la misma cantidad fija, sin interpolar.
+// Esta funcion es la unica implementacion del calculo y la comparten el
+// backend (validacion en E42 y E58) y la PWA (autocompletado del campo
+// Cantidad en la tabla de conceptos).
 // --------------------------------------------------------------------------
 
-export interface ReglaCantidadMaxima {
-  kg_por_hectarea: number;
-  tope_hectareas: number;
+export interface EscalonCantidadMaxima {
+  /** Limite inferior: inclusivo en el primer escalon, exclusivo en los demas. */
+  superficie_desde: number;
+  /** Limite superior, inclusivo. El mayor de todos es el techo del concepto. */
+  superficie_hasta: number;
+  /** Cantidad fija que corresponde al rango. */
+  cantidad: number;
 }
 
+export type ResultadoCantidadEscalon =
+  /** El concepto no tiene escalones dados de alta: sin restriccion. */
+  | { tipo: 'sin_regla' }
+  /** Hay escalones pero no hay superficie capturada: nada contra que calcular. */
+  | { tipo: 'sin_superficie'; minimo: number }
+  /** La superficie no alcanza el primer escalon: el concepto NO es elegible. */
+  | { tipo: 'no_elegible'; minimo: number }
+  /** Cantidad fija del escalon. `topado` = la superficie excede el techo. */
+  | { tipo: 'fijo'; cantidad: number; topado: boolean };
+
 /**
- * Cantidad maxima permitida = superficie (truncada al tope) x kg por hectarea.
- * Devuelve null cuando no hay regla o no hay superficie util: sin superficie no
- * hay nada que topar y no se debe bloquear ni sugerir nada.
+ * Resuelve el escalon que corresponde a una superficie.
+ *
+ * Se elige el escalon con el `superficie_hasta` mas chico que alcance a cubrir
+ * la superficie. Asi los limites del documento ("<= 0.5", "> 0.5 y <= 1", ...)
+ * quedan sin ambiguedad: 0.5 ha cae en el primer escalon y 0.51 en el segundo.
+ * Por encima del ultimo escalon la cantidad NO sigue creciendo: se topa en el
+ * ultimo (2 ha es un techo real, 5 ha recibe lo mismo que 2 ha).
  */
-export function maximoPorSuperficie(
-  regla: { kg_por_hectarea?: number | null; tope_hectareas?: number | null } | null | undefined,
+export function cantidadPorEscalon(
+  escalones: EscalonCantidadMaxima[] | null | undefined,
   superficieHa: number | null | undefined
-): number | null {
-  const kg = Number(regla?.kg_por_hectarea);
-  const tope = Number(regla?.tope_hectareas);
-  if (!Number.isFinite(kg) || kg <= 0 || !Number.isFinite(tope) || tope <= 0) return null;
+): ResultadoCantidadEscalon {
+  const validos = (escalones ?? [])
+    .map((e) => ({
+      superficie_desde: Number(e.superficie_desde),
+      superficie_hasta: Number(e.superficie_hasta),
+      cantidad: Number(e.cantidad)
+    }))
+    .filter(
+      (e) =>
+        Number.isFinite(e.superficie_desde) &&
+        Number.isFinite(e.superficie_hasta) &&
+        Number.isFinite(e.cantidad) &&
+        e.superficie_hasta > 0 &&
+        e.cantidad > 0
+    )
+    .sort((a, b) => a.superficie_hasta - b.superficie_hasta);
+
+  if (validos.length === 0) return { tipo: 'sin_regla' };
+
+  const minimo = validos[0].superficie_desde;
   const superficie = Number(superficieHa);
-  if (!Number.isFinite(superficie) || superficie <= 0) return null;
-  // 3 decimales: misma precision que `solicitud_conceptos.cantidad`.
-  return Math.round(Math.min(superficie, tope) * kg * 1000) / 1000;
+  if (!Number.isFinite(superficie) || superficie <= 0) return { tipo: 'sin_superficie', minimo };
+  if (superficie < minimo) return { tipo: 'no_elegible', minimo };
+
+  const escalon = validos.find((e) => superficie <= e.superficie_hasta);
+  if (escalon) return { tipo: 'fijo', cantidad: escalon.cantidad, topado: false };
+  // Por encima del techo: se queda en el ultimo escalon.
+  return { tipo: 'fijo', cantidad: validos[validos.length - 1].cantidad, topado: true };
 }

@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  maximoPorSuperficie,
+  cantidadPorEscalon,
   type CatalogosVentanilla,
   type DocumentoRequeridoCalculado,
   type RespuestaAltaSolicitud,
@@ -20,6 +20,7 @@ import SeccionSolicitante, { type DatosSolicitante } from '../componentes/Seccio
 import SeccionActividad, { type DatosActividad } from '../componentes/SeccionActividad';
 import TablaConceptos, {
   filaConceptoVacia,
+  type EstadoEscalonConcepto,
   type FilaConcepto
 } from '../componentes/TablaConceptos';
 import ChecklistDocumentos from '../componentes/ChecklistDocumentos';
@@ -201,12 +202,22 @@ export default function NuevaSolicitud() {
     return Number.isFinite(siembra) && siembra > 0 ? siembra : null;
   }, [actividad.agr_superficie_total_ha, actividad.agr_superficie_siembra_ha]);
 
-  /** Maximo permitido por `tipo_apoyo_id`; solo los conceptos con regla. */
-  const maximosPorTipoApoyo = useMemo(() => {
-    const mapa: Record<string, number> = {};
+  /**
+   * Escalon resuelto por `tipo_apoyo_id`; solo los conceptos con escalones.
+   * Distingue el caso "cantidad fija" del caso "superficie insuficiente", que
+   * la tabla de conceptos muestra como aviso de no elegibilidad.
+   */
+  const escalonPorTipoApoyo = useMemo(() => {
+    const mapa: Record<string, EstadoEscalonConcepto> = {};
     for (const tipo of catalogos?.tipos_apoyo ?? []) {
-      const maximo = maximoPorSuperficie(tipo, superficieAcreditada);
-      if (maximo !== null) mapa[String(tipo.id)] = maximo;
+      const resultado = cantidadPorEscalon(tipo.escalones_cantidad, superficieAcreditada);
+      if (resultado.tipo === 'sin_regla') continue;
+      if (resultado.tipo === 'fijo') {
+        mapa[String(tipo.id)] = { tipo: 'fijo', cantidad: resultado.cantidad };
+      } else if (resultado.tipo === 'no_elegible') {
+        mapa[String(tipo.id)] = { tipo: 'no_elegible', minimo: resultado.minimo };
+      }
+      // `sin_superficie`: todavia no hay contra que calcular, no se avisa nada.
     }
     return mapa;
   }, [catalogos, superficieAcreditada]);
@@ -218,14 +229,15 @@ export default function NuevaSolicitud() {
       let cambio = false;
       const siguientes = previas.map((fila) => {
         if (fila.cantidad_manual || !fila.tipo_apoyo_id) return fila;
-        const maximo = maximosPorTipoApoyo[fila.tipo_apoyo_id];
-        if (maximo === undefined || String(maximo) === fila.cantidad) return fila;
+        const escalon = escalonPorTipoApoyo[fila.tipo_apoyo_id];
+        // Solo se sugiere cantidad cuando la superficie alcanza un escalon.
+        if (escalon?.tipo !== 'fijo' || String(escalon.cantidad) === fila.cantidad) return fila;
         cambio = true;
-        return { ...fila, cantidad: String(maximo) };
+        return { ...fila, cantidad: String(escalon.cantidad) };
       });
       return cambio ? siguientes : previas;
     });
-  }, [maximosPorTipoApoyo]);
+  }, [escalonPorTipoApoyo]);
 
   const idsConceptos = useMemo(
     () => conceptos.map((c) => Number(c.tipo_apoyo_id)).filter((n) => Number.isInteger(n) && n > 0),
@@ -301,12 +313,14 @@ export default function NuevaSolicitud() {
             nueva.descripcion = tipo?.descripcion ?? '';
           }
 
-          // Al elegir un concepto con regla de cantidad maxima se sugiere el
-          // maximo permitido por la superficie. Es solo una ayuda de captura:
-          // el tope real lo impone el backend al guardar y al dictaminar.
+          // Al elegir un concepto con escalones se sugiere la cantidad FIJA
+          // del escalon que corresponde a la superficie. Si la superficie no
+          // alcanza el primer escalon no se autocompleta nada: la tabla avisa
+          // que el concepto no es elegible. Es solo una ayuda de captura: el
+          // tope real lo impone el backend al guardar y al dictaminar.
           if (campo === 'tipo_apoyo_id' && !fila.cantidad_manual) {
-            const maximo = maximosPorTipoApoyo[String(valor)];
-            nueva.cantidad = maximo === undefined ? nueva.cantidad : String(maximo);
+            const escalon = escalonPorTipoApoyo[String(valor)];
+            if (escalon?.tipo === 'fijo') nueva.cantidad = String(escalon.cantidad);
           }
 
           // La cantidad deja de autocalcularse en cuanto se escribe a mano.
@@ -327,7 +341,7 @@ export default function NuevaSolicitud() {
         })
       );
     },
-    [catalogos, maximosPorTipoApoyo]
+    [catalogos, escalonPorTipoApoyo]
   );
 
   const agregarConcepto = useCallback(
@@ -803,7 +817,7 @@ export default function NuevaSolicitud() {
         <TablaConceptos
           filas={conceptos}
           tiposApoyo={catalogos?.tipos_apoyo ?? []}
-          maximos={maximosPorTipoApoyo}
+          escalones={escalonPorTipoApoyo}
           cambiar={cambiarConcepto}
           agregar={agregarConcepto}
           quitar={quitarConcepto}

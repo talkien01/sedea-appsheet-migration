@@ -23,8 +23,8 @@ import { enTransaccion, bitacoraEnTransaccion } from '../servicios/promocion.js'
 import { predictaminarLote } from '../servicios/predictamen.js';
 import { driverIa } from '../servicios/ia/cliente.js';
 import {
-  primerExcesoDeCantidad,
-  reglasCantidadMaxima,
+  primerProblemaDeCantidad,
+  escalonesCantidadMaxima,
   superficieAcreditada
 } from '../servicios/cantidadMaxima.js';
 import {
@@ -263,8 +263,8 @@ export default async function rutasDictamen(app: FastifyInstance): Promise<void>
       // calculo que el alta (E42). Un dictamen negativo no se bloquea: rechazar
       // por exceso es justo uno de los motivos legitimos para negarlo.
       if (cuerpo.resultado === 'positivo') {
-        const reglasCantidad = await reglasCantidadMaxima();
-        if (reglasCantidad.size > 0) {
+        const escalonesCantidad = await escalonesCantidadMaxima();
+        if (escalonesCantidad.size > 0) {
           const { rows: conceptos } = await pool.query<{
             tipo_apoyo_id: string;
             cantidad: string;
@@ -283,17 +283,17 @@ export default async function rutasDictamen(app: FastifyInstance): Promise<void>
               ORDER BY sc.orden`,
             [solicitudId]
           );
-          const exceso = primerExcesoDeCantidad(
+          const problema = primerProblemaDeCantidad(
             conceptos.map((c) => ({
               tipo_apoyo_id: Number(c.tipo_apoyo_id),
               cantidad: Number(c.cantidad),
               nombre: c.nombre,
               unidad_medida: c.unidad_medida
             })),
-            reglasCantidad,
+            escalonesCantidad,
             superficieAcreditada(conceptos[0] ?? {})
           );
-          if (exceso) throw error422('cantidad_excede_maximo', exceso.mensaje);
+          if (problema) throw error422(problema.codigo, problema.mensaje);
         }
       }
 

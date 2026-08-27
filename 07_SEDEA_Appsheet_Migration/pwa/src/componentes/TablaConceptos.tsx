@@ -45,15 +45,24 @@ export function filaConceptoVacia(): FilaConcepto {
   };
 }
 
+/**
+ * Resultado de la regla de escalones para un concepto, ya resuelto con la
+ * superficie capturada en la seccion 3.
+ *  - `fijo`: la superficie cae en un escalon; esa es la cantidad permitida.
+ *  - `no_elegible`: la superficie no llega al minimo del concepto.
+ */
+export type EstadoEscalonConcepto =
+  | { tipo: 'fijo'; cantidad: number }
+  | { tipo: 'no_elegible'; minimo: number };
+
 interface Props {
   filas: FilaConcepto[];
   tiposApoyo: CatalogosVentanilla['tipos_apoyo'];
   /**
-   * Cantidad maxima permitida por `tipo_apoyo_id`, ya calculada con la
-   * superficie capturada en la seccion 3. Solo se muestra como ayuda: el tope
-   * real lo impone el backend al guardar y al dictaminar.
+   * Escalon resuelto por `tipo_apoyo_id`. Solo se muestra como ayuda de
+   * captura: el tope real lo impone el backend al guardar y al dictaminar.
    */
-  maximos: Record<string, number>;
+  escalones: Record<string, EstadoEscalonConcepto>;
   cambiar: (indice: number, campo: keyof FilaConcepto, valor: string | boolean) => void;
   agregar: () => void;
   quitar: (indice: number) => void;
@@ -67,7 +76,7 @@ const aNumero = (valor: string): number => {
 export default function TablaConceptos({
   filas,
   tiposApoyo,
-  maximos,
+  escalones,
   cambiar,
   agregar,
   quitar
@@ -143,9 +152,15 @@ export default function TablaConceptos({
                     value={fila.cantidad}
                     onChange={(e) => cambiar(indice, 'cantidad', e.target.value)}
                   />
-                  {maximos[fila.tipo_apoyo_id] !== undefined && (
+                  {escalones[fila.tipo_apoyo_id]?.tipo === 'fijo' && (
                     <span className="dato ayuda-maximo" data-testid="ayuda-cantidad-maxima">
-                      Máx. {maximos[fila.tipo_apoyo_id]}
+                      Máx. {(escalones[fila.tipo_apoyo_id] as { cantidad: number }).cantidad}
+                    </span>
+                  )}
+                  {escalones[fila.tipo_apoyo_id]?.tipo === 'no_elegible' && (
+                    <span className="dato ayuda-no-elegible" data-testid="aviso-no-elegible">
+                      No elegible: superficie mínima{' '}
+                      {(escalones[fila.tipo_apoyo_id] as { minimo: number }).minimo} ha
                     </span>
                   )}
                 </td>

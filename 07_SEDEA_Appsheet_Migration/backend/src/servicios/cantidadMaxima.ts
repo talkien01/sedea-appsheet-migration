@@ -1,41 +1,45 @@
-// Regla de cantidad maxima por superficie (tabla `reglas_cantidad_maxima`).
+// Cantidad maxima por superficie (tabla `reglas_cantidad_maxima_escalon`).
 //
 // Un concepto de apoyo puede tener un tope que depende de la superficie que el
-// solicitante acredita: cantidad_maxima = superficie_ha * kg_por_hectarea, con
-// la superficie truncada al `tope_hectareas` de la regla. Los conceptos SIN
-// fila en `reglas_cantidad_maxima` no se validan (comportamiento historico).
+// solicitante acredita. NO es una formula: son escalones fijos. Dentro de cada
+// rango de superficie se entrega siempre la misma cantidad, sin interpolar; por
+// debajo del primer escalon el concepto NO es elegible, y por encima del ultimo
+// la cantidad se topa en ese ultimo escalon. Los conceptos SIN escalones no se
+// validan (comportamiento historico).
 //
-// Este modulo es la UNICA implementacion del calculo: lo usan tanto el alta de
-// la solicitud (E42) como la confirmacion del dictamen (E58).
-import { maximoPorSuperficie } from '@sedea/shared';
+// Este modulo es la UNICA implementacion del calculo en el backend: lo usan
+// tanto el alta de la solicitud (E42) como la confirmacion del dictamen (E58).
+import { cantidadPorEscalon, type EscalonCantidadMaxima } from '@sedea/shared';
 import { consultar } from '../db/pool.js';
 
-export { maximoPorSuperficie };
+export { cantidadPorEscalon };
+export type { EscalonCantidadMaxima };
 
-export interface ReglaCantidadMaxima {
-  tipo_apoyo_id: number;
-  kg_por_hectarea: number;
-  tope_hectareas: number;
-}
-
-/** Todas las reglas vigentes, indexadas por `tipo_apoyo_id`. */
-export async function reglasCantidadMaxima(): Promise<Map<number, ReglaCantidadMaxima>> {
+/** Todos los escalones vigentes, agrupados por `tipo_apoyo_id`. */
+export async function escalonesCantidadMaxima(): Promise<Map<number, EscalonCantidadMaxima[]>> {
   const filas = await consultar<{
     tipo_apoyo_id: string | number;
-    kg_por_hectarea: string | number;
-    tope_hectareas: string | number;
-  }>('SELECT tipo_apoyo_id, kg_por_hectarea, tope_hectareas FROM reglas_cantidad_maxima');
-
-  return new Map(
-    filas.map((f) => [
-      Number(f.tipo_apoyo_id),
-      {
-        tipo_apoyo_id: Number(f.tipo_apoyo_id),
-        kg_por_hectarea: Number(f.kg_por_hectarea),
-        tope_hectareas: Number(f.tope_hectareas)
-      }
-    ])
+    superficie_desde: string | number;
+    superficie_hasta: string | number;
+    cantidad: string | number;
+  }>(
+    `SELECT tipo_apoyo_id, superficie_desde, superficie_hasta, cantidad
+       FROM reglas_cantidad_maxima_escalon
+      ORDER BY tipo_apoyo_id, superficie_hasta`
   );
+
+  const mapa = new Map<number, EscalonCantidadMaxima[]>();
+  for (const f of filas) {
+    const id = Number(f.tipo_apoyo_id);
+    const lista = mapa.get(id) ?? [];
+    lista.push({
+      superficie_desde: Number(f.superficie_desde),
+      superficie_hasta: Number(f.superficie_hasta),
+      cantidad: Number(f.cantidad)
+    });
+    mapa.set(id, lista);
+  }
+  return mapa;
 }
 
 /**
@@ -65,39 +69,58 @@ export interface ConceptoAValidar {
   unidad_medida?: string | null;
 }
 
-export interface ExcesoCantidad {
+export interface ProblemaCantidad {
+  /** Codigo HTTP 422 que debe usar quien llama. */
+  codigo: 'superficie_insuficiente' | 'cantidad_excede_maximo';
   tipo_apoyo_id: number;
   cantidad: number;
-  maximo: number;
+  /** Cantidad fija del escalon; null cuando el problema es la superficie. */
+  maximo: number | null;
   mensaje: string;
 }
 
 /**
- * Primer concepto que rompe su regla, o `null` si todos caben. No lanza: quien
- * llama decide el codigo HTTP (E42 y E58 usan 422 `cantidad_excede_maximo`).
+ * Primer concepto que rompe su regla de escalones, o `null` si todos caben.
+ * No lanza: quien llama decide el codigo HTTP (E42 y E58 usan 422 con el
+ * `codigo` que trae el resultado).
  */
-export function primerExcesoDeCantidad(
+export function primerProblemaDeCantidad(
   conceptos: ConceptoAValidar[],
-  reglas: Map<number, ReglaCantidadMaxima>,
+  escalonesPorTipo: Map<number, EscalonCantidadMaxima[]>,
   superficieHa: number | null
-): ExcesoCantidad | null {
+): ProblemaCantidad | null {
   for (const concepto of conceptos) {
-    const regla = reglas.get(Number(concepto.tipo_apoyo_id));
-    const maximo = maximoPorSuperficie(regla, superficieHa);
-    if (maximo === null) continue;
-    const cantidad = Number(concepto.cantidad);
-    if (!Number.isFinite(cantidad) || cantidad <= maximo) continue;
+    const tipoId = Number(concepto.tipo_apoyo_id);
+    const resultado = cantidadPorEscalon(escalonesPorTipo.get(tipoId), superficieHa);
+    if (resultado.tipo === 'sin_regla' || resultado.tipo === 'sin_superficie') continue;
 
+    const cantidad = Number(concepto.cantidad);
     const unidad = concepto.unidad_medida ? ` ${concepto.unidad_medida}` : '';
     const etiqueta = concepto.nombre ? `«${concepto.nombre}»` : 'el concepto seleccionado';
-    return {
-      tipo_apoyo_id: Number(concepto.tipo_apoyo_id),
-      cantidad,
-      maximo,
-      mensaje:
-        `Con una superficie de ${superficieHa} ha, ${etiqueta} admite como máximo ` +
-        `${maximo}${unidad}. Se capturó ${cantidad}${unidad}.`
-    };
+
+    if (resultado.tipo === 'no_elegible') {
+      return {
+        codigo: 'superficie_insuficiente',
+        tipo_apoyo_id: tipoId,
+        cantidad,
+        maximo: null,
+        mensaje:
+          `${etiqueta} requiere una superficie mínima de ${resultado.minimo} ha. ` +
+          `Se capturó una superficie de ${superficieHa} ha, por lo que el concepto no es elegible.`
+      };
+    }
+
+    if (Number.isFinite(cantidad) && cantidad > resultado.cantidad) {
+      return {
+        codigo: 'cantidad_excede_maximo',
+        tipo_apoyo_id: tipoId,
+        cantidad,
+        maximo: resultado.cantidad,
+        mensaje:
+          `Con una superficie de ${superficieHa} ha, ${etiqueta} admite como máximo ` +
+          `${resultado.cantidad}${unidad}. Se capturó ${cantidad}${unidad}.`
+      };
+    }
   }
   return null;
 }

@@ -920,6 +920,66 @@ documentos. Si un dato del beneficiario derivado está mal, se corrige por
 
 ---
 
+## Cantidad máxima por superficie (semillas forrajeras: avena y garbanzo)
+
+### La regla
+
+El documento oficial *"Compra y distribución de semilla para establecimiento de
+cultivos forrajeros"* (Programa Apoyo al Campo Queretano 2026) publica el apoyo
+máximo como una tabla de rangos de superficie. Esa tabla **es exactamente una
+recta**, así que el sistema guarda la fórmula y no los rangos:
+
+| Concepto | Clave en `tipos_apoyo` | kg por hectárea | Tope de superficie | Máximo absoluto |
+|---|---|---|---|---|
+| Semilla de avena | `CFA-AVENA` | 100 | 2 ha | 200 kg |
+| Semilla de garbanzo | `CFG-GARBANZO` | 50 | 2 ha | 100 kg |
+
+`cantidad_máxima = min(superficie_ha, tope_hectareas) × kg_por_hectarea`
+
+La **superficie** es `agr_superficie_total_ha` de la sección 3 (Actividad
+económica): es la *"superficie acreditada por el solicitante"* del documento
+oficial, o sea la del predio que respalda el documento de propiedad o posesión,
+no la que planea sembrar. Si la ventanilla solo capturó la superficie de
+siembra, se usa esa como respaldo para no bloquear la captura. **Sin superficie
+capturada no hay tope**: no hay contra qué calcularlo.
+
+### Cómo dar de alta la regla de otro concepto
+
+El mecanismo es genérico: vive en la tabla `reglas_cantidad_maxima`, con una
+fila por concepto (`tipo_apoyo_id` único). Para agregar otro concepto **no hace
+falta tocar código**, basta una fila:
+
+```sql
+INSERT INTO reglas_cantidad_maxima (tipo_apoyo_id, kg_por_hectarea, tope_hectareas)
+SELECT id, 100, 2 FROM tipos_apoyo WHERE clave = 'MI-CLAVE'
+ON CONFLICT (tipo_apoyo_id) DO UPDATE
+  SET kg_por_hectarea = EXCLUDED.kg_por_hectarea,
+      tope_hectareas  = EXCLUDED.tope_hectareas;
+```
+
+Los conceptos **sin** fila en `reglas_cantidad_maxima` no se validan: conservan
+el comportamiento de siempre, sin ningún tope.
+
+### Dónde se aplica
+
+1. **Al capturar** (`POST /api/solicitudes`). Si la cantidad excede el máximo,
+   responde **422 `cantidad_excede_maximo`** con el máximo permitido en el
+   mensaje.
+2. **Al confirmar un dictamen positivo** (`POST /api/dictamen/:id/confirmar`).
+   Mismo cálculo y mismo código de error: un dictaminador no puede aprobar una
+   solicitud que rompe la regla. Un dictamen **negativo** no se bloquea —
+   rechazar por exceso es justo uno de los motivos legítimos para negarlo.
+3. **En la PWA** (paso 5 de Nueva Solicitud). Al elegir avena o garbanzo con una
+   superficie ya capturada, el campo **Cantidad** se autocompleta con el máximo
+   y se resugiere si cambia la superficie. Es solo una ayuda de captura: si el
+   usuario escribe la cantidad a mano, deja de autocalcularse (mismo criterio
+   que `monto_total`), y **el tope real siempre lo impone el backend**.
+
+El cálculo vive en una sola función, `maximoPorSuperficie()` de
+`@sedea/shared`, que comparten los tres caminos.
+
+---
+
 ## Casas Ejidales (concepto de apoyo del proyecto PEO)
 
 ### Qué es

@@ -1700,9 +1700,13 @@ input[type='radio'] {
 
   .tabla-conceptos input,
   .tabla-conceptos select {
-    min-height: 48px;
-    padding: 12px 14px;
-    font-size: 16px;
+    /* 14px: mismo tamano "compacto" que ya usa el resto de la app (labels,
+       ayudas), no un valor suelto. El 16px/48px de antes solo hacia falta
+       en mobile para evitar el zoom de iOS al enfocar un campo -- esa regla
+       vive aparte (mas abajo, fuera de este min-width:768px) y sigue igual. */
+    min-height: 40px;
+    padding: 9px 12px;
+    font-size: 14px;
   }
 
   /* `table-layout: fixed` + porcentajes en vez de solo min-width: con

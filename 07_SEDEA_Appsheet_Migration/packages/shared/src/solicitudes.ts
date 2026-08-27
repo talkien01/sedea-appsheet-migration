@@ -283,7 +283,19 @@ export interface CatalogosVentanilla {
    * que alimenta los filtros y las vistas de consulta.
    */
   municipios_captura: MunicipioVentanilla[];
-  tipos_apoyo: { id: number; clave: string; nombre: string; unidad_medida: string | null }[];
+  /**
+   * `kg_por_hectarea` y `tope_hectareas` vienen de `reglas_cantidad_maxima` y
+   * son null en los conceptos sin regla de cantidad maxima. La UI los usa solo
+   * para sugerir la cantidad; el tope real lo impone el backend (E42 y E58).
+   */
+  tipos_apoyo: {
+    id: number;
+    clave: string;
+    nombre: string;
+    unidad_medida: string | null;
+    kg_por_hectarea?: number | null;
+    tope_hectareas?: number | null;
+  }[];
   tipos_persona: { clave: TipoPersona; nombre: string }[];
   alcance: AlcanceUsuario;
 }
@@ -410,4 +422,33 @@ export function proyectosAplicables(
     return proyectos;
   }
   return base;
+}
+
+// --------------------------------------------------------------------------
+// Regla de cantidad maxima por superficie (tabla `reglas_cantidad_maxima`).
+// Formula unica compartida por el backend (validacion en E42 y E58) y la PWA
+// (autocompletado del campo Cantidad en la tabla de conceptos).
+// --------------------------------------------------------------------------
+
+export interface ReglaCantidadMaxima {
+  kg_por_hectarea: number;
+  tope_hectareas: number;
+}
+
+/**
+ * Cantidad maxima permitida = superficie (truncada al tope) x kg por hectarea.
+ * Devuelve null cuando no hay regla o no hay superficie util: sin superficie no
+ * hay nada que topar y no se debe bloquear ni sugerir nada.
+ */
+export function maximoPorSuperficie(
+  regla: { kg_por_hectarea?: number | null; tope_hectareas?: number | null } | null | undefined,
+  superficieHa: number | null | undefined
+): number | null {
+  const kg = Number(regla?.kg_por_hectarea);
+  const tope = Number(regla?.tope_hectareas);
+  if (!Number.isFinite(kg) || kg <= 0 || !Number.isFinite(tope) || tope <= 0) return null;
+  const superficie = Number(superficieHa);
+  if (!Number.isFinite(superficie) || superficie <= 0) return null;
+  // 3 decimales: misma precision que `solicitud_conceptos.cantidad`.
+  return Math.round(Math.min(superficie, tope) * kg * 1000) / 1000;
 }

@@ -34,6 +34,11 @@ import {
   type AlcanceResuelto
 } from '../servicios/alcance.js';
 import { calcularDocumentosRequeridos } from '../servicios/documentos.js';
+import {
+  primerExcesoDeCantidad,
+  reglasCantidadMaxima,
+  superficieAcreditada
+} from '../servicios/cantidadMaxima.js';
 import { generarSolicitudCompletaPdf } from '../servicios/solicitud-completa.js';
 import { anioFolio, armarFolio, reservarConsecutivo, siglasMunicipio } from '../servicios/folios.js';
 import {
@@ -403,6 +408,24 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
           'Las cantidades y montos deben ser mayores o iguales a cero.'
         );
       }
+    }
+
+    // --- Cantidad maxima por superficie (regla de catalogo) ----------------
+    // Solo aplica a los conceptos con fila en `reglas_cantidad_maxima`; los
+    // demas conservan el comportamiento historico (sin tope).
+    const reglasCantidad = await reglasCantidadMaxima();
+    if (reglasCantidad.size > 0) {
+      const exceso = primerExcesoDeCantidad(
+        datos.conceptos.map((c) => ({
+          tipo_apoyo_id: c.tipo_apoyo_id,
+          cantidad: Number(c.cantidad),
+          nombre: mapaApoyos.get(c.tipo_apoyo_id)?.nombre ?? null,
+          unidad_medida: c.unidad_medida ?? mapaApoyos.get(c.tipo_apoyo_id)?.unidad_medida ?? null
+        })),
+        reglasCantidad,
+        superficieAcreditada(datos.actividad ?? {})
+      );
+      if (exceso) throw error422('cantidad_excede_maximo', exceso.mensaje);
     }
 
     // --- Alcance (D36). El admin nunca recibe 403 por alcance --------------

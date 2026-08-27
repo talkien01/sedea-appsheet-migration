@@ -23,6 +23,11 @@ import { enTransaccion, bitacoraEnTransaccion } from '../servicios/promocion.js'
 import { predictaminarLote } from '../servicios/predictamen.js';
 import { driverIa } from '../servicios/ia/cliente.js';
 import {
+  primerExcesoDeCantidad,
+  reglasCantidadMaxima,
+  superficieAcreditada
+} from '../servicios/cantidadMaxima.js';
+import {
   bandejaDictamen,
   detalleDictamen,
   documentosRequeridosDeSolicitud,
@@ -250,6 +255,45 @@ export default async function rutasDictamen(app: FastifyInstance): Promise<void>
             'documento_no_pertenece',
             'Uno de los documentos no pertenece al checklist de esta solicitud.'
           );
+        }
+      }
+
+      // Cantidad maxima por superficie: un dictamen POSITIVO no puede aprobar
+      // conceptos que rompen la regla del catalogo. Reusa exactamente el mismo
+      // calculo que el alta (E42). Un dictamen negativo no se bloquea: rechazar
+      // por exceso es justo uno de los motivos legitimos para negarlo.
+      if (cuerpo.resultado === 'positivo') {
+        const reglasCantidad = await reglasCantidadMaxima();
+        if (reglasCantidad.size > 0) {
+          const { rows: conceptos } = await pool.query<{
+            tipo_apoyo_id: string;
+            cantidad: string;
+            nombre: string | null;
+            unidad_medida: string | null;
+            agr_superficie_total_ha: string | null;
+            agr_superficie_siembra_ha: string | null;
+          }>(
+            `SELECT sc.tipo_apoyo_id, sc.cantidad, ta.nombre,
+                    COALESCE(sc.unidad_medida, ta.unidad_medida) AS unidad_medida,
+                    s.agr_superficie_total_ha, s.agr_superficie_siembra_ha
+               FROM solicitud_conceptos sc
+               JOIN solicitudes s   ON s.id  = sc.solicitud_id
+               JOIN tipos_apoyo ta  ON ta.id = sc.tipo_apoyo_id
+              WHERE sc.solicitud_id = $1
+              ORDER BY sc.orden`,
+            [solicitudId]
+          );
+          const exceso = primerExcesoDeCantidad(
+            conceptos.map((c) => ({
+              tipo_apoyo_id: Number(c.tipo_apoyo_id),
+              cantidad: Number(c.cantidad),
+              nombre: c.nombre,
+              unidad_medida: c.unidad_medida
+            })),
+            reglasCantidad,
+            superficieAcreditada(conceptos[0] ?? {})
+          );
+          if (exceso) throw error422('cantidad_excede_maximo', exceso.mensaje);
         }
       }
 

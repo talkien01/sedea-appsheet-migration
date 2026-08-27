@@ -6,11 +6,12 @@
 // en el navegador ni se encola nada (D32).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type {
-  CatalogosVentanilla,
-  DocumentoRequeridoCalculado,
-  RespuestaAltaSolicitud,
-  TipoPersona
+import {
+  maximoPorSuperficie,
+  type CatalogosVentanilla,
+  type DocumentoRequeridoCalculado,
+  type RespuestaAltaSolicitud,
+  type TipoPersona
 } from '@sedea/shared';
 import { apiSolicitudes } from '../api/solicitudes';
 import { ErrorPeticion } from '../api/cliente';
@@ -185,6 +186,42 @@ export default function NuevaSolicitud() {
     return base.length === 0 ? catalogos.proyectos : base;
   }, [catalogos, componenteId, modalidadId]);
 
+  // --- Cantidad maxima por superficie (regla de catalogo) ------------------
+  // La superficie es la MISMA que valida el backend: la total acreditada por el
+  // solicitante y, si esa no se capturo, la de siembra.
+  const superficieAcreditada = useMemo(() => {
+    const total = Number(actividad.agr_superficie_total_ha);
+    if (Number.isFinite(total) && total > 0) return total;
+    const siembra = Number(actividad.agr_superficie_siembra_ha);
+    return Number.isFinite(siembra) && siembra > 0 ? siembra : null;
+  }, [actividad.agr_superficie_total_ha, actividad.agr_superficie_siembra_ha]);
+
+  /** Maximo permitido por `tipo_apoyo_id`; solo los conceptos con regla. */
+  const maximosPorTipoApoyo = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    for (const tipo of catalogos?.tipos_apoyo ?? []) {
+      const maximo = maximoPorSuperficie(tipo, superficieAcreditada);
+      if (maximo !== null) mapa[String(tipo.id)] = maximo;
+    }
+    return mapa;
+  }, [catalogos, superficieAcreditada]);
+
+  // Al cambiar la superficie se resugiere la cantidad de las filas que el
+  // usuario no haya editado a mano (mismo criterio que `total_manual`).
+  useEffect(() => {
+    setConceptos((previas) => {
+      let cambio = false;
+      const siguientes = previas.map((fila) => {
+        if (fila.cantidad_manual || !fila.tipo_apoyo_id) return fila;
+        const maximo = maximosPorTipoApoyo[fila.tipo_apoyo_id];
+        if (maximo === undefined || String(maximo) === fila.cantidad) return fila;
+        cambio = true;
+        return { ...fila, cantidad: String(maximo) };
+      });
+      return cambio ? siguientes : previas;
+    });
+  }, [maximosPorTipoApoyo]);
+
   const idsConceptos = useMemo(
     () => conceptos.map((c) => Number(c.tipo_apoyo_id)).filter((n) => Number.isInteger(n) && n > 0),
     [conceptos]
@@ -245,6 +282,19 @@ export default function NuevaSolicitud() {
             }
           }
 
+          // Al elegir un concepto con regla de cantidad maxima se sugiere el
+          // maximo permitido por la superficie. Es solo una ayuda de captura:
+          // el tope real lo impone el backend al guardar y al dictaminar.
+          if (campo === 'tipo_apoyo_id' && !fila.cantidad_manual) {
+            const maximo = maximosPorTipoApoyo[String(valor)];
+            nueva.cantidad = maximo === undefined ? nueva.cantidad : String(maximo);
+          }
+
+          // La cantidad deja de autocalcularse en cuanto se escribe a mano.
+          if (campo === 'cantidad') {
+            nueva.cantidad_manual = true;
+          }
+
           // El total se autocalcula hasta que el usuario lo escribe a mano.
           if (campo === 'monto_total') {
             nueva.total_manual = true;
@@ -258,7 +308,7 @@ export default function NuevaSolicitud() {
         })
       );
     },
-    [catalogos]
+    [catalogos, maximosPorTipoApoyo]
   );
 
   const agregarConcepto = useCallback(
@@ -734,6 +784,7 @@ export default function NuevaSolicitud() {
         <TablaConceptos
           filas={conceptos}
           tiposApoyo={catalogos?.tipos_apoyo ?? []}
+          maximos={maximosPorTipoApoyo}
           cambiar={cambiarConcepto}
           agregar={agregarConcepto}
           quitar={quitarConcepto}

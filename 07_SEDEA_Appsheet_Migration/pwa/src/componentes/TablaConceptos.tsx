@@ -16,6 +16,12 @@ export interface FilaConcepto {
   monto_total: string;
   /** true cuando el usuario escribio el total a mano. */
   total_manual: boolean;
+  /**
+   * true cuando el usuario escribio la cantidad a mano. Mismo criterio que
+   * `total_manual`: a partir de ahi la cantidad ya no se autocalcula desde la
+   * regla de cantidad maxima por superficie.
+   */
+  cantidad_manual: boolean;
 }
 
 export function filaConceptoVacia(): FilaConcepto {
@@ -27,13 +33,20 @@ export function filaConceptoVacia(): FilaConcepto {
     monto_estatal: '',
     monto_productor: '',
     monto_total: '',
-    total_manual: false
+    total_manual: false,
+    cantidad_manual: false
   };
 }
 
 interface Props {
   filas: FilaConcepto[];
   tiposApoyo: CatalogosVentanilla['tipos_apoyo'];
+  /**
+   * Cantidad maxima permitida por `tipo_apoyo_id`, ya calculada con la
+   * superficie capturada en la seccion 3. Solo se muestra como ayuda: el tope
+   * real lo impone el backend al guardar y al dictaminar.
+   */
+  maximos: Record<string, number>;
   cambiar: (indice: number, campo: keyof FilaConcepto, valor: string | boolean) => void;
   agregar: () => void;
   quitar: (indice: number) => void;
@@ -44,28 +57,38 @@ const aNumero = (valor: string): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-export default function TablaConceptos({ filas, tiposApoyo, cambiar, agregar, quitar }: Props) {
+export default function TablaConceptos({
+  filas,
+  tiposApoyo,
+  maximos,
+  cambiar,
+  agregar,
+  quitar
+}: Props) {
   const suma = (campo: keyof FilaConcepto) =>
     filas.reduce((acumulado, f) => acumulado + aNumero(String(f[campo])), 0);
 
   return (
-    <div data-testid="seccion-conceptos">
+    // `pantalla-ancha` libera el techo de ancho de `.contenido`; `conceptos-ancho`
+    // deja que SOLO esta seccion lo aproveche (el resto del formulario sigue
+    // en su columna estrecha, ver componentes.css).
+    <div className="pantalla-ancha conceptos-ancho" data-testid="seccion-conceptos">
       <h3>5. Conceptos de apoyo solicitados</h3>
       <p className="dato">
         Se creará un beneficiario por cada concepto capturado en esta tabla.
       </p>
 
       <div className="tabla-contenedor">
-        <table data-testid="tabla-conceptos">
+        <table className="tabla-conceptos" data-testid="tabla-conceptos">
           <thead>
             <tr>
               <th>Concepto</th>
               <th>Descripción</th>
-              <th>Cantidad</th>
+              <th className="col-num">Cantidad</th>
               <th>Unidad</th>
-              <th>Apoyo estatal</th>
-              <th>Aportación del productor</th>
-              <th>Inversión total</th>
+              <th className="col-num">Apoyo estatal</th>
+              <th className="col-num">Aportación del productor</th>
+              <th className="col-num">Inversión total</th>
               <th />
             </tr>
           </thead>
@@ -96,8 +119,9 @@ export default function TablaConceptos({ filas, tiposApoyo, cambiar, agregar, qu
                     onChange={(e) => cambiar(indice, 'descripcion', e.target.value)}
                   />
                 </td>
-                <td>
+                <td className="col-num">
                   <input
+                    className="num"
                     data-testid="input-concepto-cantidad"
                     aria-label="Cantidad"
                     type="number"
@@ -105,6 +129,11 @@ export default function TablaConceptos({ filas, tiposApoyo, cambiar, agregar, qu
                     value={fila.cantidad}
                     onChange={(e) => cambiar(indice, 'cantidad', e.target.value)}
                   />
+                  {maximos[fila.tipo_apoyo_id] !== undefined && (
+                    <span className="dato ayuda-maximo" data-testid="ayuda-cantidad-maxima">
+                      Máx. {maximos[fila.tipo_apoyo_id]}
+                    </span>
+                  )}
                 </td>
                 <td>
                   <input
@@ -115,8 +144,9 @@ export default function TablaConceptos({ filas, tiposApoyo, cambiar, agregar, qu
                     onChange={(e) => cambiar(indice, 'unidad_medida', e.target.value)}
                   />
                 </td>
-                <td>
+                <td className="col-num">
                   <input
+                    className="num"
                     data-testid="input-concepto-estatal"
                     aria-label="Apoyo estatal"
                     type="number"
@@ -125,8 +155,9 @@ export default function TablaConceptos({ filas, tiposApoyo, cambiar, agregar, qu
                     onChange={(e) => cambiar(indice, 'monto_estatal', e.target.value)}
                   />
                 </td>
-                <td>
+                <td className="col-num">
                   <input
+                    className="num"
                     data-testid="input-concepto-productor"
                     aria-label="Aportación del productor"
                     type="number"
@@ -135,8 +166,9 @@ export default function TablaConceptos({ filas, tiposApoyo, cambiar, agregar, qu
                     onChange={(e) => cambiar(indice, 'monto_productor', e.target.value)}
                   />
                 </td>
-                <td>
+                <td className="col-num">
                   <input
+                    className="num"
                     data-testid="input-concepto-total"
                     aria-label="Inversión total"
                     type="number"
@@ -161,9 +193,9 @@ export default function TablaConceptos({ filas, tiposApoyo, cambiar, agregar, qu
           <tfoot>
             <tr data-testid="totales-conceptos">
               <td colSpan={4}>Totales</td>
-              <td>{suma('monto_estatal').toFixed(2)}</td>
-              <td>{suma('monto_productor').toFixed(2)}</td>
-              <td>{suma('monto_total').toFixed(2)}</td>
+              <td className="col-num">{suma('monto_estatal').toFixed(2)}</td>
+              <td className="col-num">{suma('monto_productor').toFixed(2)}</td>
+              <td className="col-num">{suma('monto_total').toFixed(2)}</td>
               <td />
             </tr>
           </tfoot>

@@ -1568,3 +1568,71 @@ input[type='radio'] {
 .zona-peligro ul {
   margin: 8px 0 0 20px;
 }
+
+/* =========== Tabla de conceptos de Nueva Solicitud (seccion 5) ===========
+   La seccion 5 lleva `pantalla-ancha`, que libera el techo de `.contenido`
+   (misma palanca del rediseno de /catalogos, Build 20). Para que SOLO esta
+   tabla gane el ancho, los demas pasos del formulario recuperan aqui su
+   columna de lectura. Es un cambio de tamano y legibilidad: la mecanica de la
+   tabla (inputs + Tab nativo) no cambia. */
+
+.columna-pasos > .tarjeta {
+  max-width: 1180px;
+}
+
+.columna-pasos > .tarjeta:has(.conceptos-ancho) {
+  max-width: none;
+}
+
+/* Columnas numericas: cifras de ancho fijo, alineadas a la derecha, para poder
+   comparar montos de un vistazo. */
+.tabla-conceptos .col-num {
+  text-align: right;
+}
+
+.tabla-conceptos input.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.tabla-conceptos tfoot .col-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.tabla-conceptos .ayuda-maximo {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  text-align: right;
+}
+
+/* Densidad: campos mas grandes que el resto del formulario, porque esta tabla
+   se captura mirando el papel (Build 11, criterio de densidad de UI). */
+@media (min-width: 768px) {
+  .tabla-conceptos th,
+  .tabla-conceptos td {
+    padding: 10px 12px;
+  }
+
+  .tabla-conceptos th {
+    font-size: 12.5px;
+  }
+
+  .tabla-conceptos input,
+  .tabla-conceptos select {
+    min-height: 44px;
+    padding: 11px 12px;
+    font-size: 15.5px;
+  }
+
+  /* Anchos minimos para que ninguna celda quede encajonada. */
+  .tabla-conceptos td:nth-child(1) { min-width: 320px; }
+  .tabla-conceptos td:nth-child(2) { min-width: 260px; }
+  .tabla-conceptos td:nth-child(3) { min-width: 150px; }
+  .tabla-conceptos td:nth-child(4) { min-width: 130px; }
+  .tabla-conceptos td:nth-child(5),
+  .tabla-conceptos td:nth-child(6),
+  .tabla-conceptos td:nth-child(7) { min-width: 170px; }
+}

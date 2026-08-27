@@ -118,14 +118,16 @@ export const esquemaTipoApoyoAlta = z.object({
   clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/i).transform(v => v.toUpperCase()),
   nombre: z.string().trim().min(3).max(300),
   categoria: z.string().trim().max(200).nullable().optional(),
-  unidad_medida: z.string().trim().max(100).nullable().optional()
+  unidad_medida: z.string().trim().max(100).nullable().optional(),
+  descripcion: z.string().trim().max(2000).nullable().optional()
 }).strict();
 
 export const esquemaTipoApoyoEdicion = z.object({
   clave: z.string().trim().min(2).max(40).regex(/^[A-Z0-9][A-Z0-9-]*$/i).transform(v => v.toUpperCase()).optional(),
   nombre: z.string().trim().min(3).max(300).optional(),
   categoria: z.string().trim().max(200).nullable().optional(),
-  unidad_medida: z.string().trim().max(100).nullable().optional()
+  unidad_medida: z.string().trim().max(100).nullable().optional(),
+  descripcion: z.string().trim().max(2000).nullable().optional()
 }).strict();
 
 // TipoApoyo ya esta definido en dto.ts, se re-exporta alli
@@ -276,7 +278,7 @@ export const REGISTRO_ENTIDADES: Record<NombreEntidad, DefinicionCatalogo> = {
     tabla: 'tipos_apoyo',
     etiqueta: 'Conceptos de apoyo',
     campoClave: 'clave',
-    camposTexto: ['nombre', 'categoria', 'unidad_medida'],
+    camposTexto: ['nombre', 'categoria', 'unidad_medida', 'descripcion'],
     camposEnteros: [],
     camposArreglo: [],
     padres: [],

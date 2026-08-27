@@ -280,6 +280,11 @@ export default function NuevaSolicitud() {
             if (tipo?.unidad_medida && !fila.unidad_medida) {
               nueva.unidad_medida = tipo.unidad_medida;
             }
+            // La descripcion se toma SIEMPRE del catalogo (no hay variante
+            // `_manual` como en cantidad/monto: debe quedar homologada entre
+            // solicitantes). Si el concepto no tiene descripcion, la fila
+            // queda vacia, que es un dato opcional y no bloquea el guardado.
+            nueva.descripcion = tipo?.descripcion ?? '';
           }
 
           // Al elegir un concepto con regla de cantidad maxima se sugiere el

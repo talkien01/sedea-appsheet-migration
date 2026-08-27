@@ -47,6 +47,12 @@ export interface TipoApoyo {
   nombre: string;
   categoria: string | null;
   unidad_medida: string | null;
+  /**
+   * Descripcion homologada del concepto (migracion 024). Se muestra en modo
+   * lectura en la tabla de conceptos de la solicitud; solo se edita desde el
+   * catalogo, para que sea identica en todos los solicitantes del concepto.
+   */
+  descripcion: string | null;
   activo: boolean;
 }
 

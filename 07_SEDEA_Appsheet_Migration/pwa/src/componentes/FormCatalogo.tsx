@@ -85,6 +85,7 @@ export default function FormCatalogo({
     if (entidad === 'tipos_apoyo') {
       datos.categoria = formData.get('categoria') || null;
       datos.unidad_medida = formData.get('unidad_medida') || null;
+      datos.descripcion = formData.get('descripcion') || null;
     }
 
     alGuardar(datos);
@@ -282,6 +283,27 @@ export default function FormCatalogo({
                 defaultValue={registro?.unidad_medida ?? ''}
                 maxLength={100}
               />
+            </div>
+
+            {/*
+              La descripcion vive aqui, en el catalogo, y no en la captura de
+              la solicitud: asi queda homologada para todos los solicitantes
+              del concepto. Ventanilla la ve en modo lectura.
+            */}
+            <div className="campo">
+              <label htmlFor="input-descripcion">Descripción</label>
+              <textarea
+                id="input-descripcion"
+                name="descripcion"
+                data-testid="input-descripcion"
+                defaultValue={registro?.descripcion ?? ''}
+                maxLength={2000}
+                rows={3}
+              />
+              <span className="dato">
+                Se muestra tal cual en la tabla de conceptos de cada solicitud que use este
+                concepto. Ventanilla no puede cambiarla.
+              </span>
             </div>
           </>
         )}

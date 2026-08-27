@@ -293,6 +293,12 @@ export interface CatalogosVentanilla {
     clave: string;
     nombre: string;
     unidad_medida: string | null;
+    /**
+     * Descripcion homologada del concepto (migracion 024). La tabla de
+     * conceptos la muestra en modo lectura: ventanilla no la redacta, para
+     * que sea identica en todas las solicitudes del mismo concepto.
+     */
+    descripcion?: string | null;
     kg_por_hectarea?: number | null;
     tope_hectareas?: number | null;
   }[];

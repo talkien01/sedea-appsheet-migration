@@ -36,7 +36,7 @@ export async function catalogosVentanilla() {
         'SELECT id, nombre, regional_id, siglas_folio FROM municipios WHERE activo ORDER BY nombre'
       ),
       consultar<any>(
-        `SELECT t.id, t.clave, t.nombre, t.unidad_medida,
+        `SELECT t.id, t.clave, t.nombre, t.unidad_medida, t.descripcion,
                 r.kg_por_hectarea::float8 AS kg_por_hectarea,
                 r.tope_hectareas::float8  AS tope_hectareas
            FROM tipos_apoyo t

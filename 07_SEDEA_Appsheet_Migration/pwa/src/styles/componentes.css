@@ -1679,6 +1679,17 @@ input[type='radio'] {
   font-variant-numeric: tabular-nums;
 }
 
+/* Descripcion del concepto: viene del catalogo y es de solo lectura, asi que
+   se lee como texto y no como campo capturable. */
+.tabla-conceptos .descripcion-concepto {
+  display: block;
+  min-width: 160px;
+  max-width: 320px;
+  color: var(--color-texto-suave, #555);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .tabla-conceptos .ayuda-maximo {
   display: block;
   margin-top: 3px;

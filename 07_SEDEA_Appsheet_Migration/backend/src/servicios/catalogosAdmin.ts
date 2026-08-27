@@ -343,6 +343,11 @@ export async function crearEntidad(
       valores.push(datos.unidad_medida ?? null);
       marcadores.push(`$${idx++}`);
     }
+    if (datos.descripcion !== undefined) {
+      columnas.push('descripcion');
+      valores.push(datos.descripcion ?? null);
+      marcadores.push(`$${idx++}`);
+    }
   }
 
   // Campos especificos de documentos_requeridos.
@@ -478,18 +483,12 @@ export async function editarEntidad(
     idx++;
   }
 
-  if (entidad === 'tipos_apoyo') {
-    for (const campo of ['categoria', 'unidad_medida']) {
-      if (datos[campo] !== undefined) {
-        actualizaciones.push(`${campo} = $${idx}`);
-        valores.push(datos[campo] ?? null);
-        if (actual[campo] !== (datos[campo] ?? null)) {
-          cambios[campo] = { anterior: actual[campo], nuevo: datos[campo] ?? null };
-        }
-        idx++;
-      }
-    }
-  }
+  // tipos_apoyo no necesita bloque propio en el UPDATE: `categoria`,
+  // `unidad_medida` y `descripcion` ya los cubre el bucle de camposTexto. El
+  // bloque que habia aqui las repetia y Postgres rechazaba el UPDATE con
+  // "multiple assignments to same column", asi que editar un concepto de
+  // apoyo devolvia 500. Mismo caso que el ya corregido en
+  // documentos_requeridos (F-13).
 
   // F-13: documentos_requeridos no necesita bloque propio: `requisito` ya lo
   // cubre camposTexto, los enteros camposEnteros y los arreglos camposArreglo.

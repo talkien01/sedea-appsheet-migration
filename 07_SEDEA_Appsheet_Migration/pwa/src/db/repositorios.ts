@@ -94,7 +94,7 @@ export async function guardarCatalogos(respuesta: RespuestaCatalogos): Promise<v
       grupo: 'tipo_apoyo',
       clave: t.clave,
       valor: t.nombre,
-      datos: { id: t.id, unidad_medida: t.unidad_medida }
+      datos: { id: t.id, unidad_medida: t.unidad_medida, descripcion: t.descripcion }
     });
   }
   for (const c of respuesta.catalogos) {

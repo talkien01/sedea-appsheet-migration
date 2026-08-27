@@ -8,6 +8,13 @@ import { BotonIcono } from './BotonIcono';
 
 export interface FilaConcepto {
   tipo_apoyo_id: string;
+  /**
+   * Descripcion homologada del concepto, copiada del catalogo al elegirlo.
+   * Es de solo lectura en la tabla: a diferencia de `cantidad` o `monto_total`
+   * (que varian legitimamente por solicitante y por eso admiten captura a
+   * mano), la descripcion debe ser identica para todos los solicitantes del
+   * mismo concepto, asi que solo se cambia editando el catalogo.
+   */
   descripcion: string;
   cantidad: string;
   unidad_medida: string;
@@ -110,15 +117,21 @@ export default function TablaConceptos({
                     ))}
                   </select>
                 </td>
+                {/*
+                  La descripcion NO se captura aqui: viene del catalogo del
+                  concepto y se muestra en modo lectura, para que sea identica
+                  en todas las solicitudes del mismo concepto. Se cambia
+                  unicamente editando el concepto en /catalogos.
+                */}
                 <td>
-                  <input
+                  <span
+                    className="descripcion-concepto"
                     data-testid="input-concepto-descripcion"
                     aria-label="Descripción del concepto"
-                    type="text"
-                    placeholder="Detalle del concepto (opcional)"
-                    value={fila.descripcion}
-                    onChange={(e) => cambiar(indice, 'descripcion', e.target.value)}
-                  />
+                    title={fila.descripcion || undefined}
+                  >
+                    {fila.descripcion || '—'}
+                  </span>
                 </td>
                 <td className="col-num">
                   <input

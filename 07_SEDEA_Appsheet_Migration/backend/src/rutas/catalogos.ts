@@ -27,7 +27,7 @@ export default async function rutasCatalogos(app: FastifyInstance): Promise<void
     );
 
     const tipos_apoyo = await consultar(
-      'SELECT id, clave, nombre, categoria, unidad_medida, activo FROM tipos_apoyo WHERE activo ORDER BY nombre'
+      'SELECT id, clave, nombre, categoria, unidad_medida, descripcion, activo FROM tipos_apoyo WHERE activo ORDER BY nombre'
     );
 
     // Colonias y secciones se recortan a los municipios visibles del usuario.

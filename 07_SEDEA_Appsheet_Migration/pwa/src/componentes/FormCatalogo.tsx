@@ -123,6 +123,10 @@ export default function FormCatalogo({
           <>
             <div className="campo">
               <label htmlFor="input-clave">Clave</label>
+              {/* El guion escapado en el pattern evita "Invalid character
+                  class" en navegadores que validan el atributo con el modo
+                  Unicode Sets (flag v), donde un "-" al final de una clase
+                  de caracteres es ambiguo. */}
               <input
                 type="text"
                 id="input-clave"
@@ -134,7 +138,7 @@ export default function FormCatalogo({
                 aria-readonly={esEdicion}
                 required
                 maxLength={40}
-                pattern="[A-Z0-9][A-Z0-9-]*"
+                pattern="[A-Z0-9][A-Z0-9\-]*"
               />
               {esEdicion && (
                 <span className="leyenda" data-testid="leyenda-clave-inmutable">

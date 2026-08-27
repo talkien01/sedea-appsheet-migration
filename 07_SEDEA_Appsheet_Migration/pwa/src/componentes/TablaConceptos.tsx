@@ -133,15 +133,15 @@ export default function TablaConceptos({
                     ))}
                   </select>
                   {conflictosCurp[fila.tipo_apoyo_id] && (
-                    <span
-                      className="dato aviso-curp-duplicada"
+                    <div
+                      className="mensaje error aviso-curp-duplicada"
                       role="alert"
                       data-testid="aviso-curp-concepto-duplicado"
                     >
                       Esta CURP ya tiene una solicitud de este concepto (folio{' '}
                       {conflictosCurp[fila.tipo_apoyo_id].folio}). Quita el concepto para
                       continuar.
-                    </span>
+                    </div>
                   )}
                 </td>
                 {/*

@@ -797,9 +797,56 @@ td img.miniatura {
   z-index: 1;
 }
 
+/* Bloque de logos oficiales de /login. Jerarquia pedida por la Secretaria:
+   SEDEA es el principal (es su sistema) y Gobierno del Estado acompana en
+   segundo plano, separado por una linea, a poco mas de la mitad de alto. */
 .marca-login {
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
   margin-bottom: 18px;
+}
+
+.marca-login .logo-sedea {
+  width: auto;
+  height: 68px;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.marca-login .logo-gobierno {
+  width: auto;
+  height: 38px;
+  max-width: 100%;
+  object-fit: contain;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+/* Ambos logotipos son azul marino sobre transparente y se pierden contra el
+   fondo oscuro. Misma solucion que en la barra: placa blanca, sin recolorear
+   la imagen oficial. */
+[data-mode='dark'] .marca-login .logo-sedea,
+[data-mode='dark'] .marca-login .logo-gobierno {
+  background: #fff;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+[data-mode='dark'] .marca-login .logo-gobierno {
+  border-top: 0;
+  margin-top: 4px;
+}
+
+@media (max-width: 480px) {
+  .marca-login .logo-sedea {
+    height: 52px;
+  }
+
+  .marca-login .logo-gobierno {
+    height: 30px;
+  }
 }
 
 /* Boton de entrar de /login: unico lugar donde se permite el halo naranja. */

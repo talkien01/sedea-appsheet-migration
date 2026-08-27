@@ -7,7 +7,6 @@ import { ErrorPeticion, NOMBRE_APP } from '../api/cliente';
 import { contarBeneficiarios, sesionVigente } from '../db/repositorios';
 import type { PerfilUsuario } from '@sedea/shared';
 import { useEstadoRed } from '../sync/estadoRed';
-import Marca from '../componentes/Marca';
 import ToggleTema from '../componentes/ToggleTema';
 
 /**
@@ -82,8 +81,22 @@ export default function Login() {
       <ToggleTema clase="toggle-login" />
 
       <div className="tarjeta login-caja">
+        {/* Portada oficial del sistema: aqui si va el lockup completo de SEDEA
+            (principal) y debajo, mas chico, el de Gobierno del Estado. No se
+            usa <Marca> porque su escudo saldria repetido dentro del lockup. */}
         <div className="marca-login">
-          <Marca grande />
+          <img
+            className="logo-sedea"
+            src="/logos/sedea-horizontal.png"
+            alt="Secretaría de Desarrollo Agropecuario — Poder Ejecutivo del Estado de Querétaro"
+            decoding="async"
+          />
+          <img
+            className="logo-gobierno"
+            src="/logos/qro-gobierno.png"
+            alt="Querétaro — Gobierno del Estado"
+            decoding="async"
+          />
         </div>
         <h1>{NOMBRE_APP}</h1>
         <p className="dato">

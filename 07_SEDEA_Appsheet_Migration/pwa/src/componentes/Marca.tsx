@@ -1,8 +1,15 @@
-// Marca del cascaron. Es TIPOGRAFICA a proposito (A15-3): no se usa el
-// logotipo de IntechQRO (es la marca de otra empresa) ni se inventa un
-// escudo institucional. El glifo es un cuadrado con la esquina achaflanada
-// y una barra en --accent. Si el cliente entrega el escudo oficial, se
-// sustituye solo el glifo y nada mas.
+// Marca del cascaron. Nacio TIPOGRAFICA (A15-3) con un glifo generico porque
+// entonces no habia escudo oficial y no se queria inventar uno. Ese comentario
+// dejaba dicho el camino: "si el cliente entrega el escudo oficial, se
+// sustituye solo el glifo y nada mas". La Secretaria ya lo entrego, asi que
+// eso es exactamente lo que se hizo aqui: cambia el <svg> por el escudo
+// recortado del logotipo oficial y los textos SEDEA / CAMPO 2026 siguen
+// igual.
+//
+// Se usa el escudo suelto (no el lockup horizontal completo) porque en la
+// barra conviven con los textos: el lockup ya trae "SECRETARIA DE DESARROLLO
+// AGROPECUARIO" impreso y se leeria dos veces. El lockup completo si se usa
+// en /login, que es la portada oficial del sistema.
 
 interface Props {
   /** En modo rail solo se pinta el glifo (los textos quedan en .sr-solo). */
@@ -15,23 +22,14 @@ export default function Marca({ soloGlifo = false, grande = false }: Props) {
   const lado = grande ? 40 : 24;
   return (
     <span className={`marca ${grande ? 'marca-grande' : ''}`}>
-      <svg
+      <img
         className="marca-glifo"
-        width={lado}
+        src="/logos/sedea-escudo.png"
         height={lado}
-        viewBox="0 0 24 24"
-        fill="none"
+        alt=""
         aria-hidden="true"
-        focusable="false"
-      >
-        <path
-          d="M3 3h13l5 5v13H3z"
-          stroke="currentColor"
-          strokeWidth="1.75"
-          strokeLinejoin="round"
-        />
-        <rect x="7" y="13" width="10" height="3.2" rx="1" fill="currentColor" />
-      </svg>
+        decoding="async"
+      />
       <span className={`marca-textos ${soloGlifo ? 'sr-solo' : ''}`}>
         <span className="marca-nombre">SEDEA</span>
         <span className="marca-sub">CAMPO 2026</span>

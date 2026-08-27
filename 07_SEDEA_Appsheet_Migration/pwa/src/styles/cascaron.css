@@ -167,10 +167,22 @@
   color: var(--fg);
 }
 
+/* Escudo oficial. Alto fijo por atributo height y ancho automatico, para que
+   el recorte (232x220) no dependa de que el CSS adivine su proporcion. */
 .marca-glifo {
   flex: none;
   display: block;
-  color: var(--accent);
+  width: auto;
+  object-fit: contain;
+}
+
+/* El escudo es azul marino sobre transparente: sobre el fondo oscuro casi
+   desaparece. No se recolorea (es un escudo oficial, no una ilustracion): se
+   le pone debajo la placa blanca que ya usa la papeleria impresa. */
+[data-mode='dark'] .marca-glifo {
+  background: #fff;
+  border-radius: 4px;
+  padding: 2px;
 }
 
 .marca-textos {

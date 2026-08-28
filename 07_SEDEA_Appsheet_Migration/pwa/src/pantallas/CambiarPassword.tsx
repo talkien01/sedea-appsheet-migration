@@ -23,7 +23,7 @@ async function destinoPorRol(perfil: PerfilUsuario | null): Promise<string> {
 }
 
 export default function CambiarPassword() {
-  const { perfil, refrescarPerfil } = useSesion();
+  const { perfil, refrescarPerfil, cerrarSesion } = useSesion();
   const navegar = useNavigate();
 
   const obligatorio = perfil?.debe_cambiar_password === true;
@@ -147,6 +147,24 @@ export default function CambiarPassword() {
               className="secundario"
               data-testid="btn-cancelar-password"
               onClick={() => navegar(-1)}
+            >
+              Cancelar
+            </button>
+          )}
+          {/*
+            Modo obligatorio: no hay "pantalla anterior" a la que volver (se
+            llega aqui recien logueado), asi que "Cancelar" cierra la sesion
+            y regresa al login -- ya existia esa salida escondida en el boton
+            "Cerrar sesion" de la franja superior (FranjaEstado.tsx), pero
+            quedaba facil de no ver. Este es el mismo `cerrarSesion()`, solo
+            que visible junto al boton de Guardar.
+          */}
+          {obligatorio && (
+            <button
+              type="button"
+              className="secundario"
+              data-testid="btn-cancelar-password"
+              onClick={() => void cerrarSesion()}
             >
               Cancelar
             </button>

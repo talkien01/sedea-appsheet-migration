@@ -519,6 +519,30 @@ th {
   padding: 8px 10px;
 }
 
+/* Encabezado de columna que ordena al click (ej. "Nombre completo" en
+   /usuarios): un boton que se ve como el resto del <th>, sin caja propia. */
+.th-ordenable {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+
+.th-ordenable:hover,
+.th-ordenable:focus-visible {
+  color: var(--accent);
+}
+
+.th-ordenable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* Celdas de texto largo: se permite el ajuste de linea (SPEC 17.6.4). */
 .celda-texto {
   white-space: normal;

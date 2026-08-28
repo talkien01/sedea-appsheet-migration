@@ -94,6 +94,12 @@ export default function Usuarios() {
   const [errorReinicio, setErrorReinicio] = useState<string | null>(null);
   const [resultadoReinicio, setResultadoReinicio] = useState<ResultadoReinicioDatos | null>(null);
 
+  // Orden por nombre completo, solo en el cliente: la pagina ya trae hasta
+  // 100 filas de una vez (sin paginado real), asi que no hace falta pedirle
+  // el orden al backend. null = orden del servidor (sin tocar); 'asc'/'desc'
+  // alternan al volver a pulsar el mismo encabezado.
+  const [ordenNombre, setOrdenNombre] = useState<'asc' | 'desc' | null>(null);
+
   // Reseteo: fila elegida, estado de envio y error de la API (11.6.3).
   const [reseteando, setReseteando] = useState<UsuarioAdmin | null>(null);
   const [enviandoReset, setEnviandoReset] = useState(false);
@@ -353,6 +359,17 @@ export default function Usuarios() {
       setEnviandoReset(false);
     }
   };
+
+  /** Filas a pintar en la tabla, ordenadas por nombre si se pidio (ver arriba). */
+  const filasOrdenadas =
+    ordenNombre === null
+      ? filas
+      : [...filas].sort((a, b) => {
+          const cmp = a.nombre_completo.localeCompare(b.nombre_completo, 'es', {
+            sensitivity: 'base'
+          });
+          return ordenNombre === 'asc' ? cmp : -cmp;
+        });
 
   /** Filas que se pueden seleccionar: las de la papelera no se resetean. */
   const filasSeleccionables = filas.filter((f) => !f.eliminado);
@@ -660,7 +677,30 @@ export default function Usuarios() {
                   />
                 </th>
                 <th>Usuario</th>
-                <th>Nombre completo</th>
+                <th>
+                  <button
+                    type="button"
+                    className="th-ordenable"
+                    data-testid="btn-ordenar-nombre"
+                    aria-label={
+                      ordenNombre === 'asc'
+                        ? 'Ordenado A-Z. Pulsa para ordenar Z-A.'
+                        : ordenNombre === 'desc'
+                          ? 'Ordenado Z-A. Pulsa para quitar el orden.'
+                          : 'Ordenar por nombre completo, A-Z.'
+                    }
+                    onClick={() =>
+                      setOrdenNombre((previo) =>
+                        previo === null ? 'asc' : previo === 'asc' ? 'desc' : null
+                      )
+                    }
+                  >
+                    Nombre completo
+                    <span aria-hidden="true">
+                      {ordenNombre === 'asc' ? ' ▲' : ordenNombre === 'desc' ? ' ▼' : ' ⇅'}
+                    </span>
+                  </button>
+                </th>
                 <th>Rol</th>
                 <th>Regional</th>
                 <th>Estado</th>
@@ -670,7 +710,7 @@ export default function Usuarios() {
               </tr>
             </thead>
             <tbody>
-              {filas.map((fila) => (
+              {filasOrdenadas.map((fila) => (
                 <tr key={fila.id} data-testid="fila-usuario" className={fila.eliminado ? 'eliminada' : ''}>
                   <td data-etiqueta="Seleccionar">
                     {!fila.eliminado && (

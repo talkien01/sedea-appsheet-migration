@@ -15,3 +15,5 @@ export * from './curpQr.js';
 export * from './reinicio.js';
 // Registro de entrega del apoyo por concepto (evidencia en campo).
 export * from './entregas.js';
+// Configuracion de plazos de ingreso de solicitudes (administrable desde la app).
+export * from './configuracion.js';

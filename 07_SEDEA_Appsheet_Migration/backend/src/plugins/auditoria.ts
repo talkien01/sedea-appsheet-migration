@@ -22,7 +22,11 @@ export type AccionAuditoria =
   // Operacion destructiva: vaciado de todos los datos capturados.
   | 'reiniciar_datos_prueba'
   // Entrega fisica del apoyo, un renglon por concepto entregado.
-  | 'entrega_apoyo_registrada';
+  | 'entrega_apoyo_registrada'
+  // Plazo de ingreso de solicitudes: abre y cierra la ventanilla de captura.
+  | 'plazo_solicitudes_creado'
+  | 'plazo_solicitudes_activado'
+  | 'plazo_solicitudes_desactivado';
 
 interface EntradaBitacora {
   usuarioId?: number | null;

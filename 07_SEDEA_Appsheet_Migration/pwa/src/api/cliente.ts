@@ -33,7 +33,10 @@ import type {
   SesionEscaneoCreada,
   ResultadoReinicioDatos,
   PaqueteEventoEntrega,
-  RespuestaEntregaApoyo
+  RespuestaEntregaApoyo,
+  PlazoAlta,
+  PlazoSolicitudes,
+  PlazoVigente
 } from '@sedea/shared';
 import { obtenerSesion } from '../db/repositorios';
 
@@ -466,6 +469,35 @@ export const api = {
 
   async catalogosReferencias(): Promise<any> {
     return peticion('/admin/catalogos/referencias');
+  },
+
+  // ------------------------------------------------------------------------
+  // Plazo de ingreso de solicitudes. La lectura del vigente es publica; la
+  // administracion (historial, alta y cierre) es solo para rol admin.
+  // ------------------------------------------------------------------------
+  async plazoVigente(): Promise<PlazoVigente> {
+    return peticion<PlazoVigente>('/configuracion/plazo-solicitudes');
+  },
+
+  async plazos(): Promise<{ datos: PlazoSolicitudes[] }> {
+    return peticion<{ datos: PlazoSolicitudes[] }>('/configuracion/plazos');
+  },
+
+  async crearPlazo(cuerpo: PlazoAlta): Promise<{ ok: true; plazo: PlazoSolicitudes }> {
+    return peticion('/configuracion/plazos', {
+      method: 'POST',
+      body: JSON.stringify(cuerpo)
+    });
+  },
+
+  async cambiarEstadoPlazo(
+    id: number,
+    activo: boolean
+  ): Promise<{ ok: true; plazo: PlazoSolicitudes }> {
+    return peticion(`/configuracion/plazos/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ activo })
+    });
   },
 
   // ------------------------------------------------------------------------

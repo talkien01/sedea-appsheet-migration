@@ -290,6 +290,9 @@ export default function Catalogos() {
           <a href="/catalogos/documentos" data-testid="link-reglas-documentos" className="boton secundario">
             Reglas de documentos
           </a>
+          <a href="/catalogos/plazos" data-testid="link-plazo-solicitudes" className="boton secundario">
+            Plazo de solicitudes
+          </a>
         </div>
         <p className="mensaje aviso">
           Los componentes cuelgan del programa a nivel de solicitud; el catálogo los administra

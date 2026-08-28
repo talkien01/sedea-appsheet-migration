@@ -31,6 +31,7 @@ import CambiarPassword from './pantallas/CambiarPassword';
 import SinPermiso from './pantallas/SinPermiso';
 import Catalogos from './pantallas/Catalogos';
 import CatalogoDocumentos from './pantallas/CatalogoDocumentos';
+import CatalogoPlazos from './pantallas/CatalogoPlazos';
 import Dictamen from './pantallas/Dictamen';
 import DictamenDetalle from './pantallas/DictamenDetalle';
 import EscaneoMovil from './pantallas/EscaneoMovil';
@@ -212,6 +213,19 @@ export default function Rutas() {
           element={
             <RutaProtegida roles={USUARIOS}>
               <CatalogoDocumentos />
+            </RutaProtegida>
+          }
+        />
+        {/*
+          Plazo de ingreso de solicitudes. Misma proteccion de ruta que el
+          resto de /catalogos; la escritura ademas es solo admin en el backend,
+          asi que un editor_datos ve la pantalla con el error de rol.
+        */}
+        <Route
+          path="/catalogos/plazos"
+          element={
+            <RutaProtegida roles={USUARIOS}>
+              <CatalogoPlazos />
             </RutaProtegida>
           }
         />

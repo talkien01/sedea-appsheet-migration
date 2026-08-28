@@ -6,11 +6,16 @@ import type { CatalogosVentanilla, FilaSolicitud } from '@sedea/shared';
 import { apiSolicitudes } from '../api/solicitudes';
 import { useEstadoRed } from '../sync/estadoRed';
 
+const TAMANO_PAGINA = 50;
+
 export default function Solicitudes() {
   const enLinea = useEstadoRed();
   const [catalogos, setCatalogos] = useState<CatalogosVentanilla | null>(null);
   const [filas, setFilas] = useState<FilaSolicitud[]>([]);
+  const [total, setTotal] = useState(0);
+  const [pagina, setPagina] = useState(1);
   const [cargando, setCargando] = useState(false);
+  const [cargandoMas, setCargandoMas] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [busqueda, setBusqueda] = useState('');
@@ -30,23 +35,55 @@ export default function Solicitudes() {
     })();
   }, [enLinea]);
 
-  const buscar = useCallback(async () => {
-    setCargando(true);
-    setError(null);
-    try {
-      const parametros = new URLSearchParams({ page_size: '50' });
+  const armarParametros = useCallback(
+    (paginaPedida: number) => {
+      const parametros = new URLSearchParams({
+        page: String(paginaPedida),
+        page_size: String(TAMANO_PAGINA)
+      });
       if (busqueda.trim()) parametros.set('q', busqueda.trim());
       if (componenteId) parametros.set('componente_id', componenteId);
       if (municipioId) parametros.set('municipio_id', municipioId);
       if (desde) parametros.set('desde', `${desde}T00:00:00Z`);
       if (hasta) parametros.set('hasta', `${hasta}T23:59:59Z`);
-      setFilas((await apiSolicitudes.listar(parametros)).data);
+      return parametros;
+    },
+    [busqueda, componenteId, municipioId, desde, hasta]
+  );
+
+  // Nueva búsqueda: siempre vuelve a la página 1 y reemplaza los resultados.
+  const buscar = useCallback(async () => {
+    setCargando(true);
+    setError(null);
+    try {
+      const pagina = await apiSolicitudes.listar(armarParametros(1));
+      setFilas(pagina.data);
+      setTotal(pagina.total);
+      setPagina(1);
     } catch {
       setError('No se pudieron cargar las solicitudes.');
     } finally {
       setCargando(false);
     }
-  }, [busqueda, componenteId, municipioId, desde, hasta]);
+  }, [armarParametros]);
+
+  // "Cargar más": pide la siguiente página y la agrega al final, sin perder
+  // lo que ya se ve (los filtros no cambiaron, solo se pide más).
+  const cargarMas = useCallback(async () => {
+    setCargandoMas(true);
+    setError(null);
+    try {
+      const siguiente = pagina + 1;
+      const pagina2 = await apiSolicitudes.listar(armarParametros(siguiente));
+      setFilas((previas) => [...previas, ...pagina2.data]);
+      setTotal(pagina2.total);
+      setPagina(siguiente);
+    } catch {
+      setError('No se pudieron cargar más solicitudes.');
+    } finally {
+      setCargandoMas(false);
+    }
+  }, [armarParametros, pagina]);
 
   // Debounce de 300 ms para no golpear la API en cada tecla.
   useEffect(() => {
@@ -146,7 +183,7 @@ export default function Solicitudes() {
       </div>
 
       <div className="tarjeta">
-        <h2>Recibidas ({filas.length})</h2>
+        <h2>Recibidas ({filas.length} de {total})</h2>
         {error && (
           <div className="mensaje error" role="alert">
             {error}
@@ -192,6 +229,18 @@ export default function Solicitudes() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {!cargando && filas.length > 0 && filas.length < total && (
+          <button
+            type="button"
+            className="boton secundario"
+            data-testid="btn-cargar-mas"
+            onClick={() => void cargarMas()}
+            disabled={cargandoMas}
+          >
+            {cargandoMas ? 'Cargando…' : `Cargar más (${total - filas.length} restantes)`}
+          </button>
         )}
       </div>
     </>

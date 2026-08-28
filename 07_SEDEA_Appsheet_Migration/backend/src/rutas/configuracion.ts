@@ -29,7 +29,14 @@ async function soloAdmin(peticion: FastifyRequest, _respuesta: FastifyReply) {
 /** Traduce un fallo de Zod al formato de error del contrato (422). */
 function traducirFalloZod(error: ZodError): ErrorApi {
   const primero = error.issues[0];
-  return new ErrorApi(422, 'payload_invalido', primero?.message ?? 'Datos inválidos.');
+  if (!primero) return new ErrorApi(422, 'payload_invalido', 'Datos inválidos.');
+  // Zod dice solo "Required" cuando falta un campo: se le antepone cual es.
+  const campo = primero.path.join('.');
+  const mensaje =
+    primero.code === 'invalid_type' && primero.received === 'undefined' && campo
+      ? `Falta el campo ${campo}.`
+      : primero.message;
+  return new ErrorApi(422, 'payload_invalido', mensaje);
 }
 
 /**

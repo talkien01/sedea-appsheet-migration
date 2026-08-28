@@ -219,6 +219,58 @@ las ya capturadas conservan el texto con el que se guardaron.
 
 ---
 
+## Plazo de ingreso de solicitudes (`/catalogos/plazos`)
+
+El aviso **"Faltan X días para el cierre de ingreso de solicitudes"** que ve
+ventanilla en el paso 1 de `/solicitudes/nueva` sale de la tabla
+`configuracion_plazos`. Antes solo se podía cambiar con SQL directo contra la
+base; ahora se administra desde la app.
+
+**Cómo llegar:** `/catalogos` → botón **"Plazo de solicitudes"**, hermano del de
+*Reglas de documentos*, en el encabezado de la pantalla.
+
+**Quién puede:** la ruta se abre para `admin` y `editor_datos` (igual que el
+resto de `/catalogos`), pero los endpoints de escritura son **solo `admin`
+estricto**: abrir o cerrar la ventanilla de captura para todo el estado no es
+una tarea de edición de datos. Un `editor_datos` que entre verá el error de rol.
+
+La pantalla tiene tres bloques:
+
+| Bloque | Qué hace |
+|---|---|
+| **Plazo activo** | Fechas y días restantes del plazo vigente, más el botón *Cerrar la captura ahora* |
+| **Nuevo plazo** | Alta de fecha de inicio y fecha de fin; al guardar queda activo |
+| **Historial** | Todos los plazos, el más reciente primero, con su estado |
+
+**Solo puede haber un plazo activo a la vez.** Es la invariante que ya asumía la
+consulta de `/api/configuracion/plazo-solicitudes` (`WHERE activo = true ORDER BY
+id DESC LIMIT 1`), y el backend la sostiene: dar de alta un plazo nuevo desactiva
+al anterior **en la misma transacción**. Los plazos viejos no se borran, pasan al
+historial como *Inactivo*.
+
+**Cerrar sin definir la siguiente ventana.** El botón *Cerrar la captura ahora*
+desactiva el plazo vigente sin crear uno nuevo, para el caso "ya no recibo
+solicitudes pero todavía no sé cuándo abre la próxima". Con cero plazos activos
+el aviso simplemente deja de pintarse en Nueva Solicitud.
+
+**Endpoints** (todos bajo `/api/configuracion`, todos `admin` salvo el primero):
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| `GET` | `/plazo-solicitudes` | Plazo vigente + días restantes. **Público**, sin token. Lo consume `TimerPlazo.tsx`. Su contrato no cambió. |
+| `GET` | `/plazos` | Historial completo, más reciente primero. |
+| `POST` | `/plazos` | Alta de un plazo nuevo, que queda activo y desactiva al anterior. `422` si falta una fecha, si no viene en formato `AAAA-MM-DD`, o si `fecha_fin <= fecha_inicio`. |
+| `PATCH` | `/plazos/:id` | `{"activo": false}` cierra la captura; `{"activo": true}` reabre una ventana anterior (y desactiva la que estuviera activa). |
+
+Los tres endpoints de escritura dejan rastro en `auditoria_log` con las acciones
+`plazo_solicitudes_creado`, `plazo_solicitudes_activado` y
+`plazo_solicitudes_desactivado`.
+
+**No requiere migración:** la tabla `configuracion_plazos` ya existe desde el
+build 12 con todas las columnas necesarias.
+
+---
+
 ## Una CURP no puede repetir el mismo concepto
 
 Ventanilla capturó un beneficiario y, al capturarlo otra vez con la **misma

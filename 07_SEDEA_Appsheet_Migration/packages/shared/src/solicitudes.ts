@@ -356,6 +356,7 @@ export interface FilaSolicitud {
   proyecto: string;
   ventanilla: string;
   municipio: string | null;
+  capturado_por_nombre: string | null;
   conceptos: number;
   monto_total: number;
   documentos_recibidos: string;

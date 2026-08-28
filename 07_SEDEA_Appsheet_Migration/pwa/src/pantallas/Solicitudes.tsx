@@ -166,6 +166,7 @@ export default function Solicitudes() {
                   <th>Tipo de persona</th>
                   <th>Componente</th>
                   <th>Municipio</th>
+                  <th>Capturada por</th>
                   <th>Conceptos</th>
                   <th>Documentos</th>
                   <th />
@@ -180,6 +181,7 @@ export default function Solicitudes() {
                     <td data-etiqueta="Tipo de persona">{f.tipo_persona}</td>
                     <td data-etiqueta="Componente">{f.componente}</td>
                     <td data-etiqueta="Municipio">{f.municipio ?? '—'}</td>
+                    <td data-etiqueta="Capturada por">{f.capturado_por_nombre ?? '—'}</td>
                     <td data-etiqueta="Conceptos">{f.conceptos}</td>
                     <td data-etiqueta="Documentos">{f.documentos_recibidos}</td>
                     <td data-etiqueta="">

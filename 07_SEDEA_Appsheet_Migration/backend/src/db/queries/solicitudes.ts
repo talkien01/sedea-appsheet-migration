@@ -249,6 +249,7 @@ export async function listarSolicitudes(params: {
     `SELECT s.id, s.folio, s.recibida_en, s.nombre_solicitante, s.tipo_persona,
             c.clave AS componente, p.clave AS proyecto, v.clave AS ventanilla,
             m.nombre AS municipio,
+            u.nombre_completo AS capturado_por_nombre,
             (SELECT count(*) FROM solicitud_conceptos sc WHERE sc.solicitud_id = s.id)::int AS conceptos,
             coalesce((SELECT sum(sc.monto_total) FROM solicitud_conceptos sc
                        WHERE sc.solicitud_id = s.id), 0)::float8 AS monto_total,
@@ -261,6 +262,7 @@ export async function listarSolicitudes(params: {
        JOIN proyectos p    ON p.id = s.proyecto_id
        JOIN ventanillas v  ON v.id = s.ventanilla_id
        LEFT JOIN municipios m ON m.id = s.ubi_municipio_id
+       LEFT JOIN usuarios u ON u.id = s.capturado_por
       WHERE ${donde}
       ORDER BY s.recibida_en DESC, s.id DESC
       LIMIT $${i} OFFSET $${i + 1}`,
@@ -278,6 +280,7 @@ export async function listarSolicitudes(params: {
       proyecto: f.proyecto,
       ventanilla: f.ventanilla,
       municipio: f.municipio,
+      capturado_por_nombre: f.capturado_por_nombre,
       conceptos: f.conceptos,
       monto_total: f.monto_total,
       documentos_recibidos: `${f.docs_recibidos}/${f.docs_total}`
@@ -296,6 +299,7 @@ export async function obtenerSolicitud(id: number) {
             mu.nombre AS ubi_municipio, md.nombre AS dom_municipio,
             mu.regional_id AS ubi_municipio_regional_id,
             u.usuario AS capturado_por_usuario,
+            u.nombre_completo AS capturado_por_nombre,
             m.clave AS modalidad, m.nombre AS modalidad_nombre,
             dr.nombre AS regional_nombre,
             ua.usuario AS autorizada_secretario_por_usuario

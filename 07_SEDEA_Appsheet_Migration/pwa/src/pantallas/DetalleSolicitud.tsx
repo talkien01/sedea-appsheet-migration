@@ -300,6 +300,12 @@ export default function DetalleSolicitud() {
         <p className="dato">
           Recibida el {new Date(s.recibida_en).toLocaleString('es-MX')} en {s.ventanilla_nombre} ·
           Componente {s.componente} · Proyecto {s.proyecto}
+          {s.capturado_por_nombre && (
+            <>
+              {' '}· Capturada por{' '}
+              <strong data-testid="dato-capturado-por">{s.capturado_por_nombre}</strong>
+            </>
+          )}
           {s.modalidad && (
             <>
               {' '}· Modalidad <span data-testid="dato-modalidad">{s.modalidad_nombre}</span>

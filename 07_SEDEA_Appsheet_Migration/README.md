@@ -732,6 +732,64 @@ caracteres con una letra y un número, y que sea **distinta de la vigente**
 
 ---
 
+## Monitor de actividad (`/monitor`)
+
+Quién está usando el sistema **en este momento**, en qué pantalla, y qué se ha
+hecho. **Sólo el rol `admin`**: ni `editor_datos` lo ve en el menú ni el backend
+se lo contesta (`403 rol_no_autorizado`). Es supervisión de personas, no
+administración de datos, y por eso el candado es más estricto que el de
+`/usuarios`.
+
+No confundir con `/auditoria`, que es otra pantalla y otro propósito: aquella
+audita las **capturas de campo** (foto + GPS sobre mapa).
+
+### Las dos secciones
+
+| Sección | De dónde sale | Qué contesta |
+|---|---|---|
+| **Usuarios activos ahora** | tabla `presencia_usuarios` | *dónde está cada quien ahora* |
+| **Actividad reciente** | tabla `auditoria_log` | *qué se hizo y quién lo hizo* |
+
+`presencia_usuarios` guarda **un solo renglón por usuario**, sobrescrito en cada
+aviso. No es un histórico a propósito: el histórico ya lo lleva `auditoria_log`,
+que sí es sólo-agregar.
+
+### Criterio de "activo" y refrescos
+
+- La PWA **avisa cada 60 segundos** y además en cada cambio de pantalla.
+- **No avisa con la pestaña en segundo plano** (`document.visibilityState`). Así
+  el monitor no marca como presente a quien dejó la pestaña abierta y se fue, y
+  no se gasta datos en las tabletas de campo.
+- Se considera **activo** a quien avisó en los **últimos 3 minutos**
+  (`MINUTOS_PRESENCIA_ACTIVA` en `packages/shared/src/presencia.ts`, el mismo
+  valor para el backend y la PWA). Se eligió 3 y no 1 para que se puedan perder
+  dos avisos seguidos —red intermitente en campo— sin dar a nadie por
+  desconectado.
+- Quien queda fuera del umbral **no desaparece**: baja a la lista *Estuvieron
+  conectados*, con su última pantalla y su "hace cuánto".
+- La pantalla `/monitor` **se actualiza sola cada 20 segundos** mientras está
+  abierta y visible. No hay que recargar.
+- Detalle esperado: al abrir `/monitor`, el propio admin puede verse a sí mismo
+  todavía en su pantalla anterior durante un ciclo. Su aviso y la primera
+  lectura salen a la vez; al siguiente refresco ya sale corregido.
+
+El aviso **falla en silencio**. Si no hay red, no muestra error, no reintenta y
+no bloquea nada: para quien captura es invisible.
+
+### Endpoints
+
+| Método | Ruta | Quién |
+|---|---|---|
+| `POST` | `/api/presencia` | cualquier usuario autenticado (reporta **sólo la suya**: el `usuario_id` sale del token, nunca del cuerpo) |
+| `GET` | `/api/admin/presencia` | sólo `admin` |
+| `GET` | `/api/auditoria/log?page_size=200&usuario_id=&accion=` | sólo `admin` |
+
+La bitácora **no estrenó endpoint**: `/api/auditoria/log` ya exponía
+`auditoria_log` paginado y con el mismo candado de rol, así que sólo se le
+agregó el filtro `usuario_id` y el `nombre_completo` en la proyección.
+
+---
+
 ## Reiniciar datos de prueba
 
 > **IRREVERSIBLE.** Borra para siempre todo lo capturado. No hay papelera, no es

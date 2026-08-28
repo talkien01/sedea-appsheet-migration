@@ -127,6 +127,20 @@ export async function guardarBeneficiarios(lista: Beneficiario[]): Promise<void>
   await db.beneficiarios.bulkPut(lista);
 }
 
+/**
+ * Vacia el padron local. Se llama UNA SOLA VEZ, al arrancar una sincronizacion
+ * completa, antes de la primera pagina -- nunca dentro del ciclo de paginas.
+ *
+ * Bug real detectado en produccion: `guardarBeneficiarios()` solo hace
+ * `bulkPut` (agrega/actualiza), nunca borra. Si el servidor se vacia (ej.
+ * "Reiniciar datos de prueba"), sincronizar traia "0 beneficiarios
+ * descargados" pero el padron local viejo se quedaba intacto para siempre --
+ * a diferencia de `guardarCatalogos()`, que si limpia antes de guardar.
+ */
+export async function limpiarBeneficiariosLocal(): Promise<void> {
+  await db.beneficiarios.clear();
+}
+
 export async function contarBeneficiarios(): Promise<number> {
   return db.beneficiarios.count();
 }

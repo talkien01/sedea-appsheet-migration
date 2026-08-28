@@ -7,6 +7,7 @@ import {
   contarPendientes,
   guardarBeneficiarios,
   guardarCatalogos,
+  limpiarBeneficiariosLocal,
   marcarSincronizacion,
   obtenerSesion
 } from '../db/repositorios';
@@ -60,6 +61,13 @@ export default function Sync() {
     try {
       const catalogos = await api.catalogos();
       await guardarCatalogos(catalogos);
+
+      // Se limpia UNA SOLA VEZ, aqui, justo antes de la primera pagina: ya se
+      // confirmo que hay red (el catalogo se acaba de bajar bien). Si el
+      // padron local no se vacia, un servidor que se vacio de verdad (ej.
+      // "Reiniciar datos de prueba") sincroniza "0 descargados" pero deja el
+      // padron viejo intacto para siempre -- bug real detectado en produccion.
+      await limpiarBeneficiariosLocal();
 
       let pagina = 1;
       let acumulado = 0;

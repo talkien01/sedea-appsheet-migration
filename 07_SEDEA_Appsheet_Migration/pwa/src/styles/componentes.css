@@ -665,6 +665,13 @@ td img.miniatura {
   font-size: 18px;
 }
 
+/* Texto secundario dentro de una celda (usuario bajo el nombre, ruta bajo la
+   pantalla). Utilidad generica, no atada a ninguna pantalla. */
+.tenue {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
 .vacio {
   padding: 40px 24px;
   text-align: center;

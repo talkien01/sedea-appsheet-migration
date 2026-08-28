@@ -36,7 +36,8 @@ import type {
   RespuestaEntregaApoyo,
   PlazoAlta,
   PlazoSolicitudes,
-  PlazoVigente
+  PlazoVigente,
+  RespuestaPresencia
 } from '@sedea/shared';
 import { obtenerSesion } from '../db/repositorios';
 
@@ -541,6 +542,37 @@ export const api = {
     });
   },
 
+  // ------------------------------------------------------------------------
+  // Monitor de presencia. El latido lo manda CUALQUIER usuario autenticado
+  // (reporta solo la suya); la consulta es exclusiva de admin.
+  // ------------------------------------------------------------------------
+
+  /** Latido de presencia. Best effort: quien lo llama ignora el resultado. */
+  async reportarPresencia(ruta: string, etiquetaPantalla: string | null): Promise<{ ok: true }> {
+    return peticion<{ ok: true }>('/presencia', {
+      method: 'POST',
+      body: JSON.stringify({ ruta, etiqueta_pantalla: etiquetaPantalla })
+    });
+  },
+
+  /** Quien esta conectado ahora y en que pantalla (solo admin). */
+  async presencia(): Promise<RespuestaPresencia> {
+    return peticion<RespuestaPresencia>('/admin/presencia');
+  },
+
+  /**
+   * Bitacora `auditoria_log` en crudo (solo admin). Es el "que hizo" del
+   * monitor; no hay endpoint nuevo, se reusa el que ya existia.
+   */
+  async actividadReciente(parametros: URLSearchParams): Promise<{
+    data: FilaActividad[];
+    page: number;
+    page_size: number;
+    total: number;
+  }> {
+    return peticion(`/auditoria/log?${parametros.toString()}`);
+  },
+
   // --- E60: escaneo del CURP con un celular vinculado ----------------------
 
   /** Abre la sesion que el escritorio pinta como QR. */
@@ -570,6 +602,21 @@ export const api = {
     });
   }
 };
+
+/** Una fila de `auditoria_log` tal como la pinta el monitor de actividad. */
+export interface FilaActividad {
+  id: number;
+  usuario_id: number | null;
+  usuario: string | null;
+  nombre_completo: string | null;
+  accion: string;
+  entidad: string | null;
+  entidad_id: string | null;
+  detalle: Record<string, unknown> | null;
+  ip: string | null;
+  user_agent: string | null;
+  creado_en: string;
+}
 
 /** Pagina generica de las listas de staging. */
 export interface PaginaStaging {

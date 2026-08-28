@@ -16,6 +16,7 @@ import { useAncho } from '../tema/viewport';
 import BarraInferior from './BarraInferior';
 import BarraLateral, { type ModoLateral } from './BarraLateral';
 import FranjaEstado from './FranjaEstado';
+import { usoPresencia } from './usoPresencia';
 
 const CLAVE_LATERAL = 'sedea.lateral';
 
@@ -59,6 +60,10 @@ export default function Cascaron() {
   // Mientras la contrasena temporal no se cambie no hay navegacion: ni
   // sidebar ni barra inferior, solo la franja (criterio 10.8.4).
   const bloqueado = perfil?.debe_cambiar_password === true;
+
+  // Latido de presencia para el monitor del admin. Va aqui porque el cascaron
+  // envuelve a todas las pantallas con sesion; falla en silencio.
+  usoPresencia(Boolean(perfil) && !bloqueado);
 
   const anchoLateral = modoLateral === 'rail' ? '72px' : '256px';
 

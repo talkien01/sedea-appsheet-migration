@@ -36,6 +36,7 @@ import Dictamen from './pantallas/Dictamen';
 import DictamenDetalle from './pantallas/DictamenDetalle';
 import EscaneoMovil from './pantallas/EscaneoMovil';
 import RegistrarEntrega from './pantallas/RegistrarEntrega';
+import Monitor from './pantallas/Monitor';
 
 const CAMPO = ['capturista', 'admin'];
 const AUDITORIA = ['auditor', 'admin'];
@@ -43,6 +44,8 @@ const DEPURACION = ['editor_datos', 'admin'];
 const GESTION = ['admin', 'auditor', 'editor_datos'];
 // Administracion de usuarios: admin y editor de datos (D15).
 const USUARIOS = ['admin', 'editor_datos'];
+// Monitor de actividad en vivo: SOLO admin (no lo hereda editor_datos).
+const MONITOR = ['admin'];
 // Modulo de ventanilla: rol nuevo `ventanilla` y admin (D34).
 const VENTANILLA = ['ventanilla', 'capturista', 'admin'];
 // Build 13: pre-dictaminacion con IA. El rol `dictaminador` NO hereda
@@ -195,6 +198,21 @@ export default function Rutas() {
           element={
             <RutaProtegida roles={USUARIOS}>
               <Usuarios />
+            </RutaProtegida>
+          }
+        />
+
+        {/*
+          Monitor de actividad en vivo. Solo `admin` (mas estricto que
+          /usuarios): saber quien esta conectado y en que pantalla es
+          supervision de personas, no administracion de datos. El backend
+          aplica el mismo candado en GET /api/admin/presencia.
+        */}
+        <Route
+          path="/monitor"
+          element={
+            <RutaProtegida roles={MONITOR}>
+              <Monitor />
             </RutaProtegida>
           }
         />

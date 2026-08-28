@@ -17,3 +17,5 @@ export * from './reinicio.js';
 export * from './entregas.js';
 // Configuracion de plazos de ingreso de solicitudes (administrable desde la app).
 export * from './configuracion.js';
+// Monitor de presencia: quien esta conectado y en que pantalla (solo admin).
+export * from './presencia.js';

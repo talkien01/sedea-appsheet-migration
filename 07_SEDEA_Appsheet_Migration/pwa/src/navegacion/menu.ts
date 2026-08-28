@@ -15,7 +15,8 @@ import {
   IconoUsuarios,
   IconoCapas,
   IconoSello,
-  IconoCamara
+  IconoCamara,
+  IconoOjo
 } from '../componentes/Iconos';
 
 export type Grupo = 'Campo' | 'Gestión' | 'Ventanilla' | 'Administración';
@@ -143,6 +144,16 @@ export const DESTINOS: Destino[] = [
     roles: ['admin', 'editor_datos'],
     grupo: 'Administración',
     Icono: IconoCapas
+  },
+  // Monitor de actividad en vivo. SOLO admin: es supervision de personas.
+  {
+    id: 'monitor',
+    ruta: '/monitor',
+    etiqueta: 'Monitor',
+    testId: 'nav-monitor',
+    roles: ['admin'],
+    grupo: 'Administración',
+    Icono: IconoOjo
   }
 ];
 

@@ -38,6 +38,8 @@ import rutasEscaneoCurp from './rutas/escaneoCurp.js';
 import rutasAdmin from './rutas/admin.js';
 // Registro de entrega del apoyo por concepto (evidencia en campo).
 import rutasEntregas from './rutas/entregas.js';
+// Monitor de presencia en vivo: latido de la PWA + consulta solo para admin.
+import rutasPresencia from './rutas/presencia.js';
 
 async function construirApp() {
   const app = Fastify({
@@ -128,6 +130,8 @@ async function construirApp() {
   await app.register(rutasAdmin);
   // Entrega del apoyo: registro por concepto + paquete offline del evento.
   await app.register(rutasEntregas);
+  // Monitor de presencia en vivo (quien esta conectado y en que pantalla).
+  await app.register(rutasPresencia);
 
   return app;
 }

@@ -331,7 +331,10 @@ export default async function rutasAuditoria(app: FastifyInstance): Promise<void
     }
   );
 
-  // E14 - Bitacora (solo admin).
+  // E14 - Bitacora (solo admin). Es TAMBIEN el "que hizo" del monitor de
+  // actividad (/monitor): no se creo un endpoint aparte porque esta ruta ya
+  // expone auditoria_log en crudo, paginado y con el mismo candado de rol.
+  // Filtros opcionales: ?accion= y ?usuario_id=.
   app.get(
     '/api/auditoria/log',
     { preHandler: [app.autenticar, app.requiereRol('admin')] },
@@ -347,6 +350,12 @@ export default async function rutasAuditoria(app: FastifyInstance): Promise<void
         parametros.push(q.accion);
         condiciones.push(`a.accion = $${parametros.length}`);
       }
+      // Monitor de actividad: filtrar la bitacora por una persona concreta.
+      const usuarioId = Number(q.usuario_id);
+      if (q.usuario_id && Number.isInteger(usuarioId) && usuarioId > 0) {
+        parametros.push(usuarioId);
+        condiciones.push(`a.usuario_id = $${parametros.length}`);
+      }
       const where = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
 
       const totalFila = await consultarUna<{ total: number }>(
@@ -355,7 +364,8 @@ export default async function rutasAuditoria(app: FastifyInstance): Promise<void
       );
 
       const filas = await consultar(
-        `SELECT a.id, a.usuario_id, u.usuario AS usuario, a.accion, a.entidad, a.entidad_id,
+        `SELECT a.id, a.usuario_id, u.usuario AS usuario, u.nombre_completo,
+                a.accion, a.entidad, a.entidad_id,
                 a.detalle, a.ip::text AS ip, a.user_agent, a.creado_en
            FROM auditoria_log a
            LEFT JOIN usuarios u ON u.id = a.usuario_id

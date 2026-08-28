@@ -15,6 +15,7 @@ import { useEstadoRed } from '../sync/estadoRed';
 
 /** Techo duro del lote, igual que en el backend (D19-9). */
 const MAX_LOTE = 20;
+const TAMANO_PAGINA = 50;
 
 const OPCIONES_ESTADO = [
   { valor: 'todas', etiqueta: 'Todas' },
@@ -38,8 +39,11 @@ export default function Dictamen() {
   const navegar = useNavigate();
 
   const [filas, setFilas] = useState<FilaBandejaDictamen[]>([]);
+  const [total, setTotal] = useState(0);
+  const [pagina, setPagina] = useState(1);
   const [metricas, setMetricas] = useState<MetricasDictamen | null>(null);
   const [cargando, setCargando] = useState(false);
+  const [cargandoMas, setCargandoMas] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mensaje, setMensaje] = useState<string | null>(null);
 
@@ -48,24 +52,55 @@ export default function Dictamen() {
   const [seleccion, setSeleccion] = useState<number[]>([]);
   const [corriendo, setCorriendo] = useState(false);
 
+  const armarParametros = useCallback(
+    (paginaPedida: number) => {
+      const parametros = new URLSearchParams({
+        pagina: String(paginaPedida),
+        por_pagina: String(TAMANO_PAGINA),
+        estado
+      });
+      if (busqueda.trim().length >= 2) parametros.set('q', busqueda.trim());
+      return parametros;
+    },
+    [busqueda, estado]
+  );
+
+  // Nueva búsqueda/filtro: vuelve a la página 1 y reemplaza los resultados.
   const cargar = useCallback(async () => {
     setCargando(true);
     setError(null);
     try {
-      const parametros = new URLSearchParams({ por_pagina: '50', estado });
-      if (busqueda.trim().length >= 2) parametros.set('q', busqueda.trim());
       const [bandeja, tarjetas] = await Promise.all([
-        api.dictamenBandeja(parametros),
+        api.dictamenBandeja(armarParametros(1)),
         api.dictamenMetricas()
       ]);
       setFilas(bandeja.filas);
+      setTotal(bandeja.total);
+      setPagina(1);
       setMetricas(tarjetas);
     } catch {
       setError('No se pudo cargar la bandeja de dictamen.');
     } finally {
       setCargando(false);
     }
-  }, [busqueda, estado]);
+  }, [armarParametros]);
+
+  // "Cargar más": trae la siguiente página y la agrega al final.
+  const cargarMas = useCallback(async () => {
+    setCargandoMas(true);
+    setError(null);
+    try {
+      const siguiente = pagina + 1;
+      const bandeja = await api.dictamenBandeja(armarParametros(siguiente));
+      setFilas((previas) => [...previas, ...bandeja.filas]);
+      setTotal(bandeja.total);
+      setPagina(siguiente);
+    } catch {
+      setError('No se pudieron cargar más solicitudes.');
+    } finally {
+      setCargandoMas(false);
+    }
+  }, [armarParametros, pagina]);
 
   useEffect(() => {
     if (!enLinea) return;
@@ -193,6 +228,12 @@ export default function Dictamen() {
           </p>
         )}
 
+        {filas.length > 0 && (
+          <p className="dato" data-testid="contador-dictamen">
+            Mostrando {filas.length} de {total}
+          </p>
+        )}
+
         {cargando && filas.length === 0 ? (
           <p className="vacio">Cargando...</p>
         ) : filas.length === 0 ? (
@@ -281,6 +322,18 @@ export default function Dictamen() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {!cargando && filas.length > 0 && filas.length < total && (
+          <button
+            type="button"
+            className="boton secundario"
+            data-testid="btn-cargar-mas-dictamen"
+            onClick={() => void cargarMas()}
+            disabled={cargandoMas}
+          >
+            {cargandoMas ? 'Cargando…' : `Cargar más (${total - filas.length} restantes)`}
+          </button>
         )}
       </div>
     </div>

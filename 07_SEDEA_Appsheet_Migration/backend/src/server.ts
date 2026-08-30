@@ -146,7 +146,7 @@ async function main(): Promise<void> {
 
   const cerrar = async (senal: string) => {
     app.log.info(`Senal ${senal} recibida, cerrando...`);
-    await app.close().catch(() => undefined);
+    await app.close();
     await pool.end().catch(() => undefined);
     process.exit(0);
   };

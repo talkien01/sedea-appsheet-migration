@@ -7,3 +7,12 @@
 @import './catalogos.css';
 @import './campo-entrega.css';
 @import './impresion.css';
+
+/* Selectores de paginacion: son controles de cuatro opciones, por lo que no
+   deben heredar el ancho completo de los campos de captura. Se limita solo a
+   estos dos controles para no alterar filtros ni formularios existentes. */
+.campo select[data-testid="select-por-pagina"],
+.campo select[data-testid="select-solicitudes-por-pagina"] {
+  width: 180px;
+  max-width: 100%;
+}

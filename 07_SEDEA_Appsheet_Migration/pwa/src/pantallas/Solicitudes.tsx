@@ -6,7 +6,8 @@ import type { CatalogosVentanilla, FilaSolicitud } from '@sedea/shared';
 import { apiSolicitudes } from '../api/solicitudes';
 import { useEstadoRed } from '../sync/estadoRed';
 
-const TAMANO_PAGINA = 50;
+const OPCIONES_POR_PAGINA = [25, 50, 100, 200] as const;
+const POR_PAGINA_PREDETERMINADO = 50;
 
 export default function Solicitudes() {
   const enLinea = useEstadoRed();
@@ -14,8 +15,8 @@ export default function Solicitudes() {
   const [filas, setFilas] = useState<FilaSolicitud[]>([]);
   const [total, setTotal] = useState(0);
   const [pagina, setPagina] = useState(1);
+  const [porPagina, setPorPagina] = useState(POR_PAGINA_PREDETERMINADO);
   const [cargando, setCargando] = useState(false);
-  const [cargandoMas, setCargandoMas] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [busqueda, setBusqueda] = useState('');
@@ -39,7 +40,7 @@ export default function Solicitudes() {
     (paginaPedida: number) => {
       const parametros = new URLSearchParams({
         page: String(paginaPedida),
-        page_size: String(TAMANO_PAGINA)
+        page_size: String(porPagina)
       });
       if (busqueda.trim()) parametros.set('q', busqueda.trim());
       if (componenteId) parametros.set('componente_id', componenteId);
@@ -48,49 +49,51 @@ export default function Solicitudes() {
       if (hasta) parametros.set('hasta', `${hasta}T23:59:59Z`);
       return parametros;
     },
-    [busqueda, componenteId, municipioId, desde, hasta]
+    [busqueda, componenteId, municipioId, desde, hasta, porPagina]
   );
 
-  // Nueva búsqueda: siempre vuelve a la página 1 y reemplaza los resultados.
-  const buscar = useCallback(async () => {
-    setCargando(true);
-    setError(null);
-    try {
-      const pagina = await apiSolicitudes.listar(armarParametros(1));
-      setFilas(pagina.data);
-      setTotal(pagina.total);
-      setPagina(1);
-    } catch {
-      setError('No se pudieron cargar las solicitudes.');
-    } finally {
-      setCargando(false);
-    }
-  }, [armarParametros]);
+  // Paginacion real desde servidor: cada pagina reemplaza el resultado visible.
+  // No se acumulan filas en memoria y el backend conserva el alcance Regional.
+  const cargarPagina = useCallback(
+    async (paginaPedida: number) => {
+      setCargando(true);
+      setError(null);
+      try {
+        const resultado = await apiSolicitudes.listar(armarParametros(paginaPedida));
+        setFilas(resultado.data);
+        setTotal(resultado.total);
+        setPagina(resultado.page);
+      } catch {
+        setError('No se pudieron cargar las solicitudes.');
+      } finally {
+        setCargando(false);
+      }
+    },
+    [armarParametros]
+  );
 
-  // "Cargar más": pide la siguiente página y la agrega al final, sin perder
-  // lo que ya se ve (los filtros no cambiaron, solo se pide más).
-  const cargarMas = useCallback(async () => {
-    setCargandoMas(true);
-    setError(null);
-    try {
-      const siguiente = pagina + 1;
-      const pagina2 = await apiSolicitudes.listar(armarParametros(siguiente));
-      setFilas((previas) => [...previas, ...pagina2.data]);
-      setTotal(pagina2.total);
-      setPagina(siguiente);
-    } catch {
-      setError('No se pudieron cargar más solicitudes.');
-    } finally {
-      setCargandoMas(false);
-    }
-  }, [armarParametros, pagina]);
-
-  // Debounce de 300 ms para no golpear la API en cada tecla.
+  // Los filtros y el tamano de pagina siempre reinician la consulta en pagina 1.
+  // El debounce de 300 ms evita golpear la API en cada tecla del buscador.
   useEffect(() => {
     if (!enLinea) return;
-    const temporizador = setTimeout(() => void buscar(), 300);
+    setPagina(1);
+    const temporizador = setTimeout(() => void cargarPagina(1), 300);
     return () => clearTimeout(temporizador);
-  }, [buscar, enLinea]);
+  }, [cargarPagina, enLinea]);
+
+  const totalPaginas = total === 0 ? 0 : Math.ceil(total / porPagina);
+  const primerRegistro = total === 0 ? 0 : (pagina - 1) * porPagina + 1;
+  const ultimoRegistro = total === 0 ? 0 : Math.min((pagina - 1) * porPagina + filas.length, total);
+
+  const irPaginaAnterior = () => {
+    if (pagina <= 1 || cargando) return;
+    void cargarPagina(pagina - 1);
+  };
+
+  const irPaginaSiguiente = () => {
+    if (pagina >= totalPaginas || cargando) return;
+    void cargarPagina(pagina + 1);
+  };
 
   if (!enLinea) return <p className="vacio">Esta sección requiere conexión a internet.</p>;
 
@@ -183,7 +186,30 @@ export default function Solicitudes() {
       </div>
 
       <div className="tarjeta">
-        <h2>Recibidas ({filas.length} de {total})</h2>
+        <h2>Recibidas ({total})</h2>
+
+        <div className="rejilla" style={{ alignItems: 'end' }}>
+          <div className="campo">
+            <label htmlFor="solicitudes-por-pagina">Mostrar por página</label>
+            <select
+              id="solicitudes-por-pagina"
+              data-testid="select-solicitudes-por-pagina"
+              value={porPagina}
+              onChange={(e) => setPorPagina(Number(e.target.value))}
+            >
+              {OPCIONES_POR_PAGINA.map((opcion) => (
+                <option key={opcion} value={opcion}>
+                  {opcion}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <p className="dato" data-testid="resumen-paginacion-solicitudes">
+            Mostrando {primerRegistro}–{ultimoRegistro} de {total} solicitudes filtradas.
+          </p>
+        </div>
+
         {error && (
           <div className="mensaje error" role="alert">
             {error}
@@ -191,6 +217,32 @@ export default function Solicitudes() {
         )}
         {cargando && <p className="vacio">Cargando…</p>}
         {!cargando && filas.length === 0 && <p className="vacio">Sin resultados</p>}
+
+        {!cargando && total > 0 && (
+          <div className="acciones" style={{ marginBottom: '12px' }}>
+            <button
+              type="button"
+              className="secundario"
+              data-testid="btn-solicitudes-anterior"
+              disabled={pagina <= 1}
+              onClick={irPaginaAnterior}
+            >
+              ‹ Anterior
+            </button>
+            <span className="dato" data-testid="pagina-solicitudes-actual">
+              Página {pagina} de {totalPaginas}
+            </span>
+            <button
+              type="button"
+              className="secundario"
+              data-testid="btn-solicitudes-siguiente"
+              disabled={pagina >= totalPaginas}
+              onClick={irPaginaSiguiente}
+            >
+              Siguiente ›
+            </button>
+          </div>
+        )}
 
         {!cargando && filas.length > 0 && (
           <div className="tabla-contenedor">
@@ -231,16 +283,28 @@ export default function Solicitudes() {
           </div>
         )}
 
-        {!cargando && filas.length > 0 && filas.length < total && (
-          <button
-            type="button"
-            className="boton secundario"
-            data-testid="btn-cargar-mas"
-            onClick={() => void cargarMas()}
-            disabled={cargandoMas}
-          >
-            {cargandoMas ? 'Cargando…' : `Cargar más (${total - filas.length} restantes)`}
-          </button>
+        {!cargando && totalPaginas > 1 && (
+          <div className="acciones" style={{ marginTop: '12px' }}>
+            <button
+              type="button"
+              className="secundario"
+              disabled={pagina <= 1}
+              onClick={irPaginaAnterior}
+            >
+              ‹ Anterior
+            </button>
+            <span className="dato">
+              Página {pagina} de {totalPaginas}
+            </span>
+            <button
+              type="button"
+              className="secundario"
+              disabled={pagina >= totalPaginas}
+              onClick={irPaginaSiguiente}
+            >
+              Siguiente ›
+            </button>
+          </div>
         )}
       </div>
     </>

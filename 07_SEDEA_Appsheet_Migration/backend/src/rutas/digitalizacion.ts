@@ -25,10 +25,6 @@ function usuarioActual(peticion: FastifyRequest) {
   return peticion.usuario;
 }
 
-/**
- * La autoridad territorial es el municipio del predio (solicitudes.ubi_municipio_id).
- * Un usuario con Regional asignada nunca puede forzar otra Regional desde el cliente.
- */
 function regionalPermitida(
   peticion: FastifyRequest,
   regionalSolicitada: number | null
@@ -95,12 +91,8 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
       return `$${valores.length}`;
     };
 
-    if (regionalId !== null) {
-      condiciones.push(`m.regional_id = ${agregar(regionalId)}`);
-    }
-    if (municipioId !== null) {
-      condiciones.push(`s.ubi_municipio_id = ${agregar(municipioId)}`);
-    }
+    if (regionalId !== null) condiciones.push(`m.regional_id = ${agregar(regionalId)}`);
+    if (municipioId !== null) condiciones.push(`s.ubi_municipio_id = ${agregar(municipioId)}`);
     if (busqueda) {
       const p = agregar(`%${busqueda}%`);
       condiciones.push(`(
@@ -112,16 +104,21 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
 
     const existe = (valorEstado: string) =>
       `EXISTS (
-        SELECT 1 FROM digitalizacion_lote_solicitudes dls_e
-        WHERE dls_e.solicitud_id = s.id AND dls_e.estado = '${valorEstado}'
+        SELECT 1
+          FROM digitalizacion_lote_solicitudes dls_e
+         WHERE dls_e.solicitud_id = s.id
+           AND dls_e.estado = '${valorEstado}'
       )`;
 
+    // "Pendiente" significa pendiente de digitalizar; puede estar ya incluido
+    // en un lote o incluso tener caratula generada.
     if (estado === 'pendiente') {
       condiciones.push(`NOT ${existe('digitalizado')}`);
     } else if (estado === 'en_lote') {
       condiciones.push(`EXISTS (
-        SELECT 1 FROM digitalizacion_lote_solicitudes dls_e
-        WHERE dls_e.solicitud_id = s.id
+        SELECT 1
+          FROM digitalizacion_lote_solicitudes dls_e
+         WHERE dls_e.solicitud_id = s.id
       )`);
     } else if (estado !== 'todos') {
       condiciones.push(existe(estado));
@@ -138,7 +135,6 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
            s.id,
            s.folio,
            s.nombre_solicitante,
-           s.curp,
            s.ubi_municipio_id,
            m.nombre AS municipio,
            m.regional_id,
@@ -155,7 +151,7 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
          LEFT JOIN componentes c ON c.id = s.componente_id
          LEFT JOIN LATERAL (
            SELECT
-             TRUE AS en_lote,
+             (COUNT(*) > 0) AS en_lote,
              BOOL_OR(dls.estado = 'caratula_generada') AS caratula_generada,
              BOOL_OR(dls.estado = 'digitalizado') AS digitalizado,
              BOOL_OR(dls.estado = 'incidencia') AS incidencia
@@ -204,7 +200,13 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
     if (!Array.isArray(body.solicitud_ids)) {
       throw error400('solicitudes_requeridas', 'Selecciona al menos una solicitud para el lote.');
     }
-    const ids = [...new Set(body.solicitud_ids.map(enteroPositivo).filter((id): id is number => id !== null))];
+    const ids = [
+      ...new Set(
+        body.solicitud_ids
+          .map((valor) => enteroPositivo(valor))
+          .filter((id): id is number => id !== null)
+      )
+    ];
     if (ids.length === 0) {
       throw error400('solicitudes_requeridas', 'Selecciona al menos una solicitud para el lote.');
     }
@@ -242,9 +244,10 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
       );
     }
 
-    const criterios = typeof body.criterios === 'object' && body.criterios !== null
-      ? body.criterios
-      : {};
+    const criterios =
+      typeof body.criterios === 'object' && body.criterios !== null && !Array.isArray(body.criterios)
+        ? body.criterios
+        : {};
 
     const lote = await enTransaccion(async (cliente) => {
       const secuencia = await cliente.query<{ numero: string }>(
@@ -307,23 +310,18 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
     return respuesta.status(201).send(lote);
   });
 
+  // Lista de lotes. Para usuarios regionales, conteos y visibilidad se recortan
+  // a solicitudes cuyo predio pertenece a su propia Regional.
   app.get('/api/digitalizacion/lotes', protegida, async (peticion, respuesta) => {
-    const usuario = usuarioActual(peticion);
     const query = (peticion.query ?? {}) as Record<string, unknown>;
     const regionalSolicitada = enteroPositivo(query.regional_id);
     const regionalId = regionalPermitida(peticion, regionalSolicitada);
 
     const valores: unknown[] = [];
-    const condiciones: string[] = ['dl.estado <> \'cancelado\''];
+    const condiciones: string[] = ["dl.estado <> 'cancelado'"];
     if (regionalId !== null) {
       valores.push(regionalId);
-      condiciones.push(`EXISTS (
-        SELECT 1
-          FROM digitalizacion_lote_solicitudes dls_r
-          JOIN solicitudes s_r ON s_r.id = dls_r.solicitud_id
-          JOIN municipios m_r ON m_r.id = s_r.ubi_municipio_id
-         WHERE dls_r.lote_id = dl.id AND m_r.regional_id = $${valores.length}
-      )`);
+      condiciones.push(`m.regional_id = $${valores.length}`);
     }
 
     const { rows } = await pool.query(
@@ -344,6 +342,8 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
        FROM digitalizacion_lotes dl
        JOIN usuarios u ON u.id = dl.creado_por
        JOIN digitalizacion_lote_solicitudes dls ON dls.lote_id = dl.id
+       JOIN solicitudes s ON s.id = dls.solicitud_id
+       JOIN municipios m ON m.id = s.ubi_municipio_id
        WHERE ${condiciones.join(' AND ')}
        GROUP BY dl.id, u.nombre
        ORDER BY dl.creado_en DESC
@@ -351,7 +351,7 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
       valores
     );
 
-    return respuesta.status(200).send({ items: rows, usuario_id: usuario.id });
+    return respuesta.status(200).send({ items: rows });
   });
 
   app.get('/api/digitalizacion/lotes/:id', protegida, async (peticion, respuesta) => {
@@ -362,9 +362,7 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
     const regionalId = regionalForzada(usuario);
 
     const valores: unknown[] = [loteId];
-    const territorial = regionalId !== null
-      ? `AND m.regional_id = $2`
-      : '';
+    const territorial = regionalId !== null ? 'AND m.regional_id = $2' : '';
     if (regionalId !== null) valores.push(regionalId);
 
     const { rows } = await pool.query(
@@ -378,7 +376,6 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
          s.id AS solicitud_id,
          s.folio,
          s.nombre_solicitante,
-         s.curp,
          m.id AS municipio_id,
          m.nombre AS municipio,
          m.regional_id,
@@ -410,7 +407,6 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
         solicitud_id: fila.solicitud_id,
         folio: fila.folio,
         nombre_solicitante: fila.nombre_solicitante,
-        curp: fila.curp,
         municipio_id: fila.municipio_id,
         municipio: fila.municipio,
         regional_id: fila.regional_id,

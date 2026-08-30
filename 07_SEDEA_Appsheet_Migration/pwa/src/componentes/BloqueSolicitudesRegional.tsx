@@ -20,6 +20,7 @@ export default function BloqueSolicitudesRegional({ regional, regionalNombre, ve
     let vigente = true;
     setCargando(true);
     setError(false);
+    setDatos(null);
 
     void obtenerResumenSolicitudes(regional || null)
       .then((respuesta) => {

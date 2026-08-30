@@ -118,6 +118,16 @@ export const DESTINOS: Destino[] = [
     grupo: 'Ventanilla',
     Icono: IconoDocumento
   },
+  // Digitalizacion V1: preparación de lotes y carátulas QR.
+  {
+    id: 'digitalizacion',
+    ruta: '/digitalizacion',
+    etiqueta: 'Digitalización',
+    testId: 'nav-digitalizacion',
+    roles: ['ventanilla', 'capturista', 'editor_datos', 'admin'],
+    grupo: 'Ventanilla',
+    Icono: IconoDocumento
+  },
   // Build 13: cola de pre-dictaminacion con IA y dictamen humano.
   {
     id: 'dictamen',

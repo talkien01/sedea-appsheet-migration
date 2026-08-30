@@ -6,6 +6,7 @@
 //   /correcciones*           -> editor_datos, admin
 //   /dashboard               -> admin, auditor, editor_datos
 //   /solicitudes*            -> ventanilla, admin (build 6, en linea)
+//   /digitalizacion          -> ventanilla, capturista, editor_datos, admin
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { puedeGestionarEntregas } from '@sedea/shared';
 import Cascaron from './componentes/Cascaron';
@@ -27,6 +28,7 @@ import Usuarios from './pantallas/Usuarios';
 import Solicitudes from './pantallas/Solicitudes';
 import NuevaSolicitud from './pantallas/NuevaSolicitud';
 import DetalleSolicitud from './pantallas/DetalleSolicitud';
+import Digitalizacion from './pantallas/Digitalizacion';
 import FolioEntrega from './componentes/FolioEntrega';
 import CambiarPassword from './pantallas/CambiarPassword';
 import SinPermiso from './pantallas/SinPermiso';
@@ -49,6 +51,8 @@ const USUARIOS = ['admin', 'editor_datos'];
 const MONITOR = ['admin'];
 // Modulo de ventanilla: rol nuevo `ventanilla` y admin (D34).
 const VENTANILLA = ['ventanilla', 'capturista', 'admin'];
+// Digitalizacion: operacion normal para ventanilla/captura/editor y admin.
+const DIGITALIZACION = ['ventanilla', 'capturista', 'editor_datos', 'admin'];
 // Build 13: pre-dictaminacion con IA. El rol `dictaminador` NO hereda
 // permisos de `ventanilla` (A19-12): entra a /dictamen y no a /solicitudes.
 const DICTAMEN = ['dictaminador', 'admin'];
@@ -280,6 +284,16 @@ export default function Rutas() {
           element={
             <RutaProtegida roles={VENTANILLA}>
               <FolioEntrega />
+            </RutaProtegida>
+          }
+        />
+
+        {/* Digitalizacion V1: preparación de lotes y carátulas QR. */}
+        <Route
+          path="/digitalizacion"
+          element={
+            <RutaProtegida roles={DIGITALIZACION}>
+              <Digitalizacion />
             </RutaProtegida>
           }
         />

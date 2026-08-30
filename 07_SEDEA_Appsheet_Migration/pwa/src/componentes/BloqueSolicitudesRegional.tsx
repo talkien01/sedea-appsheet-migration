@@ -45,7 +45,7 @@ export default function BloqueSolicitudesRegional({ regional, regionalNombre, ve
       <h2>Ingreso de solicitudes · {regionalNombre}</h2>
       <p className="dato">
         Corte operativo en tiempo real. La Regional se determina por el municipio del predio;
-        una captura excepcional en SEDEA Central conserva la Regional responsable.
+        una captura excepcional en SEDEA Central se contabiliza en la Regional responsable.
       </p>
 
       {cargando && !datos && <p className="vacio">Cargando solicitudes…</p>}

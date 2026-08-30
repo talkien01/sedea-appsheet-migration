@@ -136,6 +136,11 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
  * significa que el concepto ya tiene entrega con OTRO uuid (p. ej. otro
  * dispositivo se adelanto): no se resuelve reintentando, se deja en error
  * visible.
+ *
+ * Los errores transitorios (red/5xx) reciben hasta MAX_INTENTOS dentro del
+ * ciclo actual. Si los agotan, la entrega vuelve a `pendiente` con intentos=0
+ * para que el disparador automatico de 20 s pueda recuperarla despues. Los
+ * 403/404/409/422 quedan en `error` porque requieren intervencion humana.
  */
 async function enviarEntregas(resultado: ResultadoSync): Promise<void> {
   const pendientes = await entregasPendientes();
@@ -168,6 +173,7 @@ async function enviarEntregas(resultado: ResultadoSync): Promise<void> {
     let intentos = entrega.intentos ?? 0;
     let enviado = false;
     let ultimoError = '';
+    let errorPermanente = false;
 
     while (!enviado && intentos < MAX_INTENTOS) {
       try {
@@ -187,6 +193,7 @@ async function enviarEntregas(resultado: ResultadoSync): Promise<void> {
         ultimoError =
           error instanceof ErrorPeticion ? error.message : 'Error desconocido al sincronizar.';
         if (error instanceof ErrorPeticion && [403, 404, 409, 422].includes(error.estado)) {
+          errorPermanente = true;
           intentos = MAX_INTENTOS;
           break;
         }
@@ -197,10 +204,20 @@ async function enviarEntregas(resultado: ResultadoSync): Promise<void> {
     }
 
     if (!enviado) {
-      await marcarEstadoEntrega(entrega.uuid, 'error', {
-        intentos,
-        error_msg: ultimoError || 'No fue posible enviar la entrega al servidor.'
-      });
+      const mensaje = ultimoError || 'No fue posible enviar la entrega al servidor.';
+      if (errorPermanente) {
+        await marcarEstadoEntrega(entrega.uuid, 'error', {
+          intentos,
+          error_msg: mensaje
+        });
+      } else {
+        // No perder una entrega por una caida temporal: conserva foto + uuid
+        // y vuelve a quedar elegible para el siguiente ciclo automatico.
+        await marcarEstadoEntrega(entrega.uuid, 'pendiente', {
+          intentos: 0,
+          error_msg: `${mensaje} Se reintentara automaticamente.`
+        });
+      }
       resultado.fallidas++;
     }
     notificar();

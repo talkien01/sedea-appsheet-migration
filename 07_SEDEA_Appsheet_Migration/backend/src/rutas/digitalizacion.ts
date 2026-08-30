@@ -16,6 +16,13 @@ function enteroPositivo(valor: unknown): number | null {
   return Number.isInteger(numero) && numero > 0 ? numero : null;
 }
 
+function idOpcional(valor: unknown, campo: string): number | null {
+  if (valor === undefined || valor === null || valor === '') return null;
+  const id = enteroPositivo(valor);
+  if (id === null) throw error400('filtro_invalido', `${campo} debe ser un identificador válido.`);
+  return id;
+}
+
 function texto(valor: unknown): string {
   return valor === undefined || valor === null ? '' : String(valor).trim();
 }
@@ -25,10 +32,11 @@ function usuarioActual(peticion: FastifyRequest) {
   return peticion.usuario;
 }
 
-function regionalPermitida(
-  peticion: FastifyRequest,
-  regionalSolicitada: number | null
-): number | null {
+/**
+ * La autoridad territorial es el municipio del predio (solicitudes.ubi_municipio_id).
+ * Una Regional enviada por el frontend nunca amplía el alcance del usuario.
+ */
+function regionalPermitida(peticion: FastifyRequest, regionalSolicitada: number | null): number | null {
   const forzada = regionalForzada(usuarioActual(peticion));
   if (forzada !== null && regionalSolicitada !== null && regionalSolicitada !== forzada) {
     throw error403('fuera_de_alcance', 'La Regional solicitada está fuera de tu alcance.');
@@ -36,17 +44,20 @@ function regionalPermitida(
   return forzada ?? regionalSolicitada;
 }
 
-async function validarMunicipioEnRegional(
-  municipioId: number | null,
-  regionalId: number | null
-): Promise<void> {
-  if (municipioId === null || regionalId === null) return;
+async function validarMunicipio(municipioId: number | null, regionalId: number | null): Promise<void> {
+  if (municipioId === null) return;
+  const valores: unknown[] = [municipioId];
+  let condicionRegional = '';
+  if (regionalId !== null) {
+    valores.push(regionalId);
+    condicionRegional = ' AND regional_id = $2';
+  }
   const { rows } = await pool.query<{ uno: number }>(
-    'SELECT 1 AS uno FROM municipios WHERE id = $1 AND regional_id = $2',
-    [municipioId, regionalId]
+    `SELECT 1 AS uno FROM municipios WHERE id = $1${condicionRegional}`,
+    valores
   );
   if (rows.length === 0) {
-    throw error403('fuera_de_alcance', 'El municipio no pertenece a la Regional seleccionada.');
+    throw error403('fuera_de_alcance', 'El municipio no existe o está fuera de la Regional permitida.');
   }
 }
 
@@ -62,10 +73,10 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
   // el lote se crea siempre con ids explicitos enviados por el operador.
   app.get('/api/digitalizacion/solicitudes', protegida, async (peticion, respuesta) => {
     const query = (peticion.query ?? {}) as Record<string, unknown>;
-    const regionalSolicitada = enteroPositivo(query.regional_id);
-    const municipioId = enteroPositivo(query.municipio_id);
+    const regionalSolicitada = idOpcional(query.regional_id, 'regional_id');
+    const municipioId = idOpcional(query.municipio_id, 'municipio_id');
     const regionalId = regionalPermitida(peticion, regionalSolicitada);
-    await validarMunicipioEnRegional(municipioId, regionalId);
+    await validarMunicipio(municipioId, regionalId);
 
     const pagina = Math.max(1, enteroPositivo(query.pagina) ?? 1);
     const limite = Math.min(200, Math.max(1, enteroPositivo(query.limite) ?? 50));
@@ -110,14 +121,13 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
            AND dls_e.estado = '${valorEstado}'
       )`;
 
-    // "Pendiente" significa pendiente de digitalizar; puede estar ya incluido
-    // en un lote o incluso tener caratula generada.
+    // Pendiente = aun no digitalizado. Puede estar ya incluido en un lote o
+    // tener caratula generada sin dejar de ser pendiente de digitalizacion.
     if (estado === 'pendiente') {
       condiciones.push(`NOT ${existe('digitalizado')}`);
     } else if (estado === 'en_lote') {
       condiciones.push(`EXISTS (
-        SELECT 1
-          FROM digitalizacion_lote_solicitudes dls_e
+        SELECT 1 FROM digitalizacion_lote_solicitudes dls_e
          WHERE dls_e.solicitud_id = s.id
       )`);
     } else if (estado !== 'todos') {
@@ -125,7 +135,6 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
     }
 
     const where = condiciones.join(' AND ');
-    const valoresListado = [...valores, limite, offset];
     const limiteParam = `$${valores.length + 1}`;
     const offsetParam = `$${valores.length + 2}`;
 
@@ -161,7 +170,7 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
          WHERE ${where}
          ORDER BY s.recibida_en DESC, s.id DESC
          LIMIT ${limiteParam} OFFSET ${offsetParam}`,
-        valoresListado
+        [...valores, limite, offset]
       ),
       pool.query<{ total: string }>(
         `SELECT COUNT(*)::text AS total
@@ -196,10 +205,10 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
     if (nombre.length < 3 || nombre.length > 120) {
       throw error400('nombre_invalido', 'El nombre del lote debe tener entre 3 y 120 caracteres.');
     }
-
     if (!Array.isArray(body.solicitud_ids)) {
       throw error400('solicitudes_requeridas', 'Selecciona al menos una solicitud para el lote.');
     }
+
     const ids = [
       ...new Set(
         body.solicitud_ids
@@ -214,10 +223,10 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
       throw error400('lote_demasiado_grande', 'Un lote de preparación no puede exceder 2000 solicitudes.');
     }
 
-    const filtroRegionalSolicitado = enteroPositivo(body.filtro_regional_id);
-    const filtroMunicipioId = enteroPositivo(body.filtro_municipio_id);
+    const filtroRegionalSolicitado = idOpcional(body.filtro_regional_id, 'filtro_regional_id');
+    const filtroMunicipioId = idOpcional(body.filtro_municipio_id, 'filtro_municipio_id');
     const regionalId = regionalPermitida(peticion, filtroRegionalSolicitado);
-    await validarMunicipioEnRegional(filtroMunicipioId, regionalId);
+    await validarMunicipio(filtroMunicipioId, regionalId);
 
     const condiciones = ['s.id = ANY($1::bigint[])'];
     const valores: unknown[] = [ids];
@@ -268,14 +277,7 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
            criterios, creado_por
          ) VALUES ($1,$2,$3,$4,$5::jsonb,$6)
          RETURNING id::text, codigo, nombre, estado, creado_en::text`,
-        [
-          codigo,
-          nombre,
-          regionalId,
-          filtroMunicipioId,
-          JSON.stringify(criterios),
-          usuario.id
-        ]
+        [codigo, nombre, regionalId, filtroMunicipioId, JSON.stringify(criterios), usuario.id]
       );
       const fila = creado.rows[0];
 
@@ -310,11 +312,11 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
     return respuesta.status(201).send(lote);
   });
 
-  // Lista de lotes. Para usuarios regionales, conteos y visibilidad se recortan
-  // a solicitudes cuyo predio pertenece a su propia Regional.
+  // Lista de lotes. Para usuarios regionales, los conteos y la visibilidad se
+  // recortan a solicitudes cuyo predio pertenece a su propia Regional.
   app.get('/api/digitalizacion/lotes', protegida, async (peticion, respuesta) => {
     const query = (peticion.query ?? {}) as Record<string, unknown>;
-    const regionalSolicitada = enteroPositivo(query.regional_id);
+    const regionalSolicitada = idOpcional(query.regional_id, 'regional_id');
     const regionalId = regionalPermitida(peticion, regionalSolicitada);
 
     const valores: unknown[] = [];
@@ -334,7 +336,7 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
          dl.estado,
          dl.creado_en,
          dl.creado_por,
-         u.nombre AS creado_por_nombre,
+         u.nombre_completo AS creado_por_nombre,
          COUNT(dls.solicitud_id)::int AS solicitudes,
          COUNT(*) FILTER (WHERE dls.estado = 'caratula_generada')::int AS caratulas_generadas,
          COUNT(*) FILTER (WHERE dls.estado = 'digitalizado')::int AS digitalizados,
@@ -345,7 +347,7 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
        JOIN solicitudes s ON s.id = dls.solicitud_id
        JOIN municipios m ON m.id = s.ubi_municipio_id
        WHERE ${condiciones.join(' AND ')}
-       GROUP BY dl.id, u.nombre
+       GROUP BY dl.id, u.nombre_completo
        ORDER BY dl.creado_en DESC
        LIMIT 200`,
       valores
@@ -356,8 +358,7 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
 
   app.get('/api/digitalizacion/lotes/:id', protegida, async (peticion, respuesta) => {
     const usuario = usuarioActual(peticion);
-    const params = peticion.params as { id?: string };
-    const loteId = enteroPositivo(params.id);
+    const loteId = enteroPositivo((peticion.params as { id?: string }).id);
     if (loteId === null) throw error404('Lote no encontrado.');
     const regionalId = regionalForzada(usuario);
 

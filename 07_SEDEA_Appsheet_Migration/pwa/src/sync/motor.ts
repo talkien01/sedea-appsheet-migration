@@ -146,8 +146,16 @@ async function enviarEntregas(resultado: ResultadoSync): Promise<void> {
   const pendientes = await entregasPendientes();
 
   for (const entrega of pendientes) {
+    // Un error permanente ya clasificado no se vuelve a intentar en cada
+    // ciclo automatico. Los fallos transitorios nunca llegan aqui con 5:
+    // al agotarlos se reencolan como `pendiente` con intentos=0.
+    if (entrega.estado === 'error' && (entrega.intentos ?? 0) >= MAX_INTENTOS) {
+      continue;
+    }
+
     if (!entrega.foto) {
       await marcarEstadoEntrega(entrega.uuid, 'error', {
+        intentos: MAX_INTENTOS,
         error_msg: 'La fotografia local ya no esta disponible.'
       });
       resultado.fallidas++;

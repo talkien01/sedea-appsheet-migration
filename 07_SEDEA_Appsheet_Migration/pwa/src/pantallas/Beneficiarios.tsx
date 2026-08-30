@@ -1,4 +1,4 @@
-// Listado del padron con buscador y selects encadenados. 100% offline:
+// Listado del padron con buscador, selects encadenados y paginacion local. 100% offline:
 // todo se resuelve contra IndexedDB.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Beneficiario } from '@sedea/shared';
@@ -9,6 +9,9 @@ import { URL_API } from '../api/cliente';
 import type { EntradaCatalogoLocal } from '../db/indexeddb';
 
 type Estado = 'todos' | 'pendientes' | 'capturados';
+
+const OPCIONES_POR_PAGINA = [25, 50, 100, 200] as const;
+const POR_PAGINA_PREDETERMINADO = 50;
 
 /** Dispara la descarga de un blob ya obtenido, sin dejar el objeto URL colgando. */
 function descargarBlob(blob: Blob, nombre: string): void {
@@ -40,6 +43,11 @@ export default function Beneficiarios() {
   const [estado, setEstado] = useState<Estado>('todos');
   const [filas, setFilas] = useState<Array<Beneficiario & { capturado: boolean }>>([]);
   const [totalLocal, setTotalLocal] = useState(0);
+
+  // Paginacion estrictamente local: primero se aplican todos los filtros contra
+  // IndexedDB y despues se corta el resultado para pintar solo la pagina actual.
+  const [pagina, setPagina] = useState(1);
+  const [porPagina, setPorPagina] = useState(POR_PAGINA_PREDETERMINADO);
 
   // Carga inicial de catalogos locales.
   useEffect(() => {
@@ -93,6 +101,28 @@ export default function Beneficiarios() {
     void recargar();
   }, [recargar]);
 
+  // Cualquier cambio de criterio vuelve a la primera pagina para no dejar al
+  // usuario parado en una pagina que ya no exista despues del nuevo filtro.
+  useEffect(() => {
+    setPagina(1);
+  }, [texto, regionalId, municipioClave, coloniaClave, seccionValor, estado, porPagina]);
+
+  const totalPaginas = Math.max(1, Math.ceil(filas.length / porPagina));
+
+  // Si una recarga reduce el universo mientras estamos en una pagina alta,
+  // se ajusta al ultimo numero valido sin perder los filtros.
+  useEffect(() => {
+    setPagina((actual) => Math.min(actual, totalPaginas));
+  }, [totalPaginas]);
+
+  const filasPagina = useMemo(() => {
+    const inicio = (pagina - 1) * porPagina;
+    return filas.slice(inicio, inicio + porPagina);
+  }, [filas, pagina, porPagina]);
+
+  const primerRegistro = filas.length === 0 ? 0 : (pagina - 1) * porPagina + 1;
+  const ultimoRegistro = filas.length === 0 ? 0 : Math.min(pagina * porPagina, filas.length);
+
   // ---------------------------------------------------------------------
   // Exportar / imprimir el filtro ACTUAL.
   //
@@ -101,6 +131,8 @@ export default function Beneficiarios() {
   // Se le mandan los mismos filtros que estan en pantalla; el chip
   // pendientes/capturados NO viaja porque "capturado" es un estado local de
   // este dispositivo y el servidor no lo conoce (se avisa en pantalla).
+  // La paginacion tampoco viaja: exportar e imprimir siguen usando TODO el
+  // resultado filtrado, no solamente la pagina visible.
   // ---------------------------------------------------------------------
   const [trabajando, setTrabajando] = useState<null | 'csv' | 'pdf'>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -339,7 +371,77 @@ export default function Beneficiarios() {
       </div>
 
       <div className="tarjeta">
-        <ListaBeneficiarios beneficiarios={filas} />
+        <div className="rejilla" style={{ alignItems: 'end' }}>
+          <div className="campo">
+            <label htmlFor="por-pagina">Mostrar por página</label>
+            <select
+              id="por-pagina"
+              data-testid="select-por-pagina"
+              value={porPagina}
+              onChange={(e) => setPorPagina(Number(e.target.value))}
+            >
+              {OPCIONES_POR_PAGINA.map((opcion) => (
+                <option key={opcion} value={opcion}>
+                  {opcion}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <p className="dato" data-testid="resumen-paginacion">
+            Mostrando {primerRegistro}–{ultimoRegistro} de {filas.length} beneficiarios filtrados.
+          </p>
+        </div>
+
+        <div className="acciones" style={{ marginBottom: '12px' }}>
+          <button
+            type="button"
+            className="secundario"
+            data-testid="btn-pagina-anterior"
+            disabled={pagina <= 1 || filas.length === 0}
+            onClick={() => setPagina((actual) => Math.max(1, actual - 1))}
+          >
+            ‹ Anterior
+          </button>
+          <span className="dato" data-testid="pagina-actual">
+            Página {filas.length === 0 ? 0 : pagina} de {filas.length === 0 ? 0 : totalPaginas}
+          </span>
+          <button
+            type="button"
+            className="secundario"
+            data-testid="btn-pagina-siguiente"
+            disabled={pagina >= totalPaginas || filas.length === 0}
+            onClick={() => setPagina((actual) => Math.min(totalPaginas, actual + 1))}
+          >
+            Siguiente ›
+          </button>
+        </div>
+
+        <ListaBeneficiarios beneficiarios={filasPagina} />
+
+        {filas.length > porPagina && (
+          <div className="acciones" style={{ marginTop: '12px' }}>
+            <button
+              type="button"
+              className="secundario"
+              disabled={pagina <= 1}
+              onClick={() => setPagina((actual) => Math.max(1, actual - 1))}
+            >
+              ‹ Anterior
+            </button>
+            <span className="dato">
+              Página {pagina} de {totalPaginas}
+            </span>
+            <button
+              type="button"
+              className="secundario"
+              disabled={pagina >= totalPaginas}
+              onClick={() => setPagina((actual) => Math.min(totalPaginas, actual + 1))}
+            >
+              Siguiente ›
+            </button>
+          </div>
+        )}
       </div>
     </>
   );

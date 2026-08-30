@@ -7,6 +7,7 @@
 //   /dashboard               -> admin, auditor, editor_datos
 //   /solicitudes*            -> ventanilla, admin (build 6, en linea)
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { puedeGestionarEntregas } from '@sedea/shared';
 import Cascaron from './componentes/Cascaron';
 import RutaProtegida from './componentes/RutaProtegida';
 import Login from './pantallas/Login';
@@ -52,7 +53,8 @@ const VENTANILLA = ['ventanilla', 'capturista', 'admin'];
 // permisos de `ventanilla` (A19-12): entra a /dictamen y no a /solicitudes.
 const DICTAMEN = ['dictaminador', 'admin'];
 // Registro de entrega del apoyo: quien va al evento a entregar fisicamente.
-// Debe coincidir con ROLES_ENTREGA del backend.
+// Debe coincidir con ROLES_ENTREGA del backend y ademas cumplir la capacidad
+// multi-rol `puedeGestionarEntregas`.
 const ENTREGAS = ['ventanilla', 'capturista', 'admin'];
 
 export default function Rutas() {
@@ -75,7 +77,7 @@ export default function Rutas() {
       <Route
         path="/entregas/registrar"
         element={
-          <RutaProtegida roles={ENTREGAS}>
+          <RutaProtegida roles={ENTREGAS} validadorRol={puedeGestionarEntregas}>
             <RegistrarEntrega />
           </RutaProtegida>
         }
@@ -95,7 +97,7 @@ export default function Rutas() {
         <Route
           path="/entregas/preparar"
           element={
-            <RutaProtegida roles={ENTREGAS}>
+            <RutaProtegida roles={ENTREGAS} validadorRol={puedeGestionarEntregas}>
               <PrepararEntrega />
             </RutaProtegida>
           }

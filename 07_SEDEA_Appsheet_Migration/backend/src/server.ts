@@ -29,6 +29,7 @@ import rutasAlcance from './rutas/alcance.js';
 // Digitalizacion V1: lotes de preparacion, caratulas y expediente electronico por fases.
 import rutasDigitalizacion from './rutas/digitalizacion.js';
 import rutasDigitalizacionCaratulas from './rutas/digitalizacionCaratulas.js';
+import rutasDigitalizacionSoporte from './rutas/digitalizacionSoporte.js';
 // Build 10: administracion de catalogos jerarquicos.
 import rutasCatalogosAdmin from './rutas/catalogosAdmin.js';
 import rutasConfiguracion from './rutas/configuracion.js';
@@ -119,9 +120,10 @@ async function construirApp() {
   // Build 6: ventanilla (E40-E46) y alcance de usuarios (E47/E48).
   await app.register(rutasSolicitudes);
   await app.register(rutasAlcance);
-  // Digitalizacion V1 / Fase 1 y 2: lotes de preparacion + caratulas QR.
+  // Digitalizacion V1 / Fases 1-3: lotes, caratulas y soporte PWA.
   await app.register(rutasDigitalizacion);
   await app.register(rutasDigitalizacionCaratulas);
+  await app.register(rutasDigitalizacionSoporte);
   // Build 10: administracion de catalogos (E49-E54).
   await app.register(rutasCatalogosAdmin, { prefix: '/api/admin/catalogos' });
   // Build 12: configuracion de plazos.

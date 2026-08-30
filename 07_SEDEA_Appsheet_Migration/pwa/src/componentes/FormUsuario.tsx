@@ -38,7 +38,7 @@ interface Props {
     /** Solo en alta: como se decide la contrasena inicial (D27). */
     modo_password?: ModoPassword;
     password_manual?: string;
-    /** Solo para rol ventanilla: se persiste con E48 tras guardar. */
+    /** Solo para ventanilla pura: se persiste con E48 tras guardar. */
     alcance?: ValoresAlcance;
   }) => void;
   alCancelar: () => void;
@@ -105,7 +105,7 @@ export default function FormUsuario({
   const [modoPassword, setModoPassword] = useState<ModoPassword>('automatica');
   const [passwordManual, setPasswordManual] = useState('');
 
-  // Alcance de ventanilla (12.8.4): vacio = todos.
+  // Alcance de ventanilla pura (12.8.4): vacio = todos.
   const [alcance, setAlcance] = useState<ValoresAlcance>(alcanceInicial ?? ALCANCE_TODOS);
 
   const [errorUsuario, setErrorUsuario] = useState<string | null>(null);
@@ -128,6 +128,11 @@ export default function FormUsuario({
   // "SEDEA Central" representa un perfil estatal/central sin Regional. Para
   // Directores Regionales se debe elegir siempre su Dirección Regional.
   const permiteCentral = aplicaCentral(roles);
+  // El backend/UI historicos de E47/E48 administran alcance granular solo para
+  // una ventanilla pura. Un multirol auditor+ventanilla opera temporalmente con
+  // todos los componentes de SU Regional; no mostramos un control que no se
+  // persiste para evitar una falsa sensacion de restriccion.
+  const usaAlcanceGranular = roles.length === 1 && tieneRol('ventanilla');
 
   const toggleRol = (rolItem: string) => {
     const siguiente = roles.includes(rolItem)
@@ -208,8 +213,7 @@ export default function FormUsuario({
       // "Resetear contraseña" (campo_no_editable).
       ...(esAlta ? { modo_password: modoPassword } : {}),
       ...(esAlta && modoPassword === 'manual' ? { password_manual: passwordManual } : {}),
-      // El alcance solo viaja para el rol ventanilla; el resto no lo tiene.
-      ...(tieneRol('ventanilla') ? { alcance } : {})
+      ...(usaAlcanceGranular ? { alcance } : {})
     });
   };
 
@@ -327,8 +331,7 @@ export default function FormUsuario({
           )}
         </div>
 
-        {/* Alcance: solo para el rol Ventanilla (12.8.4). */}
-        {tieneRol('ventanilla') && (
+        {usaAlcanceGranular ? (
           <BloqueAlcance
             municipios={municipios}
             regionales={regionales}
@@ -336,6 +339,15 @@ export default function FormUsuario({
             valores={alcance}
             cambiar={setAlcance}
           />
+        ) : (
+          tieneRol('ventanilla') &&
+          tieneRol('auditor') && (
+            <p className="dato">
+              Modo temporal Director + Ventanilla: podrá capturar todos los componentes de su
+              Dirección Regional. Al terminar el operativo, retira el rol Ventanilla para volver a
+              supervisión de solo lectura.
+            </p>
+          )
         )}
 
         {/* Modo de contrasena: solo en el alta (11.6.2). */}

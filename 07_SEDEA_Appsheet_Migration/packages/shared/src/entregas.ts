@@ -14,6 +14,23 @@ import { esquemaUuidV4 } from './schemas.js';
  */
 export const ROLES_ENTREGA = ['ventanilla', 'capturista', 'admin'] as const;
 
+/**
+ * Capacidad efectiva de entrega para un rol simple o multi-rol.
+ *
+ * Regla institucional para Directores Regionales: `auditor+ventanilla` sirve
+ * para supervision + apoyo extraordinario en captura de SOLICITUDES, pero no
+ * concede por si solo las funciones de preparar evento ni registrar entregas.
+ *
+ * `admin` y `capturista` conservan la capacidad de entrega aunque tambien
+ * tengan `auditor`; una ventanilla ordinaria tambien la conserva.
+ */
+export function puedeGestionarEntregas(rol: string | null | undefined): boolean {
+  const roles = String(rol ?? '').split('+').filter(Boolean);
+  if (roles.includes('admin') || roles.includes('capturista')) return true;
+  if (!roles.includes('ventanilla')) return false;
+  return !roles.includes('auditor');
+}
+
 /** Los campos llegan por multipart, es decir siempre como texto. */
 const numeroDesdeTexto = z.union([z.number(), z.string()]).transform((v) => {
   const n = typeof v === 'number' ? v : Number(String(v).trim());

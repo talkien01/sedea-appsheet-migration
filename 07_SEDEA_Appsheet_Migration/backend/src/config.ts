@@ -43,6 +43,12 @@ const esquemaEnv = z.object({
   MEDIA_PUBLIC_PATH: z.string().default('/media'),
   MAX_UPLOAD_MB: z.coerce.number().int().positive().default(8),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+  // Candado de defensa en profundidad para la unica operacion destructiva
+  // global. Se habilita UNICAMENTE escribiendo literalmente "true".
+  ALLOW_DESTRUCTIVE_RESET: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((valor) => valor === 'true'),
   // Build 13: pre-dictaminacion con IA. Todas con default: ninguna rompe el
   // arranque si falta (A19-11). El default es `simulado` para poder instalar,
   // probar y evaluar sin ANTHROPIC_API_KEY y sin gastar.
@@ -83,6 +89,7 @@ export const config = {
   maxSubidaBytes: env.MAX_UPLOAD_MB * 1024 * 1024,
   maxSubidaMb: env.MAX_UPLOAD_MB,
   limitePeticiones: env.RATE_LIMIT_MAX,
+  permitirReinicioDestructivo: env.ALLOW_DESTRUCTIVE_RESET,
   predictamenDriver: env.PREDICTAMEN_DRIVER,
   anthropicApiKey: env.ANTHROPIC_API_KEY,
   anthropicModelo: env.ANTHROPIC_MODEL,

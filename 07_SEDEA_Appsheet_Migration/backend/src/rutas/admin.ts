@@ -7,6 +7,7 @@ import { errorNoAutorizado } from '../plugins/errores.js';
 import { ErrorApi } from '../plugins/errores.js';
 import { exigirFraseConfirmacion, reiniciarDatosPrueba } from '../servicios/reinicioDatos.js';
 import { consultar } from '../db/pool.js';
+import { config } from '../config.js';
 
 /**
  * Guarda de rol ESTRICTA: solo `admin`. A diferencia de la de /api/usuarios,
@@ -30,14 +31,22 @@ export default async function rutasAdmin(app: FastifyInstance): Promise<void> {
 
   /**
    * Vacia TODO lo capturado (padron, capturas, solicitudes, dictamen, folios).
-   * IRREVERSIBLE. Exige repetir la frase de confirmacion en el body: el
-   * frontend ya la pide, pero un POST directo con curl tambien tiene que
-   * pasar por el mismo candado (defensa en profundidad).
+   * IRREVERSIBLE. Ademas del rol admin y la frase de confirmacion, exige que
+   * ALLOW_DESTRUCTIVE_RESET=true este habilitada explicitamente en el entorno.
+   * El default es false para que produccion falle cerrado.
    *
    * NO borra archivos de /media: esa limpieza es manual y esta documentada en
    * el README.
    */
   app.post('/api/admin/reiniciar-datos-prueba', soloAdministrador, async (peticion, respuesta) => {
+    if (!config.permitirReinicioDestructivo) {
+      throw new ErrorApi(
+        403,
+        'operacion_deshabilitada',
+        'El reinicio destructivo de datos esta deshabilitado en este entorno.'
+      );
+    }
+
     const cuerpo = (peticion.body ?? {}) as Record<string, unknown>;
     exigirFraseConfirmacion(cuerpo.confirmacion);
 

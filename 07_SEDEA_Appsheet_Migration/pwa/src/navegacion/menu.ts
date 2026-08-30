@@ -4,6 +4,7 @@
 // Las condiciones de rol son EXACTAMENTE las que ya estaban en BarraEstado.tsx
 // y en rutas.tsx: aqui no se relaja ni se endurece ningun permiso.
 import type { ComponentType } from 'react';
+import { puedeGestionarEntregas } from '@sedea/shared';
 import {
   IconoDocumento,
   IconoEscudo,
@@ -169,7 +170,12 @@ function tieneAlgunRol(multiRol: string, rolesRequeridos: string[]): boolean {
 /** Destinos visibles para un rol, en el orden del catalogo. Soporta multi-rol. */
 export function destinosDeRol(rol: string | null | undefined): Destino[] {
   if (!rol) return [];
-  return DESTINOS.filter((d) => tieneAlgunRol(rol, d.roles));
+  const puedeEntregar = puedeGestionarEntregas(rol);
+  return DESTINOS.filter((d) => {
+    if (!tieneAlgunRol(rol, d.roles)) return false;
+    if ((d.id === 'entregas' || d.id === 'entregar-apoyos') && !puedeEntregar) return false;
+    return true;
+  });
 }
 
 /** Agrupa los destinos del rol; los grupos vacios no se devuelven. */

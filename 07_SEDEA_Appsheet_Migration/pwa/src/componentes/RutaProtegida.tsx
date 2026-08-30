@@ -6,6 +6,8 @@ import { useSesion } from '../App';
 interface Props {
   children: ReactNode;
   roles?: string[];
+  /** Validacion adicional de capacidad para perfiles multi-rol. */
+  validadorRol?: (rol: string) => boolean;
   /**
    * Build 4: unicamente /cambiar-password se puede abrir mientras el usuario
    * tenga pendiente el cambio de contrasena obligatorio.
@@ -13,7 +15,12 @@ interface Props {
   permiteCambioPendiente?: boolean;
 }
 
-export default function RutaProtegida({ children, roles, permiteCambioPendiente }: Props) {
+export default function RutaProtegida({
+  children,
+  roles,
+  validadorRol,
+  permiteCambioPendiente
+}: Props) {
   const { perfil, cargando } = useSesion();
   const ubicacion = useLocation();
 
@@ -44,6 +51,12 @@ export default function RutaProtegida({ children, roles, permiteCambioPendiente 
     if (!tieneAlguno) {
       return <Navigate to="/sin-permiso" replace />;
     }
+  }
+
+  // Algunas capacidades dependen de la combinacion completa del multi-rol y no
+  // de un unico rol aislado (por ejemplo auditor+ventanilla sin entregas).
+  if (validadorRol && !validadorRol(perfil.rol)) {
+    return <Navigate to="/sin-permiso" replace />;
   }
 
   return <>{children}</>;

@@ -11,6 +11,7 @@ import type { FastifyInstance } from 'fastify';
 import {
   esquemaEntregaApoyo,
   ROLES_ENTREGA,
+  puedeGestionarEntregas,
   type ConceptoPorEntregar,
   type PaqueteEventoEntrega
 } from '@sedea/shared';
@@ -38,12 +39,29 @@ interface ConceptoConSolicitud {
 }
 
 export default async function rutasEntregas(app: FastifyInstance): Promise<void> {
+  // Defensa adicional para multi-rol: `auditor+ventanilla` es el perfil del
+  // Director Regional que puede apoyar en captura de solicitudes, no en la
+  // entrega fisica. Se conserva acceso si ademas es admin o capturista.
+  const soloEntregaOperativa = async (peticion: any) => {
+    const usuario = peticion.usuario;
+    if (!usuario) throw errorNoAutorizado();
+    if (!puedeGestionarEntregas(usuario.rol)) {
+      throw errorProhibido('Tu perfil puede capturar solicitudes, pero no preparar ni registrar entregas.');
+    }
+  };
+
   // -------------------------------------------------------------------------
   // POST /api/entregas - evidencia de la entrega fisica de un concepto.
   // -------------------------------------------------------------------------
   app.post(
     '/api/entregas',
-    { preHandler: [app.autenticar, app.requiereRol(...ROLES_ENTREGA)] },
+    {
+      preHandler: [
+        app.autenticar,
+        app.requiereRol(...ROLES_ENTREGA),
+        soloEntregaOperativa
+      ]
+    },
     async (peticion, respuesta) => {
       const usuario = peticion.usuario;
       if (!usuario) throw errorNoAutorizado();
@@ -229,7 +247,13 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
   // -------------------------------------------------------------------------
   app.get(
     '/api/entregas/preparar-evento',
-    { preHandler: [app.autenticar, app.requiereRol(...ROLES_ENTREGA)] },
+    {
+      preHandler: [
+        app.autenticar,
+        app.requiereRol(...ROLES_ENTREGA),
+        soloEntregaOperativa
+      ]
+    },
     async (peticion, respuesta) => {
       const usuario = peticion.usuario;
       if (!usuario) throw errorNoAutorizado();

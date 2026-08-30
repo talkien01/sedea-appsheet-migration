@@ -9,6 +9,7 @@ import { enTransaccion, bitacoraEnTransaccion } from '../servicios/promocion.js'
 const error400 = (codigo: string, mensaje: string) => new ErrorApi(400, codigo, mensaje);
 const error403 = (codigo: string, mensaje: string) => new ErrorApi(403, codigo, mensaje);
 const error404 = (mensaje: string) => new ErrorApi(404, 'no_encontrado', mensaje);
+const error409 = (codigo: string, mensaje: string) => new ErrorApi(409, codigo, mensaje);
 
 function enteroPositivo(valor: unknown): number | null {
   if (valor === undefined || valor === null || valor === '') return null;
@@ -25,6 +26,15 @@ function idOpcional(valor: unknown, campo: string): number | null {
 
 function texto(valor: unknown): string {
   return valor === undefined || valor === null ? '' : String(valor).trim();
+}
+
+function anioMexico(): number {
+  return Number(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Mexico_City',
+      year: 'numeric'
+    }).format(new Date())
+  );
 }
 
 function usuarioActual(peticion: FastifyRequest) {
@@ -209,13 +219,18 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
       throw error400('solicitudes_requeridas', 'Selecciona al menos una solicitud para el lote.');
     }
 
-    const ids = [
-      ...new Set(
-        body.solicitud_ids
-          .map((valor) => enteroPositivo(valor))
-          .filter((id): id is number => id !== null)
-      )
-    ];
+    const idsEntrada: number[] = [];
+    for (const valor of body.solicitud_ids) {
+      const id = enteroPositivo(valor);
+      if (id === null) {
+        throw error400(
+          'solicitud_id_invalido',
+          'Cada solicitud_id debe ser un identificador entero positivo.'
+        );
+      }
+      idsEntrada.push(id);
+    }
+    const ids = [...new Set(idsEntrada)];
     if (ids.length === 0) {
       throw error400('solicitudes_requeridas', 'Selecciona al menos una solicitud para el lote.');
     }
@@ -239,31 +254,55 @@ export default async function rutasDigitalizacion(app: FastifyInstance): Promise
       condiciones.push(`s.ubi_municipio_id = $${valores.length}`);
     }
 
-    const { rows: accesibles } = await pool.query<{ id: string }>(
-      `SELECT s.id::text AS id
-         FROM solicitudes s
-         JOIN municipios m ON m.id = s.ubi_municipio_id
-        WHERE ${condiciones.join(' AND ')}`,
-      valores
-    );
-    if (accesibles.length !== ids.length) {
-      throw error403(
-        'fuera_de_alcance',
-        'Una o más solicitudes seleccionadas no existen o están fuera de tu alcance territorial.'
-      );
-    }
-
     const criterios =
       typeof body.criterios === 'object' && body.criterios !== null && !Array.isArray(body.criterios)
         ? body.criterios
         : {};
 
     const lote = await enTransaccion(async (cliente) => {
+      // Se bloquean las solicitudes en orden estable antes de revisar lotes activos.
+      // Así, dos operadores concurrentes no pueden asignar la misma solicitud a
+      // dos lotes vigentes: el segundo espera y luego observa el conflicto.
+      const { rows: accesibles } = await cliente.query<{ id: string }>(
+        `SELECT s.id::text AS id
+           FROM solicitudes s
+           JOIN municipios m ON m.id = s.ubi_municipio_id
+          WHERE ${condiciones.join(' AND ')}
+          ORDER BY s.id
+          FOR UPDATE OF s`,
+        valores
+      );
+      if (accesibles.length !== ids.length) {
+        throw error403(
+          'fuera_de_alcance',
+          'Una o más solicitudes seleccionadas no existen o están fuera de tu alcance territorial.'
+        );
+      }
+
+      const conflicto = await cliente.query<{ folio: string; lote_codigo: string }>(
+        `SELECT s.folio, dl.codigo AS lote_codigo
+           FROM digitalizacion_lote_solicitudes dls
+           JOIN digitalizacion_lotes dl ON dl.id = dls.lote_id
+           JOIN solicitudes s ON s.id = dls.solicitud_id
+          WHERE dls.solicitud_id = ANY($1::bigint[])
+            AND dl.estado <> 'cancelado'
+          ORDER BY dls.solicitud_id, dl.creado_en
+          LIMIT 1`,
+        [ids]
+      );
+      if (conflicto.rows.length > 0) {
+        const filaConflicto = conflicto.rows[0];
+        throw error409(
+          'solicitud_en_lote',
+          `La solicitud ${filaConflicto.folio} ya pertenece al lote ${filaConflicto.lote_codigo}. Cancela ese lote antes de reasignarla.`
+        );
+      }
+
       const secuencia = await cliente.query<{ numero: string }>(
         "SELECT nextval('digitalizacion_lote_codigo_seq')::text AS numero"
       );
       const numero = Number(secuencia.rows[0].numero);
-      const codigo = `DIG-${new Date().getFullYear()}-${String(numero).padStart(6, '0')}`;
+      const codigo = `DIG-${anioMexico()}-${String(numero).padStart(6, '0')}`;
 
       const creado = await cliente.query<{
         id: string;

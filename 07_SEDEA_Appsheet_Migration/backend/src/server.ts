@@ -26,6 +26,8 @@ import rutasMiCuenta from './rutas/miCuenta.js';
 // Build 6: modulo de captura de Solicitud de Apoyo en ventanilla.
 import rutasSolicitudes from './rutas/solicitudes.js';
 import rutasAlcance from './rutas/alcance.js';
+// Digitalizacion V1: lotes de preparacion, caratulas y expediente electronico por fases.
+import rutasDigitalizacion from './rutas/digitalizacion.js';
 // Build 10: administracion de catalogos jerarquicos.
 import rutasCatalogosAdmin from './rutas/catalogosAdmin.js';
 import rutasConfiguracion from './rutas/configuracion.js';
@@ -116,6 +118,8 @@ async function construirApp() {
   // Build 6: ventanilla (E40-E46) y alcance de usuarios (E47/E48).
   await app.register(rutasSolicitudes);
   await app.register(rutasAlcance);
+  // Digitalizacion V1 / Fase 1: formacion y consulta de lotes de preparacion.
+  await app.register(rutasDigitalizacion);
   // Build 10: administracion de catalogos (E49-E54).
   await app.register(rutasCatalogosAdmin, { prefix: '/api/admin/catalogos' });
   // Build 12: configuracion de plazos.
@@ -142,7 +146,7 @@ async function main(): Promise<void> {
 
   const cerrar = async (senal: string) => {
     app.log.info(`Senal ${senal} recibida, cerrando...`);
-    await app.close();
+    await app.close().catch(() => undefined);
     await pool.end().catch(() => undefined);
     process.exit(0);
   };

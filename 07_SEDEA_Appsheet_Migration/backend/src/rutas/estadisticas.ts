@@ -12,6 +12,7 @@ import {
   estadoStaging,
   type FiltrosEstadisticas
 } from '../db/queries/estadisticas.js';
+import { resumenSolicitudesDashboard } from '../db/queries/solicitudes-dashboard.js';
 
 /** 422 con el codigo que fija el contrato para parametros mal formados. */
 function errorParametro(mensaje: string): ErrorApi {
@@ -35,17 +36,22 @@ function desplazarDias(base: Date, dias: number): string {
   return fecha.toISOString().slice(0, 10);
 }
 
+/** True cuando un rol simple o multi-rol contiene al menos un rol de gestion. */
+function puedeVerEstadisticas(rol: string | null | undefined): boolean {
+  const rolesUsuario = String(rol ?? '').split('+').filter(Boolean);
+  return (ROLES_ESTADISTICAS as readonly string[]).some((r) => rolesUsuario.includes(r));
+}
+
 export default async function rutasEstadisticas(app: FastifyInstance): Promise<void> {
   /**
-   * Guarda de acceso propia: el mensaje de 403 lo fija el contrato del SPEC,
-   * por eso no se reutiliza el `requiereRol` generico.
+   * Guarda de acceso propia: el mensaje de 403 lo fija el contrato del SPEC.
+   * Soporta multi-rol (ej. auditor+ventanilla) igual que el resto del RBAC.
    */
   const soloGestion = {
     preHandler: [
       app.autenticar,
       async (peticion: any) => {
-        const rol = peticion.usuario?.rol;
-        if (!(ROLES_ESTADISTICAS as readonly string[]).includes(rol)) {
+        if (!puedeVerEstadisticas(peticion.usuario?.rol)) {
           throw new ErrorApi(
             403,
             'rol_no_autorizado',
@@ -57,8 +63,8 @@ export default async function rutasEstadisticas(app: FastifyInstance): Promise<v
   };
 
   /**
-   * Filtros comunes. Un auditor o editor con Regional asignada queda anclado a
-   * ella y el `regional_id` del query se ignora (aislamiento por Regional).
+   * Filtros comunes. Un usuario de gestion con Regional asignada queda anclado
+   * a ella y el `regional_id` del query se ignora (aislamiento por Regional).
    */
   function leerFiltros(peticion: any): FiltrosEstadisticas {
     const q = (peticion.query ?? {}) as Record<string, string>;
@@ -116,5 +122,13 @@ export default async function rutasEstadisticas(app: FastifyInstance): Promise<v
   // E33 - Estado del staging (reutiliza las mismas queries que E16).
   app.get('/api/estadisticas/staging', soloGestion, async (peticion, respuesta) => {
     return respuesta.status(200).send(await estadoStaging(regionalForzada(peticion.usuario!)));
+  });
+
+  // Resumen operativo de solicitudes. El conteo territorial se hace por el
+  // municipio del predio; una captura excepcional en SEDEA Central conserva la
+  // Regional responsable del predio y no crea una quinta Regional.
+  app.get('/api/estadisticas/solicitudes', soloGestion, async (peticion, respuesta) => {
+    const filtros = leerFiltros(peticion);
+    return respuesta.status(200).send(await resumenSolicitudesDashboard(filtros.regional_id));
   });
 }

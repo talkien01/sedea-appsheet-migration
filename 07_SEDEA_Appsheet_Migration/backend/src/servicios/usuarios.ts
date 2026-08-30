@@ -87,15 +87,17 @@ function tieneRol(rol: string, rolBuscado: string): boolean {
 
 /**
  * Coherencia rol <-> Regional (D22): la Regional es obligatoria para el
- * capturista, opcional para la ventanilla e inaplicable para los demas roles.
+ * capturista, y opcional para auditor, ventanilla y dictaminador.
  * Devuelve el valor definitivo.
  *
+ * El auditor con Regional se usa para supervision territorial: el backend
+ * fuerza todas sus estadisticas a esa Regional. Un auditor sin Regional sigue
+ * siendo un perfil estatal/central de solo consulta.
+ *
  * La ventanilla la necesita porque `regionalForzada()` recorta con ella los
- * municipios capturables: sin Regional, un usuario de ventanilla regional
- * veria los 18 municipios del estado. Se deja OPCIONAL (null permitido) porque
- * la ventanilla Central de SEDEA (VEN-SED, `es_central`) si tiene alcance
- * estatal, y el sistema la distingue justamente por no llevar Regional.
- * Para multi-rol basta con que la lista contenga el rol.
+ * municipios capturables: sin Regional, un usuario de ventanilla representa
+ * el caso excepcional de SEDEA Central. Para multi-rol basta con que la lista
+ * contenga el rol.
  */
 export async function resolverRegional(
   rol: string,
@@ -104,7 +106,7 @@ export async function resolverRegional(
 ): Promise<number | null> {
   const valor = regionalId ?? null;
 
-  // Multi-rol: es 'capturista' si contiene ese rol en la lista
+  // Multi-rol: es 'capturista' si contiene ese rol en la lista.
   if (tieneRol(rol, 'capturista')) {
     if (valor === null) {
       throw error422(
@@ -121,11 +123,14 @@ export async function resolverRegional(
     return valor;
   }
 
-  // El dictaminador la lleva por la misma razon que la ventanilla: sin ella su
-  // bandeja de dictamen abarcaria las cuatro Regionales. Opcional (null) para
-  // el dictaminador de SEDEA Central, con alcance estatal.
-  if (tieneRol(rol, 'ventanilla') || tieneRol(rol, 'dictaminador')) {
-    if (valor === null) return null; // Central: alcance estatal.
+  // Auditor, ventanilla y dictaminador pueden ser perfiles regionales o
+  // centrales/estatales. Si llevan Regional, se valida siempre.
+  if (
+    tieneRol(rol, 'auditor') ||
+    tieneRol(rol, 'ventanilla') ||
+    tieneRol(rol, 'dictaminador')
+  ) {
+    if (valor === null) return null;
     if (!(await regionalValida(valor, cliente))) {
       throw error422(
         'regional_invalida',
@@ -138,7 +143,7 @@ export async function resolverRegional(
   if (valor !== null) {
     throw error422(
       'regional_no_aplica',
-      'Solo los capturistas, las ventanillas y los dictaminadores llevan Dirección Regional.'
+      'Solo los capturistas, auditores, ventanillas y dictaminadores llevan Dirección Regional.'
     );
   }
   return null;
@@ -152,9 +157,9 @@ export function exigirRolAdministrable(
   rolActor: string,
   rolObjetivo: string | null | undefined
 ): void {
-  // Multi-rol: si el actor tiene 'admin' en su lista, puede administrar
+  // Multi-rol: si el actor tiene 'admin' en su lista, puede administrar.
   if (tieneRol(rolActor, 'admin')) return;
-  // Multi-rol: no se puede asignar el rol 'admin' si el actor no es admin
+  // Multi-rol: no se puede asignar el rol 'admin' si el actor no es admin.
   if (rolObjetivo && tieneRol(rolObjetivo, 'admin')) {
     throw error403('rol_no_asignable', 'Tu rol no puede administrar cuentas de administrador.');
   }

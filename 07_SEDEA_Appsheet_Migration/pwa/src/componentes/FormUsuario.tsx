@@ -38,29 +38,32 @@ interface Props {
     /** Solo en alta: como se decide la contrasena inicial (D27). */
     modo_password?: ModoPassword;
     password_manual?: string;
-    /** Solo para rol ventanilla: se persiste con E48 tras guardar. */
+    /** Solo para ventanilla pura: se persiste con E48 tras guardar. */
     alcance?: ValoresAlcance;
   }) => void;
   alCancelar: () => void;
 }
 
 /**
- * Valor centinela del select de Regional que representa "sin Regional": el
- * perfil de la ventanilla Central de SEDEA, con alcance estatal. No se usa la
- * cadena vacia para que "no elegi nada" y "elegi Central" sean distinguibles.
+ * Valor centinela del select de Regional que representa "sin Regional": un
+ * perfil estatal/central. No se usa la cadena vacia para que "no elegi nada"
+ * y "elegi Central" sean distinguibles.
  */
 const CENTRAL = 'central';
 
 /**
- * La Regional aplica al capturista, a la ventanilla y al dictaminador
- * (multi-rol incluido): la bandeja de dictamen tambien se recorta con ella.
+ * La Regional aplica al capturista, auditor, ventanilla y dictaminador
+ * (multi-rol incluido). En auditor recorta el Dashboard y la auditoria.
  */
 const aplicaRegional = (roles: string[]) =>
-  roles.includes('capturista') || roles.includes('ventanilla') || roles.includes('dictaminador');
+  roles.includes('capturista') ||
+  roles.includes('auditor') ||
+  roles.includes('ventanilla') ||
+  roles.includes('dictaminador');
 
-/** Ventanilla y dictaminador pueden quedarse sin Regional (SEDEA Central). */
+/** Auditor, ventanilla y dictaminador pueden ser perfiles centrales/estatales. */
 const aplicaCentral = (roles: string[]) =>
-  (roles.includes('ventanilla') || roles.includes('dictaminador')) &&
+  (roles.includes('auditor') || roles.includes('ventanilla') || roles.includes('dictaminador')) &&
   !roles.includes('capturista');
 
 const ALCANCE_TODOS: ValoresAlcance = {
@@ -92,8 +95,8 @@ export default function FormUsuario({
   );
   const [regionalId, setRegionalId] = useState<string>(() => {
     if (usuario?.regional_id) return String(usuario.regional_id);
-    // Una ventanilla pura ya guardada sin Regional es la Central: se preselecciona
-    // para que editar cualquier otro dato no obligue a re-elegirla.
+    // Un perfil auditor/ventanilla/dictaminador ya guardado sin Regional es
+    // central/estatal: se preselecciona para que editar otro dato no lo cambie.
     if (usuario && aplicaCentral(usuario.rol.split('+'))) return CENTRAL;
     return '';
   });
@@ -102,7 +105,7 @@ export default function FormUsuario({
   const [modoPassword, setModoPassword] = useState<ModoPassword>('automatica');
   const [passwordManual, setPasswordManual] = useState('');
 
-  // Alcance de ventanilla (12.8.4): vacio = todos.
+  // Alcance de ventanilla pura (12.8.4): vacio = todos.
   const [alcance, setAlcance] = useState<ValoresAlcance>(alcanceInicial ?? ALCANCE_TODOS);
 
   const [errorUsuario, setErrorUsuario] = useState<string | null>(null);
@@ -120,15 +123,16 @@ export default function FormUsuario({
     }
   };
 
-  // La Regional aplica al capturista (D22) y tambien a la ventanilla: el
-  // backend recorta con ella los municipios capturables, asi que una ventanilla
-  // sin Regional acabaria viendo los 18 municipios del estado.
   const tieneRol = (r: string) => roles.includes(r);
   const regionalAplica = aplicaRegional(roles);
-  // Unica excepcion: la ventanilla Central de SEDEA (VEN-SED) si tiene alcance
-  // estatal, y el sistema la reconoce justamente por no llevar Regional. Se
-  // ofrece como opcion explicita para que nadie la elija por descuido.
+  // "SEDEA Central" representa un perfil estatal/central sin Regional. Para
+  // Directores Regionales se debe elegir siempre su Dirección Regional.
   const permiteCentral = aplicaCentral(roles);
+  // El backend/UI historicos de E47/E48 administran alcance granular solo para
+  // una ventanilla pura. Un multirol auditor+ventanilla opera temporalmente con
+  // todos los componentes de SU Regional; no mostramos un control que no se
+  // persiste para evitar una falsa sensacion de restriccion.
+  const usaAlcanceGranular = roles.length === 1 && tieneRol('ventanilla');
 
   const toggleRol = (rolItem: string) => {
     const siguiente = roles.includes(rolItem)
@@ -144,7 +148,6 @@ export default function FormUsuario({
       setRegionalId('');
       setErrorRegional(null);
     } else if (regionalId === CENTRAL && !aplicaCentral(siguiente)) {
-      // "SEDEA Central" solo existe para la ventanilla pura.
       setRegionalId('');
     }
   };
@@ -178,8 +181,8 @@ export default function FormUsuario({
     if (regionalAplica && !regionalId) {
       setErrorRegional(
         permiteCentral
-          ? 'Elige la Dirección Regional de esta cuenta, o "SEDEA Central" si atiende todo el estado.'
-          : 'Los capturistas y las ventanillas deben tener una Dirección Regional asignada.'
+          ? 'Elige la Dirección Regional de esta cuenta, o "SEDEA Central" solo si es un perfil estatal/central.'
+          : 'Este rol debe tener una Dirección Regional asignada.'
       );
       valido = false;
     }
@@ -197,21 +200,20 @@ export default function FormUsuario({
     if (!valido) return;
 
     // El rol principal es el primero de la lista; si hay multi-rol, se guarda
-    // concatenado con '+' (ej. "capturista+ventanilla").
+    // concatenado con '+' (ej. "auditor+ventanilla").
     const rolPrincipal = roles.join('+');
     alGuardar({
       usuario: acceso,
       nombre_completo: nombre,
       rol: rolPrincipal,
-      // CENTRAL viaja como null: es asi como el backend reconoce la ventanilla
-      // Central de SEDEA y le deja el alcance estatal.
+      // CENTRAL viaja como null: es asi como el backend reconoce un perfil
+      // estatal/central sin aislamiento por Regional.
       regional_id: regionalAplica && regionalId !== CENTRAL ? Number(regionalId) : null,
       // En edicion no se manda modo alguno: la contrasena solo se cambia con
       // "Resetear contraseña" (campo_no_editable).
       ...(esAlta ? { modo_password: modoPassword } : {}),
       ...(esAlta && modoPassword === 'manual' ? { password_manual: passwordManual } : {}),
-      // El alcance solo viaja para el rol ventanilla; el resto no lo tiene.
-      ...(tieneRol('ventanilla') ? { alcance } : {})
+      ...(usaAlcanceGranular ? { alcance } : {})
     });
   };
 
@@ -307,13 +309,19 @@ export default function FormUsuario({
                 </option>
               ))}
             {permiteCentral && (
-              <option value={CENTRAL}>SEDEA Central (todo el estado)</option>
+              <option value={CENTRAL}>SEDEA Central (perfil estatal)</option>
             )}
           </select>
+          {regionalAplica && tieneRol('auditor') && (
+            <p className="dato">
+              Para un Director Regional, asigna su Dirección Regional. Usa “SEDEA Central” solo
+              para perfiles estatales que deban consultar todo el estado.
+            </p>
+          )}
           {regionalAplica && tieneRol('ventanilla') && (
             <p className="dato">
-              La ventanilla solo podrá capturar en los municipios de su Regional. Elige “SEDEA
-              Central” únicamente para la ventanilla central, que atiende todo el estado.
+              La ventanilla regional solo podrá capturar en los municipios de su Regional. SEDEA
+              Central es un canal excepcional y no se trata como otra Regional.
             </p>
           )}
           {errorRegional && (
@@ -323,8 +331,7 @@ export default function FormUsuario({
           )}
         </div>
 
-        {/* Alcance: solo para el rol Ventanilla (12.8.4). */}
-        {tieneRol('ventanilla') && (
+        {usaAlcanceGranular ? (
           <BloqueAlcance
             municipios={municipios}
             regionales={regionales}
@@ -332,6 +339,15 @@ export default function FormUsuario({
             valores={alcance}
             cambiar={setAlcance}
           />
+        ) : (
+          tieneRol('ventanilla') &&
+          tieneRol('auditor') && (
+            <p className="dato">
+              Modo temporal Director + Ventanilla: podrá capturar todos los componentes de su
+              Dirección Regional. Al terminar el operativo, retira el rol Ventanilla para volver a
+              supervisión de solo lectura.
+            </p>
+          )
         )}
 
         {/* Modo de contrasena: solo en el alta (11.6.2). */}

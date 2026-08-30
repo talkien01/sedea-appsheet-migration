@@ -1,4 +1,4 @@
-// Dashboard de seguimiento: 4 metricas agregadas con Chart.js.
+// Dashboard de seguimiento: metricas agregadas con Chart.js y seguimiento de solicitudes.
 // Pantalla en linea; cada bloque falla de forma independiente para que un
 // endpoint caido no tumbe el resto del tablero.
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -14,6 +14,7 @@ import { useSesion } from '../App';
 import { api } from '../api/cliente';
 import Grafica from '../componentes/Grafica';
 import TarjetaMetrica from '../componentes/TarjetaMetrica';
+import BloqueSolicitudesRegional from '../componentes/BloqueSolicitudesRegional';
 import { useEstadoRed } from '../sync/estadoRed';
 import { useColoresTema } from '../tema/colores';
 
@@ -58,7 +59,15 @@ export default function Dashboard() {
   const [fallos, setFallos] = useState<Record<string, boolean>>({});
   const [cargando, setCargando] = useState(true);
 
-  const puedeVerDepuracion = perfil?.rol === 'editor_datos' || perfil?.rol === 'admin';
+  const rolesUsuario = perfil?.rol.split('+') ?? [];
+  const puedeVerDepuracion =
+    rolesUsuario.includes('editor_datos') || rolesUsuario.includes('admin');
+
+  const regionalNombre = regionalDelUsuario
+    ? perfil?.regional_nombre ?? 'Dirección Regional'
+    : regional
+      ? regionales.find((r) => String(r.id) === regional)?.nombre ?? 'Dirección Regional'
+      : 'Todas las Regionales';
 
   const parametros = useCallback(() => {
     const p = new URLSearchParams();
@@ -340,6 +349,12 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+
+      <BloqueSolicitudesRegional
+        regional={regional}
+        regionalNombre={regionalNombre}
+        version={version}
+      />
 
       {/* ---------------------- Metrica 1: cobertura ---------------------- */}
       <div className="tarjeta">

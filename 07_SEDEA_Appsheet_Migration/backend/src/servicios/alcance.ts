@@ -1,8 +1,7 @@
 // Alcance granular del usuario de ventanilla (D35/D36).
 //
 // Semantica (Assumption 44): CERO filas en usuario_municipios /
-// usuario_componentes significa "todos" (sin restriccion). Una o mas filas
-// restringen al usuario a esa lista exacta.
+// usuario_componentes significa "todos" (sin restriccion).
 //
 // El alcance se aplica SIEMPRE en el backend: la UI filtra los selects, pero
 // eso es cosmetico y no se considera control de acceso.
@@ -62,29 +61,26 @@ export function dentroDeAlcance(alcance: 'todos' | number[], id: number): boolea
 /**
  * Ventanillas que puede usar el usuario (12.6.1):
  *  - admin: todas.
- *  - ventanilla con Regional: la de su Regional, mas la central (VEN-SED) solo
- *    si su alcance de municipios es "todos" (Assumption 54).
- *  - ventanilla sin Regional y alcance "todos": las 5.
+ *  - usuario con Regional: SOLO la ventanilla de su Regional. Nunca la central.
+ *  - usuario sin Regional: SOLO la ventanilla Central de SEDEA.
+ *
+ * Regla institucional: SEDEA Central no es una quinta Regional. Es un canal
+ * excepcional de captura. La responsabilidad territorial de una solicitud se
+ * determina despues por el municipio del predio (`ubi_municipio_id`).
  */
 export function ventanillasPermitidas(
   usuario: PerfilUsuario,
-  alcance: AlcanceResuelto,
+  _alcance: AlcanceResuelto,
   ventanillas: { id: number; regional_id: number; es_central: boolean }[]
 ): number[] {
   if (tieneRol(usuario, 'admin')) return ventanillas.map((v) => v.id);
 
-  const sinRestriccionMunicipios = alcance.municipios === 'todos';
-
   if (usuario.regional_id === null || usuario.regional_id === undefined) {
-    return sinRestriccionMunicipios ? ventanillas.map((v) => v.id) : [];
+    return ventanillas.filter((v) => v.es_central).map((v) => v.id);
   }
 
   return ventanillas
-    .filter(
-      (v) =>
-        v.regional_id === usuario.regional_id ||
-        (v.es_central && sinRestriccionMunicipios)
-    )
+    .filter((v) => !v.es_central && Number(v.regional_id) === Number(usuario.regional_id))
     .map((v) => v.id);
 }
 

@@ -187,10 +187,11 @@ export default function RegistrarEntrega() {
       const habiaSenal = estaEnLinea();
       setExito(
         habiaSenal
-          ? `Entrega registrada y sincronizada: ${elegido.beneficiario_nombre}.`
+          ? `Entrega registrada en el dispositivo. Intentando sincronizar: ${elegido.beneficiario_nombre}.`
           : `Entrega registrada, se subirá cuando haya señal: ${elegido.beneficiario_nombre}.`
       );
       // Con senal se intenta de inmediato, sin bloquear el regreso al escaneo.
+      // La UI no afirma que se sincronizo hasta que el servidor lo haya confirmado.
       if (habiaSenal) void sincronizarPendientes();
 
       await refrescarContadores();

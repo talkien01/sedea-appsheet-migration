@@ -83,6 +83,15 @@ export const DESTINOS: Destino[] = [
     Icono: IconoGrafica
   },
   {
+    id: 'beneficiarios-online',
+    ruta: '/gestion/beneficiarios',
+    etiqueta: 'Beneficiarios en línea',
+    testId: 'nav-beneficiarios-online',
+    roles: ['auditor', 'admin'],
+    grupo: 'Gestión',
+    Icono: IconoUsuarios
+  },
+  {
     id: 'auditoria',
     ruta: '/auditoria',
     etiqueta: 'Auditoría',

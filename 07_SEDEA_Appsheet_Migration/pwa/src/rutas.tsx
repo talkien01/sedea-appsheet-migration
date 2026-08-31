@@ -1,6 +1,7 @@
 // Definicion de rutas de la aplicacion.
 // El control de acceso por rol se endurece a partir del build 2:
 //   /beneficiarios*, /sync   -> capturista, admin
+//   /gestion/beneficiarios   -> auditor, admin (consulta en linea)
 //   /auditoria*              -> auditor, admin
 //   /depuracion*             -> editor_datos, admin
 //   /correcciones*           -> editor_datos, admin
@@ -13,6 +14,7 @@ import RutaProtegida from './componentes/RutaProtegida';
 import Login from './pantallas/Login';
 import Sync from './pantallas/Sync';
 import Beneficiarios from './pantallas/Beneficiarios';
+import BeneficiariosOnline from './pantallas/BeneficiariosOnline';
 import PrepararEntrega from './pantallas/PrepararEntrega';
 import FichaBeneficiario from './pantallas/FichaBeneficiario';
 import NuevaCaptura from './pantallas/NuevaCaptura';
@@ -123,6 +125,16 @@ export default function Rutas() {
           element={
             <RutaProtegida roles={CAMPO}>
               <NuevaCaptura />
+            </RutaProtegida>
+          }
+        />
+
+        {/* Padrón administrativo: consulta directa al servidor, sin IndexedDB. */}
+        <Route
+          path="/gestion/beneficiarios"
+          element={
+            <RutaProtegida roles={AUDITORIA}>
+              <BeneficiariosOnline />
             </RutaProtegida>
           }
         />

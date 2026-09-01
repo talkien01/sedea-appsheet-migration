@@ -8,6 +8,7 @@ import { ErrorApi, errorNoAutorizado } from '../plugins/errores.js';
 import { obtenerSolicitud } from '../db/queries/solicitudes.js';
 import { consultar } from '../db/pool.js';
 import { registrarAuditoria } from '../plugins/auditoria.js';
+import { conceptosAutorizadosDeFacto } from '../servicios/autorizacion-operativa.js';
 import { exigirAutorizacionSecretario } from './solicitudes.js';
 import { construirFiltrosBeneficiarios } from './beneficiarios.js';
 
@@ -31,13 +32,25 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
 
       const solicitud = await obtenerSolicitud(id);
       if (!solicitud) throw new ErrorApi(404, 'no_encontrado', 'Solicitud no encontrada.');
-      exigirAutorizacionSecretario(solicitud);
+
+      // Avena (160) y Garbanzo (161) están autorizados de facto por regla
+      // operativa. No se altera el campo autorizada_secretario ni se atribuye
+      // esa decisión al Secretario; simplemente no aplica el candado.
+      if (solicitud.autorizada_secretario !== true) {
+        const conceptos = await consultar<{ tipo_apoyo_id: string | number }>(
+          'SELECT tipo_apoyo_id FROM solicitud_conceptos WHERE solicitud_id = $1 ORDER BY orden',
+          [id]
+        );
+        if (!conceptosAutorizadosDeFacto(conceptos)) {
+          exigirAutorizacionSecretario(solicitud);
+        }
+      }
 
       try {
         const pdf = await generarFolioEntregaPdf(id);
         return respuesta
           .header('content-type', 'application/pdf')
-          .header('content-disposition', `attachment; filename="folio_${id}.pdf"`)
+          .header('content-disposition', `attachment; filename=\"folio_${id}.pdf\"`)
           .send(pdf);
       } catch (error) {
         if ((error as Error).message.includes('no encontrada')) {
@@ -63,8 +76,19 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
       const q = esquemaConsultaBeneficiarios.parse(cuerpo);
       const { where, parametros, regional } = construirFiltrosBeneficiarios(usuario, q);
 
-      const filas = await consultar<{ solicitud_id: string; autorizada: boolean }>(
-        `SELECT DISTINCT s.id AS solicitud_id, s.autorizada_secretario AS autorizada
+      const filas = await consultar<{
+        solicitud_id: string;
+        autorizada: boolean;
+        tipos_apoyo_ids: Array<string | number>;
+      }>(
+        `SELECT DISTINCT s.id AS solicitud_id,
+                s.autorizada_secretario AS autorizada,
+                ARRAY(
+                  SELECT sc.tipo_apoyo_id
+                    FROM solicitud_conceptos sc
+                   WHERE sc.solicitud_id = s.id
+                   ORDER BY sc.orden
+                ) AS tipos_apoyo_ids
            FROM beneficiarios b
            JOIN solicitudes s ON s.id = b.solicitud_id
            ${where}
@@ -99,9 +123,18 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
         );
       }
 
+      const esAutorizadaOperativamente = (fila: typeof filasLote[number]) =>
+        fila.autorizada === true ||
+        conceptosAutorizadosDeFacto(
+          (fila.tipos_apoyo_ids ?? []).map((tipo_apoyo_id) => ({ tipo_apoyo_id }))
+        );
+
       const autorizadas = filasLote
-        .filter((f) => f.autorizada === true)
+        .filter(esAutorizadaOperativamente)
         .map((f) => Number(f.solicitud_id));
+      const autorizadasDeFacto = filasLote.filter(
+        (f) => f.autorizada !== true && esAutorizadaOperativamente(f)
+      ).length;
       const omitidas = filasLote.length - autorizadas.length;
 
       if (autorizadas.length === 0) {
@@ -109,7 +142,7 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
           409,
           'sin_folios_autorizados',
           omitidas > 0
-            ? `Ninguno de los ${omitidas} beneficiarios de este lote tiene capturada la autorización del Secretario.`
+            ? `Ninguno de los ${omitidas} beneficiarios de este lote tiene autorización aplicable para entrega.`
             : 'Este lote no arroja beneficiarios con folio de entrega.'
         );
       }
@@ -123,6 +156,7 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
         detalle: {
           tipo: 'lote_folio_entrega',
           incluidos: folios.length,
+          autorizados_de_facto: autorizadasDeFacto,
           omitidos: omitidas,
           total_filtrado: filas.length,
           lote: paginaLote,
@@ -139,15 +173,16 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
 
       return respuesta
         .header('content-type', 'application/pdf')
-        .header('content-disposition', `attachment; filename="${nombre}"`)
+        .header('content-disposition', `attachment; filename=\"${nombre}\"`)
         .header('x-folios-incluidos', String(folios.length))
         .header('x-folios-omitidos', String(omitidas))
+        .header('x-folios-autorizados-de-facto', String(autorizadasDeFacto))
         .header('x-folios-total-filtrado', String(filas.length))
         .header('x-lote-pagina', String(paginaLote))
         .header('x-lote-tamano', String(tamanoLote))
         .header(
           'access-control-expose-headers',
-          'x-folios-incluidos, x-folios-omitidos, x-folios-total-filtrado, x-lote-pagina, x-lote-tamano'
+          'x-folios-incluidos, x-folios-omitidos, x-folios-autorizados-de-facto, x-folios-total-filtrado, x-lote-pagina, x-lote-tamano'
         )
         .send(pdf);
     }

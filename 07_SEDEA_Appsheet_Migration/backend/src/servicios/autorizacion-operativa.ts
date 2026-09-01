@@ -6,7 +6,10 @@
 //
 // Importante: esta regla NO modifica solicitudes.autorizada_secretario ni
 // atribuye la autorización al Secretario. Solo resuelve el candado operativo.
-export const TIPOS_APOYO_AUTORIZADOS_DE_FACTO = new Set<number>([160, 161]);
+export const IDS_TIPOS_APOYO_AUTORIZADOS_DE_FACTO = [160, 161] as const;
+export const TIPOS_APOYO_AUTORIZADOS_DE_FACTO = new Set<number>(
+  IDS_TIPOS_APOYO_AUTORIZADOS_DE_FACTO
+);
 
 export function esTipoApoyoAutorizadoDeFacto(tipoApoyoId: unknown): boolean {
   const id = Number(tipoApoyoId);

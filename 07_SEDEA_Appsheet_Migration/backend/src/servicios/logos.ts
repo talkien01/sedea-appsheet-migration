@@ -17,7 +17,7 @@ export const MEMBRETE_FOLIO_ENTREGA = path.join(directorio, 'folio-membrete.png'
 
 const RELACION_SEDEA = 888 / 284;
 const RELACION_GOBIERNO = 1076 / 304;
-const RELACION_MEMBRETE_FOLIO = 1700 / 180;
+const RELACION_MEMBRETE_FOLIO = 680 / 72;
 
 let avisado = false;
 let avisadoFolio = false;
@@ -65,8 +65,9 @@ export function membrete(doc: Doc, x: number, y: number, ancho: number, altoSede
 }
 
 /**
- * Inserta el membrete aprobado del folio de entrega, centrado. `anchoMembrete`
- * controla el tamaño general sin alterar la proporción entre los tres logos.
+ * Inserta el membrete aprobado del folio de entrega, centrado. Si el archivo
+ * gráfico llegara a estar ausente o corrupto, la generación del folio continúa
+ * sin membrete en vez de devolver un error 500.
  */
 export function membreteFolioEntrega(
   doc: Doc,
@@ -79,7 +80,12 @@ export function membreteFolioEntrega(
 
   const alto = anchoMembrete / RELACION_MEMBRETE_FOLIO;
   const inicio = x + (ancho - anchoMembrete) / 2;
-  doc.image(MEMBRETE_FOLIO_ENTREGA, inicio, y, { width: anchoMembrete, height: alto });
 
-  return y + alto;
+  try {
+    doc.image(MEMBRETE_FOLIO_ENTREGA, inicio, y, { width: anchoMembrete, height: alto });
+    return y + alto;
+  } catch (error) {
+    console.error('No se pudo insertar el membrete del folio de entrega; el PDF se genera sin logos.', error);
+    return y;
+  }
 }

@@ -88,20 +88,41 @@ async function construirApp() {
   // Build 4: guarda global del cambio de contrasena obligatorio.
   await app.register(pluginCambioPassword);
 
-  // Salvaguarda de calidad de datos: una persona fisica no puede crear una
-  // solicitud sin CURP. Se aplica globalmente antes del handler para proteger
-  // tambien clientes PWA antiguos que sigan abiertos durante un despliegue.
+  // Salvaguardas de calidad de datos al crear una solicitud. Se aplican
+  // globalmente antes del handler para proteger tambien clientes PWA antiguos
+  // que sigan abiertos durante un despliegue.
   app.addHook('preValidation', async (peticion) => {
     const ruta = peticion.raw.url?.split('?')[0] ?? '';
     if (peticion.method !== 'POST' || ruta !== '/api/solicitudes') return;
     const cuerpo = peticion.body as Record<string, unknown> | null | undefined;
-    if (!cuerpo || cuerpo.tipo_persona !== 'fisica') return;
-    const curp = String(cuerpo.curp ?? '').trim().toUpperCase();
-    if (!curp) {
-      throw new ErrorApi(422, 'curp_requerida', 'La CURP es obligatoria para persona física.');
+    if (!cuerpo) return;
+
+    // Persona fisica: CURP obligatoria y valida.
+    if (cuerpo.tipo_persona === 'fisica') {
+      const curp = String(cuerpo.curp ?? '').trim().toUpperCase();
+      if (!curp) {
+        throw new ErrorApi(422, 'curp_requerida', 'La CURP es obligatoria para persona física.');
+      }
+      if (!PATRON_CURP.test(curp)) {
+        throw new ErrorApi(422, 'curp_invalida', 'La CURP no tiene el formato correcto.');
+      }
     }
-    if (!PATRON_CURP.test(curp)) {
-      throw new ErrorApi(422, 'curp_invalida', 'La CURP no tiene el formato correcto.');
+
+    // Una solicitud puede contener conceptos distintos (por ejemplo Avena y
+    // Garbanzo), pero nunca el mismo tipo_apoyo_id dos veces.
+    const conceptos = Array.isArray(cuerpo.conceptos) ? cuerpo.conceptos : [];
+    const vistos = new Set<number>();
+    for (const concepto of conceptos) {
+      const tipoApoyoId = Number((concepto as Record<string, unknown>)?.tipo_apoyo_id);
+      if (!Number.isInteger(tipoApoyoId) || tipoApoyoId <= 0) continue;
+      if (vistos.has(tipoApoyoId)) {
+        throw new ErrorApi(
+          422,
+          'concepto_duplicado_en_solicitud',
+          'No puedes agregar el mismo concepto de apoyo más de una vez en la misma solicitud.'
+        );
+      }
+      vistos.add(tipoApoyoId);
     }
   });
 

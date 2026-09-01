@@ -1,10 +1,6 @@
 // Generación de Folio de Entrega con QR.
-// Formato operativo V7: Carta VERTICAL, una hoja por beneficiario, dividida
+// Formato operativo: Carta vertical, una hoja por beneficiario, dividida
 // horizontalmente en dos comprobantes por una línea punteada de corte.
-//
-// Mitad superior: copia para expediente con datos, tabla, QR y firmas.
-// Mitad inferior: talón operativo para el beneficiario, siguiendo el machote
-// aprobado: folio grande, datos esenciales, costales y QR grande.
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { ETIQUETAS_NOMBRE_SOLICITANTE, type TipoPersona } from '@sedea/shared';
@@ -13,7 +9,6 @@ import { hayLogosFolio, membreteFolioEntrega } from './logos.js';
 
 const KG_POR_COSTAL = 25;
 
-/** Un renglón del apoyo entregado en unidades físicas. */
 export interface ConceptoFolio {
   nombre: string;
   cantidad: string;
@@ -72,7 +67,6 @@ function esUnidadKg(unidad: string | null | undefined): boolean {
   return ['KG', 'KGS', 'KILOGRAMO', 'KILOGRAMOS'].includes(limpia);
 }
 
-/** Solo muestra costales cuando la cantidad corresponde exactamente a sacos de 25 kg. */
 function costalesTexto(cantidad: number, unidad: string | null | undefined): string {
   if (!esUnidadKg(unidad) || !Number.isFinite(cantidad) || cantidad <= 0) return '—';
   const costales = cantidad / KG_POR_COSTAL;
@@ -203,12 +197,13 @@ export async function obtenerDatosFolios(solicitudIds: number[]): Promise<DatosF
     .filter((d): d is DatosFolioEntrega => d !== undefined);
 }
 
-// Carta vertical: 612 x 792 puntos.
 const ANCHO_HOJA = 612;
 const ALTO_HOJA = 792;
 const CORTE_Y = ALTO_HOJA / 2;
 const MARGEN_X = 34;
 const ANCHO_UTIL = ANCHO_HOJA - MARGEN_X * 2;
+
+type Doc = InstanceType<typeof PDFDocument>;
 
 export async function qrDeFolio(folio: string): Promise<Buffer> {
   const dataUrl = await QRCode.toDataURL(folio, {
@@ -219,8 +214,6 @@ export async function qrDeFolio(folio: string): Promise<Buffer> {
   return Buffer.from(dataUrl.replace('data:image/png;base64,', ''), 'base64');
 }
 
-type Doc = InstanceType<typeof PDFDocument>;
-
 function renglon(
   doc: Doc,
   etiqueta: string,
@@ -228,7 +221,8 @@ function renglon(
   x: number,
   y: number,
   ancho: number,
-  tamano = 7.2
+  tamano = 8.2,
+  valorBold = false
 ): void {
   doc
     .fillColor('#000000')
@@ -236,7 +230,7 @@ function renglon(
     .fontSize(tamano)
     .text(`${etiqueta}: `, x, y, { continued: true, lineBreak: false });
   doc
-    .font('Helvetica')
+    .font(valorBold ? 'Helvetica-Bold' : 'Helvetica')
     .text(valor, { width: ancho - 88, lineBreak: false, ellipsis: true });
 }
 
@@ -246,14 +240,14 @@ function dibujarTablaConceptos(
   x: number,
   y: number,
   ancho: number
-): void {
+): number {
   const columnas = [296, 56, 52, 65, ancho - 296 - 56 - 52 - 65];
   const encabezados = ['CONCEPTO DE APOYO', 'CANTIDAD', 'UNIDAD', 'COSTALES', 'SUPERFICIE\n(HA)'];
   const altoEncabezado = 18;
   const altoFila = 15;
 
   let cx = x;
-  doc.font('Helvetica-Bold').fontSize(6.5);
+  doc.font('Helvetica-Bold').fontSize(7);
   encabezados.forEach((titulo, i) => {
     doc.rect(cx, y, columnas[i], altoEncabezado).fillAndStroke('#eeeeee', '#999999');
     doc
@@ -276,8 +270,7 @@ function dibujarTablaConceptos(
   }];
 
   let fy = y + altoEncabezado;
-  doc.fontSize(7).font('Helvetica');
-
+  doc.fontSize(7.4).font('Helvetica');
   for (const c of filas.slice(0, 5)) {
     const valores = [c.nombre, c.cantidad, c.unidad, c.costales, datos.superficie_ha];
     cx = x;
@@ -296,6 +289,8 @@ function dibujarTablaConceptos(
     });
     fy += altoFila;
   }
+
+  return fy;
 }
 
 function totalCostales(datos: DatosFolioEntrega): number | null {
@@ -334,7 +329,7 @@ function cuerpoFolioInferior(doc: Doc, folio: string): number {
   return cuerpo;
 }
 
-/** Dibuja exactamente una hoja Carta vertical para un beneficiario. */
+/** Dibuja una hoja Carta vertical para un beneficiario. */
 export function dibujarFolioEntrega(doc: Doc, datos: DatosFolioEntrega, qr: Buffer): void {
   // ---------------- Mitad superior: copia para expediente ----------------
   if (hayLogosFolio()) {
@@ -351,41 +346,30 @@ export function dibujarFolioEntrega(doc: Doc, datos: DatosFolioEntrega, qr: Buff
     });
 
   doc
-    .fontSize(6.5)
+    .fontSize(6.8)
     .text('COPIA PARA EXPEDIENTE', MARGEN_X, 79, {
       width: ANCHO_UTIL,
       align: 'center'
     });
 
+  // Folio a todo el ancho. Se retiró la Fecha de Entrega por instrucción operativa.
   const yBanner = 92;
-  const anchoFecha = 105;
-  doc.rect(MARGEN_X, yBanner, ANCHO_UTIL - anchoFecha, 22).fillAndStroke('#eeeeee', '#aaaaaa');
+  doc.rect(MARGEN_X, yBanner, ANCHO_UTIL, 22).fillAndStroke('#eeeeee', '#aaaaaa');
   doc
     .fillColor('#000000')
     .font('Helvetica-Bold')
-    .fontSize(8)
+    .fontSize(8.5)
     .text('FOLIO ', MARGEN_X + 4, yBanner + 7, { continued: true, lineBreak: false });
   doc
     .font('Courier-Bold')
-    .fontSize(12.5)
+    .fontSize(13)
     .text(datos.folio, { lineBreak: false });
-
-  const xFecha = MARGEN_X + ANCHO_UTIL - anchoFecha;
-  doc.rect(xFecha, yBanner, anchoFecha, 22).stroke('#aaaaaa');
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(6)
-    .text('FECHA DE ENTREGA', xFecha, yBanner + 4, { width: anchoFecha, align: 'center' });
-  doc
-    .font('Helvetica')
-    .fontSize(7)
-    .text('____ / ____ / 2026', xFecha, yBanner + 12, { width: anchoFecha, align: 'center' });
 
   const xDatos = MARGEN_X + 2;
   const anchoDatos = 365;
-  let y = 128;
-  renglon(doc, 'BENEFICIARIO', datos.beneficiario_nombre, xDatos, y, anchoDatos);
-  y += 12;
+  let y = 126;
+  renglon(doc, 'BENEFICIARIO', datos.beneficiario_nombre, xDatos, y, anchoDatos, 9.4, true);
+  y += 13;
   if (datos.representante_nombre) {
     renglon(
       doc,
@@ -393,7 +377,8 @@ export function dibujarFolioEntrega(doc: Doc, datos: DatosFolioEntrega, qr: Buff
       datos.representante_nombre,
       xDatos,
       y,
-      anchoDatos
+      anchoDatos,
+      8.2
     );
     y += 12;
   }
@@ -412,32 +397,36 @@ export function dibujarFolioEntrega(doc: Doc, datos: DatosFolioEntrega, qr: Buff
   renglon(doc, 'PROYECTO', datos.proyecto_nombre, xDatos, y, anchoDatos);
 
   const qrSuperior = 102;
-  doc.image(qr, ANCHO_HOJA - MARGEN_X - qrSuperior - 4, 127, {
+  doc.image(qr, ANCHO_HOJA - MARGEN_X - qrSuperior - 4, 125, {
     width: qrSuperior,
     height: qrSuperior
   });
 
-  dibujarTablaConceptos(doc, datos, MARGEN_X, 246, ANCHO_UTIL);
+  const finTabla = dibujarTablaConceptos(doc, datos, MARGEN_X, 244, ANCHO_UTIL);
 
+  // La leyenda queda pegada a la tabla para liberar el mayor espacio posible
+  // para la firma o huella del beneficiario.
+  const yConformidad = finTabla + 3;
   doc
     .fillColor('#000000')
     .font('Helvetica-Bold')
-    .fontSize(6.5)
-    .text('RECIBÍ DE CONFORMIDAD ', MARGEN_X, 329, { continued: true });
+    .fontSize(7.4)
+    .text('RECIBÍ DE CONFORMIDAD ', MARGEN_X, yConformidad, { continued: true });
   doc
     .font('Helvetica')
     .text('el apoyo descrito en este documento, correspondiente al folio señalado.');
 
-  const yFirma = 350;
-  doc.moveTo(190, yFirma).lineTo(315, yFirma).lineWidth(0.7).stroke('#666666');
-  doc.moveTo(458, yFirma).lineTo(552, yFirma).lineWidth(0.7).stroke('#666666');
+  // Una sola firma: se retiró Nombre/Firma de quien entrega.
+  const yFirma = Math.min(CORTE_Y - 22, Math.max(finTabla + 58, 352));
+  doc.moveTo(165, yFirma).lineTo(447, yFirma).lineWidth(0.7).stroke('#666666');
   doc
     .fillColor('#000000')
     .font('Helvetica-Bold')
-    .fontSize(5.8)
-    .text('FIRMA O HUELLA DEL BENEFICIARIO', 160, yFirma + 5, { width: 185, align: 'center' });
-  doc
-    .text('NOMBRE / FIRMA DE QUIEN ENTREGA', 420, yFirma + 5, { width: 170, align: 'center' });
+    .fontSize(6.4)
+    .text('FIRMA O HUELLA DEL BENEFICIARIO', 155, yFirma + 5, {
+      width: 302,
+      align: 'center'
+    });
 
   // Guía de corte al centro de la hoja.
   doc
@@ -472,7 +461,7 @@ export function dibujarFolioEntrega(doc: Doc, datos: DatosFolioEntrega, qr: Buff
 
   doc
     .font('Helvetica-Bold')
-    .fontSize(13.5)
+    .fontSize(15.5)
     .text(datos.beneficiario_nombre.toUpperCase(), xIzq, yBase, {
       width: anchoIzq,
       align: 'center',
@@ -481,7 +470,7 @@ export function dibujarFolioEntrega(doc: Doc, datos: DatosFolioEntrega, qr: Buff
     });
 
   doc
-    .fontSize(11)
+    .fontSize(11.5)
     .text(`MUNICIPIO: ${datos.municipio_nombre.toUpperCase()}`, xIzq, yBase + 34, {
       width: anchoIzq,
       align: 'center',
@@ -497,7 +486,7 @@ export function dibujarFolioEntrega(doc: Doc, datos: DatosFolioEntrega, qr: Buff
     });
 
   doc
-    .fontSize(10.5)
+    .fontSize(11)
     .text(resumenApoyoInferior(datos), xIzq, yBase + 88, {
       width: anchoIzq,
       align: 'center',

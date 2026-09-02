@@ -98,7 +98,7 @@ export default function Usuarios() {
   // 100 filas de una vez (sin paginado real), asi que no hace falta pedirle
   // el orden al backend. null = orden del servidor (sin tocar); 'asc'/'desc'
   // alternan al volver a pulsar el mismo encabezado.
-  const [ordenNombre, setOrdenNombre] = useState<'asc' | 'desc' | null>(null);
+  const [ordenNombre, setOrdenNombre] = useState<'asc' | 'desc' | null>('asc');
 
   // Reseteo: fila elegida, estado de envio y error de la API (11.6.3).
   const [reseteando, setReseteando] = useState<UsuarioAdmin | null>(null);
@@ -897,7 +897,6 @@ export default function Usuarios() {
               {resultadosLote.filter((r) => r.estado === 'error').length} con error de{' '}
               {resultadosLote.length} filas. Cópialas ahora: no se volverán a mostrar.
             </div>
-
             {resultadosLote.some((r) => r.estado === 'creado') && (
               <button
                 type="button"

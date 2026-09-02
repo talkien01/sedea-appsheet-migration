@@ -41,16 +41,19 @@ import rutasEscaneoCurp from './rutas/escaneoCurp.js';
 import rutasAdmin from './rutas/admin.js';
 // Registro de entrega del apoyo por concepto (evidencia en campo).
 import rutasEntregas from './rutas/entregas.js';
+// Conciliacion posterior de recibos fisicos escaneados por camion.
+import rutasConciliacion from './rutas/conciliacion.js';
 // Monitor de presencia en vivo: latido de la PWA + consulta solo para admin.
 import rutasPresencia from './rutas/presencia.js';
 
 async function construirApp() {
+  const limiteArchivo = Math.max(config.maxSubidaBytes, config.maxPdfConciliacionBytes);
   const app = Fastify({
     logger: {
       level: config.entorno === 'production' ? 'info' : 'debug',
       transport: undefined
     },
-    bodyLimit: config.maxSubidaBytes + 1024 * 1024,
+    bodyLimit: limiteArchivo + 1024 * 1024,
     trustProxy: true
   });
 
@@ -77,7 +80,7 @@ async function construirApp() {
 
   await app.register(multipart, {
     limits: {
-      fileSize: config.maxSubidaBytes,
+      fileSize: limiteArchivo,
       files: 2,
       fields: 20
     }
@@ -173,6 +176,8 @@ async function construirApp() {
   await app.register(rutasAdmin);
   // Entrega del apoyo: registro por concepto + paquete offline del evento.
   await app.register(rutasEntregas);
+  // Conciliacion de los recibos fisicos devueltos por los camiones.
+  await app.register(rutasConciliacion);
   // Monitor de presencia en vivo (quien esta conectado y en que pantalla).
   await app.register(rutasPresencia);
 

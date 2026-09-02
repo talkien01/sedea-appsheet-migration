@@ -16,6 +16,7 @@ import Sync from './pantallas/Sync';
 import Beneficiarios from './pantallas/Beneficiarios';
 import BeneficiariosOnline from './pantallas/BeneficiariosOnline';
 import PrepararEntrega from './pantallas/PrepararEntrega';
+import ConciliacionCamiones from './pantallas/ConciliacionCamiones';
 import FichaBeneficiario from './pantallas/FichaBeneficiario';
 import NuevaCaptura from './pantallas/NuevaCaptura';
 import Auditoria from './pantallas/Auditoria';
@@ -101,6 +102,14 @@ export default function Rutas() {
           element={
             <RutaProtegida roles={ENTREGAS} validadorRol={puedeGestionarEntregas}>
               <PrepararEntrega />
+            </RutaProtegida>
+          }
+        />
+        <Route
+          path="/conciliacion"
+          element={
+            <RutaProtegida roles={CAMPO}>
+              <ConciliacionCamiones />
             </RutaProtegida>
           }
         />

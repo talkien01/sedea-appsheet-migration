@@ -74,6 +74,15 @@ export const DESTINOS: Destino[] = [
     Icono: IconoCamara
   },
   {
+    id: 'conciliacion',
+    ruta: '/conciliacion',
+    etiqueta: 'Conciliación recibos',
+    testId: 'nav-conciliacion',
+    roles: ['capturista', 'admin'],
+    grupo: 'Campo',
+    Icono: IconoDocumento
+  },
+  {
     id: 'dashboard',
     ruta: '/dashboard',
     etiqueta: 'Dashboard',

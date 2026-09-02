@@ -42,6 +42,9 @@ const esquemaEnv = z.object({
   MEDIA_DIR: z.string().default('./media'),
   MEDIA_PUBLIC_PATH: z.string().default('/media'),
   MAX_UPLOAD_MB: z.coerce.number().int().positive().default(8),
+  // Un PDF de un ADF puede contener decenas o cientos de recibos; necesita un
+  // limite distinto al de las fotografias individuales.
+  MAX_CONCILIACION_PDF_MB: z.coerce.number().int().positive().default(40),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
   // Candado de defensa en profundidad para la unica operacion destructiva
   // global. Se habilita UNICAMENTE escribiendo literalmente "true".
@@ -88,6 +91,8 @@ export const config = {
   rutaPublicaMedia: env.MEDIA_PUBLIC_PATH,
   maxSubidaBytes: env.MAX_UPLOAD_MB * 1024 * 1024,
   maxSubidaMb: env.MAX_UPLOAD_MB,
+  maxPdfConciliacionBytes: env.MAX_CONCILIACION_PDF_MB * 1024 * 1024,
+  maxPdfConciliacionMb: env.MAX_CONCILIACION_PDF_MB,
   limitePeticiones: env.RATE_LIMIT_MAX,
   permitirReinicioDestructivo: env.ALLOW_DESTRUCTIVE_RESET,
   predictamenDriver: env.PREDICTAMEN_DRIVER,

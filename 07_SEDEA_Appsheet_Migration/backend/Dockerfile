@@ -4,8 +4,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Dependencias del sistema utiles para sharp y para el healthcheck.
-RUN apk add --no-cache libc6-compat
+# Dependencias del sistema: sharp, rasterizado de PDF y lectura de QR de los
+# recibos escaneados. poppler-utils aporta pdfinfo/pdftoppm y zbar aporta zbarimg.
+RUN apk add --no-cache libc6-compat poppler-utils zbar
 
 # Manifiestos primero para aprovechar la cache de capas.
 COPY package.json ./

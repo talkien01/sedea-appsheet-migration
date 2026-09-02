@@ -39,7 +39,7 @@ import CatalogoPlazos from './pantallas/CatalogoPlazos';
 import Dictamen from './pantallas/Dictamen';
 import DictamenDetalle from './pantallas/DictamenDetalle';
 import EscaneoMovil from './pantallas/EscaneoMovil';
-import RegistrarEntrega from './pantallas/RegistrarEntrega';
+import RegistrarEntrega from './pantallas/RegistrarEntregaMonitorizada';
 import Monitor from './pantallas/Monitor';
 
 const CAMPO = ['capturista', 'admin'];

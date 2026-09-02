@@ -23,6 +23,12 @@ export type AccionAuditoria =
   | 'reiniciar_datos_prueba'
   // Entrega fisica del apoyo, un renglon por concepto entregado.
   | 'entrega_apoyo_registrada'
+  // Conciliacion posterior de recibos fisicos regresados por los camiones.
+  | 'conciliacion_lote_creado'
+  | 'conciliacion_pdf_procesado'
+  | 'conciliacion_recibo_manual'
+  | 'conciliacion_recibo_eliminado'
+  | 'conciliacion_lote_cerrado'
   // Plazo de ingreso de solicitudes: abre y cierra la ventanilla de captura.
   | 'plazo_solicitudes_creado'
   | 'plazo_solicitudes_activado'

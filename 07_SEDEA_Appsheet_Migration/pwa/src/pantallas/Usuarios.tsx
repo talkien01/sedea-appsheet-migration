@@ -94,7 +94,7 @@ export default function Usuarios() {
   const [errorReinicio, setErrorReinicio] = useState<string | null>(null);
   const [resultadoReinicio, setResultadoReinicio] = useState<ResultadoReinicioDatos | null>(null);
 
-  // Orden por nombre completo, solo en el cliente: la pagina ya trae hasta
+  // Orden por nombre de usuario, solo en el cliente: la pagina ya trae hasta
   // 100 filas de una vez (sin paginado real), asi que no hace falta pedirle
   // el orden al backend. null = orden del servidor (sin tocar); 'asc'/'desc'
   // alternan al volver a pulsar el mismo encabezado.
@@ -365,7 +365,7 @@ export default function Usuarios() {
     ordenNombre === null
       ? filas
       : [...filas].sort((a, b) => {
-          const cmp = a.nombre_completo.localeCompare(b.nombre_completo, 'es', {
+          const cmp = a.usuario.localeCompare(b.usuario, 'es', {
             sensitivity: 'base'
           });
           return ordenNombre === 'asc' ? cmp : -cmp;
@@ -676,18 +676,17 @@ export default function Usuarios() {
                     }
                   />
                 </th>
-                <th>Usuario</th>
                 <th>
                   <button
                     type="button"
                     className="th-ordenable"
-                    data-testid="btn-ordenar-nombre"
+                    data-testid="btn-ordenar-usuario"
                     aria-label={
                       ordenNombre === 'asc'
                         ? 'Ordenado A-Z. Pulsa para ordenar Z-A.'
                         : ordenNombre === 'desc'
                           ? 'Ordenado Z-A. Pulsa para quitar el orden.'
-                          : 'Ordenar por nombre completo, A-Z.'
+                          : 'Ordenar por nombre de usuario, A-Z.'
                     }
                     onClick={() =>
                       setOrdenNombre((previo) =>
@@ -695,12 +694,13 @@ export default function Usuarios() {
                       )
                     }
                   >
-                    Nombre completo
+                    Usuario
                     <span aria-hidden="true">
                       {ordenNombre === 'asc' ? ' ▲' : ordenNombre === 'desc' ? ' ▼' : ' ⇅'}
                     </span>
                   </button>
                 </th>
+                <th>Nombre completo</th>
                 <th>Rol</th>
                 <th>Regional</th>
                 <th>Estado</th>

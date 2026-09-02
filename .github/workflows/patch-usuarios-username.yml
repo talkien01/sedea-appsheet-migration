@@ -1,0 +1,48 @@
+name: Patch usuarios por username
+
+on:
+  push:
+    branches:
+      - feature/conciliacion-recibos-camiones
+    paths:
+      - .github/workflows/patch-usuarios-username.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/conciliacion-recibos-camiones
+      - name: Corregir ordenamiento por usuario
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('07_SEDEA_Appsheet_Migration/pwa/src/pantallas/Usuarios.tsx')
+          s = p.read_text(encoding='utf-8')
+
+          s2 = s.replace('Orden por nombre completo, solo en el cliente:', 'Orden por nombre de usuario, solo en el cliente:', 1)
+          assert s2 != s, 'No se encontro comentario de ordenamiento'
+          s = s2
+
+          old_cmp = "const cmp = a.nombre_completo.localeCompare(b.nombre_completo, 'es', {"
+          new_cmp = "const cmp = a.usuario.localeCompare(b.usuario, 'es', {"
+          assert old_cmp in s, 'No se encontro comparador por nombre completo'
+          s = s.replace(old_cmp, new_cmp, 1)
+
+          old_header = '''                <th>Usuario</th>\n                <th>\n                  <button\n                    type="button"\n                    className="th-ordenable"\n                    data-testid="btn-ordenar-nombre"\n                    aria-label={\n                      ordenNombre === 'asc'\n                        ? 'Ordenado A-Z. Pulsa para ordenar Z-A.'\n                        : ordenNombre === 'desc'\n                          ? 'Ordenado Z-A. Pulsa para quitar el orden.'\n                          : 'Ordenar por nombre completo, A-Z.'\n                    }\n                    onClick={() =>\n                      setOrdenNombre((previo) =>\n                        previo === null ? 'asc' : previo === 'asc' ? 'desc' : null\n                      )\n                    }\n                  >\n                    Nombre completo\n                    <span aria-hidden="true">\n                      {ordenNombre === 'asc' ? ' ▲' : ordenNombre === 'desc' ? ' ▼' : ' ⇅'}\n                    </span>\n                  </button>\n                </th>'''
+          new_header = '''                <th>\n                  <button\n                    type="button"\n                    className="th-ordenable"\n                    data-testid="btn-ordenar-usuario"\n                    aria-label={\n                      ordenNombre === 'asc'\n                        ? 'Ordenado A-Z. Pulsa para ordenar Z-A.'\n                        : ordenNombre === 'desc'\n                          ? 'Ordenado Z-A. Pulsa para quitar el orden.'\n                          : 'Ordenar por nombre de usuario, A-Z.'\n                    }\n                    onClick={() =>\n                      setOrdenNombre((previo) =>\n                        previo === null ? 'asc' : previo === 'asc' ? 'desc' : null\n                      )\n                    }\n                  >\n                    Usuario\n                    <span aria-hidden="true">\n                      {ordenNombre === 'asc' ? ' ▲' : ordenNombre === 'desc' ? ' ▼' : ' ⇅'}\n                    </span>\n                  </button>\n                </th>\n                <th>Nombre completo</th>'''
+          assert old_header in s, 'No se encontro encabezado ordenable actual'
+          s = s.replace(old_header, new_header, 1)
+
+          p.write_text(s, encoding='utf-8')
+      - name: Commit del ajuste
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add 07_SEDEA_Appsheet_Migration/pwa/src/pantallas/Usuarios.tsx
+          git commit -m "fix(usuarios): ordenar por nombre de usuario" 
+          git push origin HEAD:feature/conciliacion-recibos-camiones

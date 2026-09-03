@@ -1282,10 +1282,35 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
         campos.nombre_solicitante = campos.nombre_solicitante.trim().toUpperCase();
       }
 
-      const conceptosPrevios = entrada.conceptos.length ? await conceptosDeSolicitud(id) : [];
+      // Se necesitan siempre (no solo si se editan cantidades): la validacion
+      // de CURP duplicada abajo usa los tipo_apoyo_id de ESTA solicitud.
+      const conceptosPrevios = await conceptosDeSolicitud(id);
       for (const c of entrada.conceptos) {
         if (!conceptosPrevios.some((p) => Number(p.id) === c.id)) {
           throw error404(`El concepto ${c.id} no pertenece a esta solicitud.`);
+        }
+      }
+
+      // CURP obligatoria para persona fisica (alineado con el alta nueva) y
+      // bloqueo de CURP+concepto duplicado contra OTRAS solicitudes — misma
+      // regla que ya protege el alta (E42), replicada aqui para que la
+      // correccion no pueda crear el mismo problema que evita al capturar.
+      const tipoPersonaFinal = (campos.tipo_persona as TipoPersona | undefined) ?? previa.tipo_persona;
+      if (typeof campos.curp === 'string') {
+        if (tipoPersonaFinal === 'fisica' && !campos.curp) {
+          throw error422('curp_requerida', 'La CURP es obligatoria para persona física.');
+        }
+        if (campos.curp !== (previa.curp ?? '')) {
+          const idsConceptos = conceptosPrevios.map((c) => Number(c.tipo_apoyo_id));
+          const duplicados = (await conceptosDuplicadosPorCurp(campos.curp as string, idsConceptos)).filter(
+            (d) => Number(d.solicitud_id) !== id
+          );
+          if (duplicados.length > 0) {
+            throw error422(
+              'curp_concepto_duplicado',
+              `Esa CURP ya tiene el mismo concepto en la solicitud ${duplicados[0].folio}.`
+            );
+          }
         }
       }
 
@@ -1301,6 +1326,10 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       };
 
       const huboCambios = await enTransaccion(async (cliente) => {
+        // Bloquea el renglon contra otra edicion concurrente (misma solicitud
+        // abierta en dos pestanas) mientras dura esta transaccion.
+        await cliente.query('SELECT id FROM solicitudes WHERE id = $1 FOR UPDATE', [id]);
+
         const clavesCampos = Object.keys(campos);
         if (clavesCampos.length > 0) {
           const set: string[] = [];

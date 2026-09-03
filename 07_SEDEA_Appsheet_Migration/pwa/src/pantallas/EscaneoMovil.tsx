@@ -176,6 +176,24 @@ export default function EscaneoMovil() {
     <main className="tarjeta" data-testid="pantalla-escaneo-movil" style={{ padding: 16 }}>
       <h2>Escanear Constancia CURP</h2>
 
+      {/*
+        El aviso de "enviado" y el contador van ANTES de la camara a
+        proposito: en un celular en vertical, el video ocupaba toda la
+        pantalla y el aviso quedaba fuera de la vista sin hacer scroll.
+        Aqui siempre se ve sin desplazar nada.
+      */}
+      {estado === 'enviado' && (
+        <div className="mensaje exito" role="status" data-testid="exito-escaneo-movil">
+          ✓ Enviado ({curp}). Ya puedes escanear a la siguiente persona.
+        </div>
+      )}
+
+      {estado === 'enviando' && (
+        <p className="dato" data-testid="enviando-escaneo-movil">
+          Enviando a la computadora...
+        </p>
+      )}
+
       {enviados > 0 && (
         <p className="dato" data-testid="contador-enviados-escaneo-movil">
           Enviados: <strong>{enviados}</strong>
@@ -189,27 +207,27 @@ export default function EscaneoMovil() {
             computadora, uno tras otro — no hace falta volver a escanear este enlace entre
             personas.
           </p>
+          {/*
+            Alto topado (no solo `width: 100%`): con la camara trasera de un
+            celular en vertical, un video sin tope de alto empujaba el aviso
+            de "enviado" fuera de la pantalla. `object-fit: cover` recorta el
+            sobrante en vez de deformar la imagen.
+          */}
           <video
             ref={video}
             data-testid="video-escaneo-movil"
             playsInline
             muted
-            style={{ width: '100%', borderRadius: 12, background: '#000' }}
+            style={{
+              width: '100%',
+              maxHeight: '45vh',
+              objectFit: 'cover',
+              borderRadius: 12,
+              background: '#000'
+            }}
           />
           <canvas ref={lienzo} style={{ display: 'none' }} />
         </>
-      )}
-
-      {estado === 'enviando' && (
-        <p className="dato" data-testid="enviando-escaneo-movil">
-          Enviando a la computadora...
-        </p>
-      )}
-
-      {estado === 'enviado' && (
-        <div className="mensaje exito" role="status" data-testid="exito-escaneo-movil">
-          ✓ Enviado ({curp}). Ya puedes escanear a la siguiente persona.
-        </div>
       )}
 
       {estado === 'cerrado' && (

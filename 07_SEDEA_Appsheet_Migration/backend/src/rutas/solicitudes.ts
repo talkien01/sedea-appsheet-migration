@@ -19,6 +19,8 @@ import {
   PATRON_CURP,
   TIPOS_PERSONA,
   CAMPOS_EDITABLES_ADMIN_SOLICITUD,
+  CLAVE_PROYECTO_TOPE_MONTO,
+  TOPE_MONTO_PROYECTO_PEO,
   esquemaActualizarDocumento,
   esquemaCrearSolicitud,
   esquemaDocumentosRequeridos,
@@ -489,6 +491,7 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       }
     }
 
+    let sumaMontosSolicitud = 0;
     for (const concepto of datos.conceptos) {
       const cantidad = Number(concepto.cantidad);
       const estatal = Number(concepto.monto_estatal ?? 0);
@@ -502,6 +505,18 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
           'Las cantidades y montos deben ser mayores o iguales a cero.'
         );
       }
+      sumaMontosSolicitud += total;
+    }
+
+    // --- Tope de monto por solicitud, exclusivo de Casas Ejidales (PEO) ----
+    // La suma de TODOS los conceptos de la solicitud no puede pasar de
+    // $150,000. Sin regla = sin restriccion para cualquier otro proyecto.
+    if (proyecto.clave === CLAVE_PROYECTO_TOPE_MONTO && sumaMontosSolicitud > TOPE_MONTO_PROYECTO_PEO) {
+      throw error422(
+        'monto_total_excede_tope',
+        `La suma de los conceptos ($${sumaMontosSolicitud.toLocaleString('es-MX')}) excede el tope de ` +
+          `$${TOPE_MONTO_PROYECTO_PEO.toLocaleString('es-MX')} para este proyecto.`
+      );
     }
 
     // --- Cantidad maxima por superficie (escalones de catalogo) ------------
@@ -1288,6 +1303,22 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       for (const c of entrada.conceptos) {
         if (!conceptosPrevios.some((p) => Number(p.id) === c.id)) {
           throw error404(`El concepto ${c.id} no pertenece a esta solicitud.`);
+        }
+      }
+
+      // Mismo tope de $150,000 que el alta (E42), exclusivo de Casas Ejidales
+      // (PEO): la correccion no puede dejar la solicitud por encima.
+      if (previa.proyecto === CLAVE_PROYECTO_TOPE_MONTO) {
+        const sumaFinal = conceptosPrevios.reduce((suma, c) => {
+          const editado = entrada.conceptos.find((e) => e.id === Number(c.id));
+          return suma + (editado ? editado.monto_total : Number(c.monto_total));
+        }, 0);
+        if (sumaFinal > TOPE_MONTO_PROYECTO_PEO) {
+          throw error422(
+            'monto_total_excede_tope',
+            `La suma de los conceptos ($${sumaFinal.toLocaleString('es-MX')}) excede el tope de ` +
+              `$${TOPE_MONTO_PROYECTO_PEO.toLocaleString('es-MX')} para este proyecto.`
+          );
         }
       }
 

@@ -538,6 +538,15 @@ export function cantidadPorEscalon(
   return { tipo: 'fijo', cantidad: validos[validos.length - 1].cantidad, topado: true };
 }
 
+/**
+ * Tope de monto total por solicitud (suma de monto_total de TODOS sus
+ * conceptos), exclusivo del proyecto PEO (Casas Ejidales) por ahora. Bloqueo
+ * duro (422 `monto_total_excede_tope`) igual que el resto de los topes de
+ * cantidad — "sin regla = sin restriccion" para los demas proyectos.
+ */
+export const CLAVE_PROYECTO_TOPE_MONTO = 'PEO';
+export const TOPE_MONTO_PROYECTO_PEO = 150000;
+
 // ============================================================================
 // Edicion administrativa de solicitudes (solo admin, D44 sigue vigente para
 // TODOS los demas roles: esta es la UNICA via de edicion, con lista blanca

@@ -942,6 +942,9 @@ export default function NuevaSolicitud() {
           escalones={escalonPorTipoApoyo}
           conflictosCurp={conflictosCurp}
           proyectoId={proyectoId ? Number(proyectoId) : null}
+          proyectoClave={
+            catalogos?.proyectos.find((p) => String(p.id) === proyectoId)?.clave ?? null
+          }
           cambiar={cambiarConcepto}
           agregar={agregarConcepto}
           quitar={quitarConcepto}

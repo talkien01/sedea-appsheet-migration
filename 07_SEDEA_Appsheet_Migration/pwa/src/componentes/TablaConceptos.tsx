@@ -3,7 +3,12 @@
 // El total de cada fila se autocalcula como estatal + productor, pero el
 // usuario puede sobrescribirlo; una vez editado a mano, esa fila deja de
 // autocalcularse (Assumption 48: el papel admite aportaciones de terceros).
-import type { CatalogosVentanilla, ConflictoCurpConcepto } from '@sedea/shared';
+import {
+  CLAVE_PROYECTO_TOPE_MONTO,
+  TOPE_MONTO_PROYECTO_PEO,
+  type CatalogosVentanilla,
+  type ConflictoCurpConcepto
+} from '@sedea/shared';
 import { BotonIcono } from './BotonIcono';
 
 export interface FilaConcepto {
@@ -77,6 +82,12 @@ interface Props {
    * y sin proyecto elegido no se filtra nada.
    */
   proyectoId: number | null;
+  /**
+   * Clave del proyecto elegido (o null). Solo se usa para el aviso del tope
+   * de monto por solicitud (hoy exclusivo de PEO/Casas Ejidales) — es un
+   * aviso de ayuda; el bloqueo real lo hace el backend al guardar.
+   */
+  proyectoClave: string | null;
   cambiar: (indice: number, campo: keyof FilaConcepto, valor: string | boolean) => void;
   agregar: () => void;
   quitar: (indice: number) => void;
@@ -93,6 +104,7 @@ export default function TablaConceptos({
   escalones,
   conflictosCurp,
   proyectoId,
+  proyectoClave,
   cambiar,
   agregar,
   quitar
@@ -267,6 +279,14 @@ export default function TablaConceptos({
           </tfoot>
         </table>
       </div>
+
+      {proyectoClave === CLAVE_PROYECTO_TOPE_MONTO && suma('monto_total') > TOPE_MONTO_PROYECTO_PEO && (
+        <p className="mensaje error" role="alert" data-testid="aviso-tope-monto">
+          La suma de los conceptos ({suma('monto_total').toLocaleString('es-MX')}) excede el tope de{' '}
+          {TOPE_MONTO_PROYECTO_PEO.toLocaleString('es-MX')} para este proyecto. El sistema no dejará
+          guardar hasta ajustar los montos.
+        </p>
+      )}
 
       <button type="button" data-testid="btn-agregar-concepto" onClick={agregar}>
         Agregar concepto

@@ -600,6 +600,17 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ texto_qr: textoQr } satisfies ResultadoEscaneoMovilCuerpo)
     });
+  },
+
+  /**
+   * "Terminar vinculación" (E60.4): deja de aceptar escaneos nuevos de
+   * inmediato. El escritorio la llama al terminar de usar el celular, para no
+   * dejar el token vivo hasta que venza solo.
+   */
+  async cerrarSesionEscaneo(token: string): Promise<{ ok: true }> {
+    return peticion(`/escaneo-curp/sesiones/${encodeURIComponent(token)}/cerrar`, {
+      method: 'POST'
+    });
   }
 };
 

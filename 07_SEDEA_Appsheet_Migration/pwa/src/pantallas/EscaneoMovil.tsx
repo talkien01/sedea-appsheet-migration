@@ -8,17 +8,26 @@
 // El telefono decodifica localmente con jsQR (igual que el escaneo directo) y
 // manda el texto crudo; quien decide si es una Constancia valida es el servidor
 // con el parser compartido.
+//
+// Multi-lectura (E60-v2): antes de aqui la camara se apagaba para siempre en
+// cuanto se mandaba UN escaneo ("Listo", pantalla muerta) — para la siguiente
+// persona habia que volver a escanear el QR de enlace desde la computadora.
+// Ahora, tras enviar uno, la camara sigue prendida: se muestra "Enviado" un
+// momento y vuelve sola a escanear, hasta que el capturista cierre la
+// vinculacion desde la computadora o venza la vigencia.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import jsQR from 'jsqr';
 import { api, ErrorPeticion } from '../api/cliente';
 
-type Estado = 'escaneando' | 'enviando' | 'listo' | 'error';
+type Estado = 'escaneando' | 'enviando' | 'enviado' | 'cerrado' | 'error';
 
 const MENSAJE_SIN_CAMARA =
   'No hay cámara disponible en este dispositivo o navegador.';
 const MENSAJE_PERMISO =
   'No se pudo usar la cámara (permiso denegado o en uso por otra app).';
+/** Cuanto se muestra "Enviado" antes de volver solo a escanear. */
+const MS_CONFIRMACION = 1200;
 
 export default function EscaneoMovil() {
   const { token = '' } = useParams<{ token: string }>();
@@ -32,6 +41,7 @@ export default function EscaneoMovil() {
   const [estado, setEstado] = useState<Estado>('escaneando');
   const [error, setError] = useState<string | null>(null);
   const [curp, setCurp] = useState<string | null>(null);
+  const [enviados, setEnviados] = useState(0);
 
   const detener = useCallback(() => {
     if (animacion.current !== null) cancelAnimationFrame(animacion.current);
@@ -49,15 +59,21 @@ export default function EscaneoMovil() {
       setError(null);
       try {
         const { datos } = await api.entregarEscaneoMovil(token, texto);
-        detener();
         setCurp(datos.curp);
-        setEstado('listo');
+        setEnviados((n) => n + 1);
+        setEstado('enviado');
+        // La camara NO se apaga: solo se muestra la confirmacion un momento y
+        // se vuelve a escanear, lista para la siguiente persona.
+        window.setTimeout(() => {
+          enviando.current = false;
+          setEstado((actual) => (actual === 'enviado' ? 'escaneando' : actual));
+        }, MS_CONFIRMACION);
         return true;
       } catch (e) {
         const mensaje =
           e instanceof ErrorPeticion ? e.message : 'No se pudo enviar el escaneo.';
-        // Un QR que no es Constancia deja seguir intentando; una sesion muerta
-        // (404/409/410) no tiene remedio desde aqui y apaga la camara.
+        // Un QR que no es Constancia deja seguir intentando; una sesion
+        // cerrada/vencida no tiene remedio desde aqui y apaga la camara.
         const recuperable = e instanceof ErrorPeticion && e.codigo === 'qr_invalido';
         setError(mensaje);
         if (recuperable) {
@@ -65,7 +81,10 @@ export default function EscaneoMovil() {
           setEstado('escaneando');
         } else {
           detener();
-          setEstado('error');
+          const cerrada =
+            e instanceof ErrorPeticion &&
+            (e.codigo === 'sesion_cerrada' || e.codigo === 'sesion_expirada');
+          setEstado(cerrada ? 'cerrado' : 'error');
         }
         return false;
       }
@@ -148,15 +167,27 @@ export default function EscaneoMovil() {
     };
   }, [procesarTexto]);
 
+  // La camara se mantiene visible en TODOS los estados donde sigue prendida
+  // (incluido "enviado"): apagar y volver a montar el <video> perderia el
+  // srcObject ya asignado y la camara no volveria a mostrarse sola.
+  const camaraActiva = estado === 'escaneando' || estado === 'enviando' || estado === 'enviado';
+
   return (
     <main className="tarjeta" data-testid="pantalla-escaneo-movil" style={{ padding: 16 }}>
       <h2>Escanear Constancia CURP</h2>
 
-      {(estado === 'escaneando' || estado === 'enviando') && (
+      {enviados > 0 && (
+        <p className="dato" data-testid="contador-enviados-escaneo-movil">
+          Enviados: <strong>{enviados}</strong>
+        </p>
+      )}
+
+      {camaraActiva && (
         <>
           <p className="dato">
             Encuadra el código QR de la Constancia CURP. Los datos se enviarán solos a la
-            computadora.
+            computadora, uno tras otro — no hace falta volver a escanear este enlace entre
+            personas.
           </p>
           <video
             ref={video}
@@ -175,10 +206,16 @@ export default function EscaneoMovil() {
         </p>
       )}
 
-      {estado === 'listo' && (
+      {estado === 'enviado' && (
         <div className="mensaje exito" role="status" data-testid="exito-escaneo-movil">
-          Listo. Ya puedes volver a la computadora: los datos de {curp} aparecieron en el
-          formulario.
+          ✓ Enviado ({curp}). Ya puedes escanear a la siguiente persona.
+        </div>
+      )}
+
+      {estado === 'cerrado' && (
+        <div className="mensaje aviso" role="status" data-testid="cerrado-escaneo-movil">
+          La vinculación se cerró desde la computadora. Pide que generen un código nuevo si
+          necesitas seguir escaneando.
         </div>
       )}
 

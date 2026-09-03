@@ -98,9 +98,11 @@ export const MINUTOS_VIGENCIA_ESCANEO = 10;
 
 /**
  * Estado de la sesion visto por el escritorio.
- * - `pendiente`: creada, el celular todavia no manda nada.
- * - `completada`: el celular mando un QR valido; `datos` ya viene lleno.
- * - `expirada`: se agoto la vigencia sin resultado.
+ * - `pendiente`: sigue viva y acepta escaneos (0, 1 o varios ya recibidos).
+ * - `completada`: se cerro a proposito desde el escritorio ("Terminar
+ *   vinculación"). Ya NO admite escaneos nuevos, a diferencia del significado
+ *   anterior ("ya recibio un resultado, un solo uso").
+ * - `expirada`: se agoto la vigencia de 10 minutos.
  */
 export type EstadoSesionEscaneo = 'pendiente' | 'completada' | 'expirada';
 
@@ -110,12 +112,18 @@ export interface SesionEscaneoCreada {
   expira_en: string;
 }
 
-/** Respuesta de GET /api/escaneo-curp/sesiones/:token (sondeo del escritorio). */
+/**
+ * Respuesta de GET /api/escaneo-curp/sesiones/:token (sondeo del escritorio).
+ * Multi-lectura (E60-v2): `datos` es SIEMPRE el ultimo escaneo recibido (o
+ * `null` si ninguno todavia), y `version` sube 1 en cada escaneo nuevo que
+ * entrega el celular. El escritorio compara `version` contra la ultima que ya
+ * proceso: si subio, hay un dato nuevo que aplicar; si no, sigue esperando.
+ */
 export interface EstadoSesionEscaneoRespuesta {
   estado: EstadoSesionEscaneo;
   expira_en: string;
-  /** Solo viene con estado `completada`. */
   datos: DatosCurpQr | null;
+  version: number;
 }
 
 /**

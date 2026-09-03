@@ -9,11 +9,19 @@
 // Modelo de confianza: el celular NO se autentica. El token de la sesion es la
 // credencial, y por eso:
 //   - lo genera el servidor con 24 bytes aleatorios (no es adivinable),
-//     - vive 10 minutos,
-//   - es de un solo uso: en cuanto llega un resultado la sesion se cierra,
-//   - solo el usuario que la creo puede sondearla.
-// Lo peor que puede hacer quien robe un token es meter una CURP en la pantalla
-// de otro capturista, que la ve antes de guardar. No da acceso a nada mas.
+//   - vive 10 minutos (se puede cerrar antes desde el escritorio),
+//   - solo el usuario que la creo puede sondearla o cerrarla.
+// Lo peor que puede hacer quien robe un token es meter una o varias CURP en
+// la pantalla de otro capturista, que las ve antes de guardar cada una. No da
+// acceso a nada mas.
+//
+// Multi-lectura (E60-v2): antes la sesion se cerraba sola al primer escaneo
+// ("de un solo uso") y el celular se quedaba sin nada que hacer — se sentia
+// como que "se trababa" y habia que volver a vincular desde cero para la
+// siguiente persona. Ahora la MISMA sesion admite varios escaneos seguidos
+// mientras siga vigente: cada uno actualiza `datos` y sube `version`; el
+// escritorio se entera del ultimo por sondeo comparando `version`. Solo se
+// cierra si el capturista lo hace a proposito (E60.4) o si vence el tiempo.
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import {
@@ -36,6 +44,7 @@ interface FilaSesion {
   estado: 'pendiente' | 'completada';
   datos: DatosCurpQr | null;
   expira_en: string;
+  version: number;
 }
 
 /** Token opaco de 24 bytes en base64url: 192 bits, no adivinable. */
@@ -75,7 +84,7 @@ export default async function rutasEscaneoCurp(app: FastifyInstance): Promise<vo
   app.get('/api/escaneo-curp/sesiones/:token', protegida, async (peticion) => {
     const { token } = peticion.params as { token: string };
     const fila = await consultarUna<FilaSesion>(
-      `SELECT id, token, creada_por, estado, datos, expira_en
+      `SELECT id, token, creada_por, estado, datos, expira_en, version
          FROM sesiones_escaneo_curp
         WHERE token = $1`,
       [token]
@@ -88,16 +97,21 @@ export default async function rutasEscaneoCurp(app: FastifyInstance): Promise<vo
     }
 
     const vencida = fila.estado !== 'completada' && estaVencida(fila);
+    // `datos`/`version` viajan siempre (multi-lectura): el escritorio decide
+    // si es nuevo comparando `version` contra la ultima que ya proceso.
     const respuesta: EstadoSesionEscaneoRespuesta = {
       estado: vencida ? 'expirada' : fila.estado,
       expira_en: new Date(fila.expira_en).toISOString(),
-      datos: fila.estado === 'completada' ? fila.datos : null
+      datos: fila.datos,
+      version: fila.version
     };
     return respuesta;
   });
 
-  // --- E60.3 Entregar el resultado (celular, PUBLICO) -----------------------
+  // --- E60.3 Entregar un resultado (celular, PUBLICO) ------------------------
   // Sin `autenticar`: el celular no tiene sesion. El token es la credencial.
+  // Se puede llamar VARIAS veces mientras la sesion siga 'pendiente' y
+  // vigente (multi-lectura): cada llamada es un escaneo mas, no la ultima.
   app.post('/api/escaneo-curp/sesiones/:token/resultado', async (peticion) => {
     const { token } = peticion.params as { token: string };
     const cuerpo = peticion.body as { texto_qr?: unknown } | undefined;
@@ -108,7 +122,7 @@ export default async function rutasEscaneoCurp(app: FastifyInstance): Promise<vo
     }
 
     const fila = await consultarUna<FilaSesion>(
-      `SELECT id, token, creada_por, estado, datos, expira_en
+      `SELECT id, token, creada_por, estado, datos, expira_en, version
          FROM sesiones_escaneo_curp
         WHERE token = $1`,
       [token]
@@ -117,7 +131,11 @@ export default async function rutasEscaneoCurp(app: FastifyInstance): Promise<vo
       throw new ErrorApi(404, 'no_encontrado', 'Sesión de escaneo no encontrada.');
     }
     if (fila.estado === 'completada') {
-      throw new ErrorApi(409, 'sesion_usada', 'Esta sesión de escaneo ya se usó.');
+      throw new ErrorApi(
+        409,
+        'sesion_cerrada',
+        'Esta vinculación ya se cerró desde la computadora. Genera un código nuevo para seguir escaneando.'
+      );
     }
     if (estaVencida(fila)) {
       throw new ErrorApi(410, 'sesion_expirada', 'La sesión de escaneo expiró. Vuelve a generar el código en la computadora.');
@@ -134,19 +152,42 @@ export default async function rutasEscaneoCurp(app: FastifyInstance): Promise<vo
       );
     }
 
-    // Cierre de un solo uso. El WHERE repite estado/expiracion para que dos
-    // envios simultaneos no puedan sobrescribirse: solo uno afecta la fila.
-    const cerrada = await consultarUna<{ id: number }>(
+    // El WHERE repite estado/expiracion para que dos envios simultaneos no se
+    // pisen entre si: cada uno sube `version` en 1, nunca se pierde ninguno.
+    const guardado = await consultarUna<{ version: number }>(
       `UPDATE sesiones_escaneo_curp
-          SET estado = 'completada', datos = $2, completada_en = now()
+          SET datos = $2, version = version + 1
         WHERE id = $1 AND estado = 'pendiente' AND expira_en > now()
-        RETURNING id`,
+        RETURNING version`,
       [fila.id, JSON.stringify(datos)]
     );
-    if (!cerrada) {
-      throw new ErrorApi(409, 'sesion_usada', 'Esta sesión de escaneo ya se usó.');
+    if (!guardado) {
+      // Se cerro o vencio justo entre el SELECT y el UPDATE (carrera rara).
+      throw new ErrorApi(409, 'sesion_cerrada', 'Esta vinculación ya no acepta escaneos.');
     }
 
     return { ok: true as const, datos };
+  });
+
+  // --- E60.4 Cerrar la sesion a proposito (escritorio, autenticado) ---------
+  // "Terminar vinculación": deja de aceptar escaneos nuevos de inmediato, sin
+  // esperar los 10 minutos de vigencia. Idempotente: cerrar una sesion ya
+  // cerrada o vencida no es error.
+  app.post('/api/escaneo-curp/sesiones/:token/cerrar', protegida, async (peticion) => {
+    const { token } = peticion.params as { token: string };
+    const fila = await consultarUna<{ id: number; creada_por: number }>(
+      `SELECT id, creada_por FROM sesiones_escaneo_curp WHERE token = $1`,
+      [token]
+    );
+    if (!fila || fila.creada_por !== peticion.usuario!.id) {
+      throw new ErrorApi(404, 'no_encontrado', 'Sesión de escaneo no encontrada.');
+    }
+    await consultarUna(
+      `UPDATE sesiones_escaneo_curp
+          SET estado = 'completada', completada_en = now()
+        WHERE id = $1 AND estado = 'pendiente'`,
+      [fila.id]
+    );
+    return { ok: true as const };
   });
 }

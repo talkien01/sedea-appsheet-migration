@@ -5,9 +5,10 @@ import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import estaticos from '@fastify/static';
+import { PATRON_CURP } from '@sedea/shared';
 import { config } from './config.js';
 import { pool, esperarBaseDatos } from './db/pool.js';
-import pluginErrores from './plugins/errores.js';
+import pluginErrores, { ErrorApi } from './plugins/errores.js';
 import pluginAuth from './plugins/auth.js';
 import pluginRbac from './plugins/rbac.js';
 import pluginCambioPassword from './plugins/cambioPassword.js';
@@ -40,16 +41,19 @@ import rutasEscaneoCurp from './rutas/escaneoCurp.js';
 import rutasAdmin from './rutas/admin.js';
 // Registro de entrega del apoyo por concepto (evidencia en campo).
 import rutasEntregas from './rutas/entregas.js';
+// Conciliacion posterior de recibos fisicos escaneados por camion.
+import rutasConciliacion from './rutas/conciliacion.js';
 // Monitor de presencia en vivo: latido de la PWA + consulta solo para admin.
 import rutasPresencia from './rutas/presencia.js';
 
 async function construirApp() {
+  const limiteArchivo = Math.max(config.maxSubidaBytes, config.maxPdfConciliacionBytes);
   const app = Fastify({
     logger: {
       level: config.entorno === 'production' ? 'info' : 'debug',
       transport: undefined
     },
-    bodyLimit: config.maxSubidaBytes + 1024 * 1024,
+    bodyLimit: limiteArchivo + 1024 * 1024,
     trustProxy: true
   });
 
@@ -76,7 +80,7 @@ async function construirApp() {
 
   await app.register(multipart, {
     limits: {
-      fileSize: config.maxSubidaBytes,
+      fileSize: limiteArchivo,
       files: 2,
       fields: 20
     }
@@ -86,6 +90,44 @@ async function construirApp() {
   await app.register(pluginRbac);
   // Build 4: guarda global del cambio de contrasena obligatorio.
   await app.register(pluginCambioPassword);
+
+  // Salvaguardas de calidad de datos al crear una solicitud. Se aplican
+  // globalmente antes del handler para proteger tambien clientes PWA antiguos
+  // que sigan abiertos durante un despliegue.
+  app.addHook('preValidation', async (peticion) => {
+    const ruta = peticion.raw.url?.split('?')[0] ?? '';
+    if (peticion.method !== 'POST' || ruta !== '/api/solicitudes') return;
+    const cuerpo = peticion.body as Record<string, unknown> | null | undefined;
+    if (!cuerpo) return;
+
+    // Persona fisica: CURP obligatoria y valida.
+    if (cuerpo.tipo_persona === 'fisica') {
+      const curp = String(cuerpo.curp ?? '').trim().toUpperCase();
+      if (!curp) {
+        throw new ErrorApi(422, 'curp_requerida', 'La CURP es obligatoria para persona física.');
+      }
+      if (!PATRON_CURP.test(curp)) {
+        throw new ErrorApi(422, 'curp_invalida', 'La CURP no tiene el formato correcto.');
+      }
+    }
+
+    // Una solicitud puede contener conceptos distintos (por ejemplo Avena y
+    // Garbanzo), pero nunca el mismo tipo_apoyo_id dos veces.
+    const conceptos = Array.isArray(cuerpo.conceptos) ? cuerpo.conceptos : [];
+    const vistos = new Set<number>();
+    for (const concepto of conceptos) {
+      const tipoApoyoId = Number((concepto as Record<string, unknown>)?.tipo_apoyo_id);
+      if (!Number.isInteger(tipoApoyoId) || tipoApoyoId <= 0) continue;
+      if (vistos.has(tipoApoyoId)) {
+        throw new ErrorApi(
+          422,
+          'concepto_duplicado_en_solicitud',
+          'No puedes agregar el mismo concepto de apoyo más de una vez en la misma solicitud.'
+        );
+      }
+      vistos.add(tipoApoyoId);
+    }
+  });
 
   // Fotos de evidencia: requieren token (header o ?token=).
   prepararAlmacenamiento();
@@ -134,6 +176,8 @@ async function construirApp() {
   await app.register(rutasAdmin);
   // Entrega del apoyo: registro por concepto + paquete offline del evento.
   await app.register(rutasEntregas);
+  // Conciliacion de los recibos fisicos devueltos por los camiones.
+  await app.register(rutasConciliacion);
   // Monitor de presencia en vivo (quien esta conectado y en que pantalla).
   await app.register(rutasPresencia);
 

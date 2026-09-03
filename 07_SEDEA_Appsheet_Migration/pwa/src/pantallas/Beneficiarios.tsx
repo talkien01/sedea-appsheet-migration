@@ -124,15 +124,12 @@ export default function Beneficiarios() {
   const ultimoRegistro = filas.length === 0 ? 0 : Math.min(pagina * porPagina, filas.length);
 
   // ---------------------------------------------------------------------
-  // Exportar / imprimir el filtro ACTUAL.
+  // Exportar / imprimir.
   //
-  // Ambas acciones son en linea: el CSV y el PDF los arma el backend, que es
-  // quien tiene el padron completo y quien aplica el candado por Regional.
-  // Se le mandan los mismos filtros que estan en pantalla; el chip
-  // pendientes/capturados NO viaja porque "capturado" es un estado local de
-  // este dispositivo y el servidor no lo conoce (se avisa en pantalla).
-  // La paginacion tampoco viaja: exportar e imprimir siguen usando TODO el
-  // resultado filtrado, no solamente la pagina visible.
+  // CSV: usa TODO el resultado filtrado.
+  // PDF: usa la PAGINA ACTUAL como lote de impresion. Esto permite seleccionar
+  // 50 o 100 en "Mostrar por página", imprimir, avanzar a la página siguiente
+  // y generar el siguiente lote sin crear un PDF gigantesco.
   // ---------------------------------------------------------------------
   const [trabajando, setTrabajando] = useState<null | 'csv' | 'pdf'>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -182,11 +179,13 @@ export default function Beneficiarios() {
           'content-type': 'application/json',
           ...(sesion?.token ? { Authorization: `Bearer ${sesion.token}` } : {})
         },
-        body: JSON.stringify(filtroServidor)
+        body: JSON.stringify({
+          ...filtroServidor,
+          page: pagina,
+          page_size: porPagina
+        })
       });
       if (!respuesta.ok) {
-        // El backend explica en espanol el lote vacio y el exceso de folios;
-        // ese mensaje es mas util que uno generico.
         const cuerpo = (await respuesta.json().catch(() => null)) as {
           error?: { mensaje?: string };
         } | null;
@@ -197,12 +196,14 @@ export default function Beneficiarios() {
       const omitidos = Number(respuesta.headers.get('x-folios-omitidos') ?? 0);
       descargarBlob(
         await respuesta.blob(),
-        `folios_entrega_${new Date().toISOString().slice(0, 10)}.pdf`
+        `folios_entrega_lote_${String(pagina).padStart(2, '0')}_${new Date()
+          .toISOString()
+          .slice(0, 10)}.pdf`
       );
       setAviso(
         omitidos > 0
-          ? `${incluidos} folio(s) en el PDF. Se omitieron ${omitidos} sin autorización del Secretario.`
-          : `${incluidos} folio(s) en el PDF.`
+          ? `Lote ${pagina}: ${incluidos} folio(s) en el PDF. Se omitieron ${omitidos} sin autorización del Secretario.`
+          : `Lote ${pagina}: ${incluidos} folio(s) en el PDF.`
       );
     } catch {
       setErrorAccion('No fue posible generar los folios de entrega. Revisa tu conexión.');
@@ -343,19 +344,22 @@ export default function Beneficiarios() {
             type="button"
             className="secundario"
             data-testid="btn-imprimir-lote-folios"
-            disabled={trabajando !== null}
+            disabled={trabajando !== null || filas.length === 0}
             onClick={() => void imprimirLote()}
           >
             {trabajando === 'pdf'
               ? 'Generando folios…'
-              : `🖨️ Imprimir folios de entrega de los ${filas.length} filtrados`}
+              : `🖨️ Imprimir lote ${filas.length === 0 ? 0 : pagina} de ${
+                  filas.length === 0 ? 0 : totalPaginas
+                } (${primerRegistro}–${ultimoRegistro})`}
           </button>
         </div>
 
         <p className="dato">
-          Ambas acciones usan los filtros de Regional, municipio, colonia, sección y búsqueda, y
-          requieren conexión. El chip Pendientes/Capturados no aplica: es un estado de este
-          dispositivo. En el PDF solo entran los beneficiarios con autorización del Secretario.
+          El CSV usa todos los beneficiarios filtrados. La impresión genera únicamente la página
+          actual como lote; selecciona 50 o 100 en "Mostrar por página" y avanza con
+          Anterior/Siguiente para imprimir los lotes consecutivos. En el PDF solo entran los
+          beneficiarios con autorización del Secretario.
         </p>
 
         {errorAccion && (

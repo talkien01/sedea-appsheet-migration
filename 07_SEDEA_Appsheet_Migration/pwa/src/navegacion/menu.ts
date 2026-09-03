@@ -74,6 +74,15 @@ export const DESTINOS: Destino[] = [
     Icono: IconoCamara
   },
   {
+    id: 'conciliacion',
+    ruta: '/conciliacion',
+    etiqueta: 'Conciliación recibos',
+    testId: 'nav-conciliacion',
+    roles: ['capturista', 'admin'],
+    grupo: 'Campo',
+    Icono: IconoDocumento
+  },
+  {
     id: 'dashboard',
     ruta: '/dashboard',
     etiqueta: 'Dashboard',
@@ -81,6 +90,15 @@ export const DESTINOS: Destino[] = [
     roles: ['admin', 'auditor', 'editor_datos'],
     grupo: 'Gestión',
     Icono: IconoGrafica
+  },
+  {
+    id: 'beneficiarios-online',
+    ruta: '/gestion/beneficiarios',
+    etiqueta: 'Beneficiarios en línea',
+    testId: 'nav-beneficiarios-online',
+    roles: ['auditor', 'admin'],
+    grupo: 'Gestión',
+    Icono: IconoUsuarios
   },
   {
     id: 'auditoria',

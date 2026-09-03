@@ -27,6 +27,7 @@ import {
 } from '../plugins/errores.js';
 import { registrarAuditoria } from '../plugins/auditoria.js';
 import { guardarFoto } from '../servicios/almacenamiento.js';
+import { esTipoApoyoAutorizadoDeFacto } from '../servicios/autorizacion-operativa.js';
 import { exigirAutorizacionSecretario } from './solicitudes.js';
 
 interface ConceptoConSolicitud {
@@ -151,9 +152,12 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
         throw errorProhibido('La solicitud pertenece a otra Direccion Regional.');
       }
 
-      // 5) Candado del Secretario: mismo que el del Folio de entrega. Sin la
-      //    autorizacion capturada no hay entrega que registrar.
-      exigirAutorizacionSecretario(concepto);
+      // 5) Candado de autorización. Avena (160) y Garbanzo (161) están
+      //    autorizados de facto y no requieren autorización del Secretario.
+      //    Para cualquier otro concepto se conserva exactamente el candado.
+      if (!esTipoApoyoAutorizadoDeFacto(concepto.tipo_apoyo_id)) {
+        exigirAutorizacionSecretario(concepto);
+      }
 
       // 6) Sin parcialidades: si el concepto ya tiene entrega y viene con OTRO
       //    uuid, es un intento de re-entregar, no un reintento de red.
@@ -219,6 +223,7 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
           solicitud_concepto_id: datos.solicitud_concepto_id,
           solicitud_id: Number(concepto.solicitud_id),
           folio: concepto.folio,
+          autorizacion_de_facto: esTipoApoyoAutorizadoDeFacto(concepto.tipo_apoyo_id),
           lat: datos.lat,
           lng: datos.lng,
           precision_m: datos.precision_m
@@ -241,9 +246,8 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
   // IndexedDB para operar sin senal. Devuelve UN RENGLON POR CONCEPTO
   // pendiente, no por solicitud.
   //
-  // Solo entran los conceptos que cumplen las dos condiciones:
-  //   a) su solicitud tiene autorizada_secretario = TRUE
-  //   b) el concepto NO tiene ya una fila en entregas_apoyo
+  // Para Avena/Garbanzo no se exige autorización del Secretario. Para el resto
+  // sí se conserva. En todos los casos se excluyen conceptos ya entregados.
   // -------------------------------------------------------------------------
   app.get(
     '/api/entregas/preparar-evento',
@@ -283,6 +287,10 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
         filtroRegional = `AND s.regional_id = $${parametros.length}`;
       }
 
+      const filtroAutorizacion = esTipoApoyoAutorizadoDeFacto(tipoApoyoId)
+        ? ''
+        : 'AND s.autorizada_secretario = TRUE';
+
       const filas = await consultar<Record<string, unknown>>(
         `SELECT sc.id                       AS solicitud_concepto_id,
                 sc.solicitud_id,
@@ -305,7 +313,7 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
            LEFT JOIN municipios mun        ON mun.id = s.dom_municipio_id
            LEFT JOIN entregas_apoyo ea     ON ea.solicitud_concepto_id = sc.id
           WHERE sc.tipo_apoyo_id = $1
-            AND s.autorizada_secretario = TRUE
+            ${filtroAutorizacion}
             AND ea.uuid IS NULL
             ${filtroRegional}
           ORDER BY s.folio, sc.orden`,

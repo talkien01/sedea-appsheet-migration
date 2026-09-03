@@ -1,35 +1,27 @@
-// Logotipos oficiales para el encabezado de los PDF (PDFKit).
-//
-// RESOLUCION DE RUTA. Los PNG viven en backend/assets/logos/ y NO en el
-// assets/ de la raiz del monorepo, por una razon concreta: el Dockerfile del
-// backend solo hace COPY de backend/, packages/shared/ y db/, asi que un
-// assets/ en la raiz simplemente no existiria dentro del contenedor.
-//
-// Puestos ahi, la misma ruta relativa sirve en desarrollo y en produccion sin
-// ningun paso de build: tsc emite a dist/ conservando rootDir, de modo que
-// tanto backend/src/servicios/ como backend/dist/servicios/ cuelgan dos
-// niveles por debajo de backend/. '../../assets/logos' resuelve en los dos.
-//
-//   dev    backend/src/servicios/logos.ts   -> backend/assets/logos
-//   docker backend/dist/servicios/logos.js  -> backend/assets/logos
+// Logotipos oficiales para los PDF generados por el backend.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const directorio = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'assets', 'logos');
 
-/** Lockup completo de SEDEA. Es el logo PRINCIPAL del documento. */
+/** Lockup general usado por otros documentos existentes. */
 export const LOGO_SEDEA = path.join(directorio, 'sedea-horizontal.png');
-/** Gobierno del Estado. Acompana, en segundo plano. */
 export const LOGO_GOBIERNO = path.join(directorio, 'qro-gobierno.png');
 
-/** Proporciones reales de los recortes, para calcular el alto sin deformar. */
+/**
+ * Membrete aprobado para el folio de entrega: SEDEA + GEQ + Unión Ganadera
+ * ya normalizados al mismo tamaño visual y centrados en una sola franja.
+ */
+export const MEMBRETE_FOLIO_ENTREGA = path.join(directorio, 'folio-membrete.png');
+
 const RELACION_SEDEA = 888 / 284;
 const RELACION_GOBIERNO = 1076 / 304;
+const RELACION_MEMBRETE_FOLIO = 680 / 72;
 
 let avisado = false;
+let avisadoFolio = false;
 
-/** Los logos son decorativos: si faltan, el PDF debe salir igual. */
 export function hayLogos(): boolean {
   const existen = fs.existsSync(LOGO_SEDEA) && fs.existsSync(LOGO_GOBIERNO);
   if (!existen && !avisado) {
@@ -39,17 +31,22 @@ export function hayLogos(): boolean {
   return existen;
 }
 
+export function hayLogosFolio(): boolean {
+  const existe = fs.existsSync(MEMBRETE_FOLIO_ENTREGA);
+  if (!existe && !avisadoFolio) {
+    avisadoFolio = true;
+    console.warn(`No se encontró el membrete del folio de entrega en ${directorio}.`);
+  }
+  return existe;
+}
+
 interface Doc {
   image(src: string, x: number, y: number, opciones: { width?: number; height?: number }): unknown;
 }
 
 /**
- * Pinta el membrete en la primera pagina: SEDEA a la izquierda y, mas chico,
- * Gobierno del Estado alineado a la derecha. Devuelve la Y donde termina el
- * bloque, para que quien lo llama siga escribiendo debajo.
- *
- * `altoSedea` manda: el de Gobierno se calcula proporcional para que ambos
- * queden opticamente parejos sin que el segundo domine.
+ * Membrete existente de SEDEA + Gobierno. Se conserva sin cambios para los
+ * otros PDF del sistema.
  */
 export function membrete(doc: Doc, x: number, y: number, ancho: number, altoSedea = 34): number {
   if (!hayLogos()) return y;
@@ -65,4 +62,30 @@ export function membrete(doc: Doc, x: number, y: number, ancho: number, altoSede
   });
 
   return y + altoSedea;
+}
+
+/**
+ * Inserta el membrete aprobado del folio de entrega, centrado. Si el archivo
+ * gráfico llegara a estar ausente o corrupto, la generación del folio continúa
+ * sin membrete en vez de devolver un error 500.
+ */
+export function membreteFolioEntrega(
+  doc: Doc,
+  x: number,
+  y: number,
+  ancho: number,
+  anchoMembrete = 300
+): number {
+  if (!hayLogosFolio()) return y;
+
+  const alto = anchoMembrete / RELACION_MEMBRETE_FOLIO;
+  const inicio = x + (ancho - anchoMembrete) / 2;
+
+  try {
+    doc.image(MEMBRETE_FOLIO_ENTREGA, inicio, y, { width: anchoMembrete, height: alto });
+    return y + alto;
+  } catch (error) {
+    console.error('No se pudo insertar el membrete del folio de entrega; el PDF se genera sin logos.', error);
+    return y;
+  }
 }

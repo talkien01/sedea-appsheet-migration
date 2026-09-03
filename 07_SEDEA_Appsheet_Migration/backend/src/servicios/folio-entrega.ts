@@ -1,27 +1,20 @@
-// Generación de Folio de Entrega con QR (Build 12).
-//
-// Formato: Carta HORIZONTAL, dos hojas por beneficiario — la hoja 1 con los
-// datos y el QR, la hoja 2 solo con el folio gigante que sirve de separador en
-// la mesa de entrega. Es el mismo documento que imprime la pantalla
-// `pwa/src/componentes/FolioEntrega.tsx`, incluida la tabla de conceptos en
-// cantidad + unidad fisica (kg, obra, ...) y NO en dinero: el folio se firma
-// al recibir costales, y el monto solo confundia en ventanilla.
-//
-// `dibujarFolioEntrega()` esta separado de `generarFolioEntregaPdf()` a
-// proposito: el mismo trazado se invoca una vez para el PDF individual y N
-// veces dentro de un solo documento para la impresion en lote, de modo que un
-// cambio de diseno no pueda quedar aplicado en uno y no en el otro.
+// Generación de Folio de Entrega con QR.
+// Formato operativo: Carta vertical, una hoja por beneficiario, dividida
+// horizontalmente en dos comprobantes por una línea punteada de corte.
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { ETIQUETAS_NOMBRE_SOLICITANTE, type TipoPersona } from '@sedea/shared';
 import { pool } from '../db/pool.js';
-import { hayLogos, membrete } from './logos.js';
+import { hayLogosFolio, membreteFolioEntrega } from './logos.js';
 
-/** Un renglon del apoyo entregado: que es y cuanto, en unidades fisicas. */
+const KG_POR_COSTAL = 25;
+
 export interface ConceptoFolio {
   nombre: string;
   cantidad: string;
+  cantidad_numero: number;
   unidad: string;
+  costales: string;
 }
 
 export interface DatosFolioEntrega {
@@ -29,29 +22,56 @@ export interface DatosFolioEntrega {
   folio: string;
   beneficiario_nombre: string;
   beneficiario_curp: string;
-  /** Solo para persona moral / grupo; null en persona fisica. */
   representante_etiqueta: string | null;
   representante_nombre: string | null;
+  municipio_nombre: string;
+  localidad_ejido: string;
   programa_nombre: string;
+  componente_nombre: string;
   proyecto_nombre: string;
   regional_nombre: string;
+  superficie_ha: string;
   conceptos: ConceptoFolio[];
 }
 
-/** En BD varios de estos campos son cadena vacia, no NULL: ambos van a raya. */
 function texto(valor: string | null | undefined): string {
   const limpio = (valor ?? '').trim();
   return limpio === '' ? '—' : limpio;
 }
 
-/**
- * `cantidad` viene de un NUMERIC(_,3): 1.000 debe leerse "1" y 1.500 "1.5".
- * Sin esto el folio diria "Obra: 1.000" y el productor lo lee como mil.
- */
+function textoOpcional(valor: string | null | undefined): string | null {
+  const limpio = (valor ?? '').trim();
+  return limpio === '' ? null : limpio;
+}
+
 function cantidadTexto(valor: number | string | null | undefined): string {
   const n = Number(valor ?? 0);
   if (!Number.isFinite(n)) return '—';
   return n.toLocaleString('es-MX', { maximumFractionDigits: 3 });
+}
+
+function superficieTexto(valor: number | string | null | undefined): string {
+  const n = Number(valor ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  return n.toLocaleString('es-MX', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3
+  });
+}
+
+function esUnidadKg(unidad: string | null | undefined): boolean {
+  const limpia = (unidad ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\./g, '');
+  return ['KG', 'KGS', 'KILOGRAMO', 'KILOGRAMOS'].includes(limpia);
+}
+
+function costalesTexto(cantidad: number, unidad: string | null | undefined): string {
+  if (!esUnidadKg(unidad) || !Number.isFinite(cantidad) || cantidad <= 0) return '—';
+  const costales = cantidad / KG_POR_COSTAL;
+  const entero = Math.round(costales);
+  return Math.abs(costales - entero) < 1e-9 ? String(entero) : '—';
 }
 
 interface FilaFolio {
@@ -62,8 +82,14 @@ interface FilaFolio {
   razon_social: string | null;
   curp: string | null;
   programa_nombre: string | null;
+  componente_nombre: string | null;
   proyecto_nombre: string | null;
   regional_nombre: string | null;
+  municipio_nombre: string | null;
+  ubi_localidad: string | null;
+  ubi_ejido: string | null;
+  agr_superficie_total_ha: number | null;
+  agr_superficie_siembra_ha: number | null;
 }
 
 interface FilaConcepto {
@@ -73,11 +99,6 @@ interface FilaConcepto {
   unidad_medida: string | null;
 }
 
-/**
- * Carga los datos de N folios en dos consultas (no 2N): la impresion en lote
- * puede pedir cientos de solicitudes y una consulta por folio ahogaria al pool.
- * Devuelve las filas en el MISMO orden que `solicitudIds`.
- */
 export async function obtenerDatosFolios(solicitudIds: number[]): Promise<DatosFolioEntrega[]> {
   if (solicitudIds.length === 0) return [];
 
@@ -89,12 +110,20 @@ export async function obtenerDatosFolios(solicitudIds: number[]): Promise<DatosF
             s.razon_social,
             s.curp,
             p.nombre AS programa_nombre,
+            c.nombre AS componente_nombre,
             pr.nombre AS proyecto_nombre,
-            r.nombre AS regional_nombre
+            r.nombre AS regional_nombre,
+            m.nombre AS municipio_nombre,
+            s.ubi_localidad,
+            s.ubi_ejido,
+            s.agr_superficie_total_ha::float8 AS agr_superficie_total_ha,
+            s.agr_superficie_siembra_ha::float8 AS agr_superficie_siembra_ha
        FROM solicitudes s
        JOIN proyectos pr ON pr.id = s.proyecto_id
        JOIN programas p ON p.id = s.programa_id
+       JOIN componentes c ON c.id = s.componente_id
        LEFT JOIN direcciones_regionales r ON r.id = s.regional_id
+       LEFT JOIN municipios m ON m.id = s.ubi_municipio_id
       WHERE s.id = ANY($1::bigint[])`,
     [solicitudIds]
   );
@@ -112,10 +141,13 @@ export async function obtenerDatosFolios(solicitudIds: number[]): Promise<DatosF
   const porSolicitud = new Map<number, ConceptoFolio[]>();
   for (const c of conceptos) {
     const lista = porSolicitud.get(Number(c.solicitud_id)) ?? [];
+    const cantidadNumero = Number(c.cantidad);
     lista.push({
       nombre: texto(c.tipo_apoyo),
-      cantidad: cantidadTexto(c.cantidad),
-      unidad: texto(c.unidad_medida)
+      cantidad: cantidadTexto(cantidadNumero),
+      cantidad_numero: cantidadNumero,
+      unidad: texto(c.unidad_medida),
+      costales: costalesTexto(cantidadNumero, c.unidad_medida)
     });
     porSolicitud.set(Number(c.solicitud_id), lista);
   }
@@ -123,12 +155,22 @@ export async function obtenerDatosFolios(solicitudIds: number[]): Promise<DatosF
   const porId = new Map<number, DatosFolioEntrega>();
   for (const s of rows) {
     const id = Number(s.solicitud_id);
-    // Mismo criterio que la caratula de expediente: para persona moral o grupo
-    // manda la razon social, y `nombre_solicitante` pasa a ser el representante.
     const esMoralOGrupo = s.tipo_persona === 'moral' || s.tipo_persona === 'grupo';
     const nombre = esMoralOGrupo && s.razon_social ? s.razon_social : s.nombre_solicitante;
     const mostrarRepresentante =
       esMoralOGrupo && !!s.razon_social && !!(s.nombre_solicitante ?? '').trim();
+
+    const localidad = textoOpcional(s.ubi_localidad);
+    const ejido = textoOpcional(s.ubi_ejido);
+    const localidadEjido =
+      localidad && ejido && localidad.toUpperCase() !== ejido.toUpperCase()
+        ? `${localidad} / ${ejido}`
+        : (localidad ?? ejido ?? '—');
+
+    const superficieBase =
+      Number(s.agr_superficie_total_ha ?? 0) > 0
+        ? s.agr_superficie_total_ha
+        : s.agr_superficie_siembra_ha;
 
     porId.set(id, {
       solicitud_id: id,
@@ -139,9 +181,13 @@ export async function obtenerDatosFolios(solicitudIds: number[]): Promise<DatosF
         ? ETIQUETAS_NOMBRE_SOLICITANTE[s.tipo_persona as TipoPersona]
         : null,
       representante_nombre: mostrarRepresentante ? s.nombre_solicitante : null,
+      municipio_nombre: texto(s.municipio_nombre),
+      localidad_ejido: localidadEjido,
       programa_nombre: texto(s.programa_nombre),
+      componente_nombre: texto(s.componente_nombre),
       proyecto_nombre: texto(s.proyecto_nombre),
       regional_nombre: texto(s.regional_nombre),
+      superficie_ha: superficieTexto(superficieBase),
       conceptos: porSolicitud.get(id) ?? []
     });
   }
@@ -151,203 +197,329 @@ export async function obtenerDatosFolios(solicitudIds: number[]): Promise<DatosF
     .filter((d): d is DatosFolioEntrega => d !== undefined);
 }
 
-/** Carta horizontal en puntos PDF (792 x 612) con margenes de ~10mm. */
-const MARGEN = 28;
-const ANCHO_HOJA = 792;
-const ALTO_HOJA = 612;
-const ANCHO_UTIL = ANCHO_HOJA - MARGEN * 2;
+const ANCHO_HOJA = 612;
+const ALTO_HOJA = 792;
+const CORTE_Y = ALTO_HOJA / 2;
+const MARGEN_X = 34;
+const ANCHO_UTIL = ANCHO_HOJA - MARGEN_X * 2;
 
-/** El QR se pre-renderiza aparte porque `qrcode` es asincrono y PDFKit no. */
+type Doc = InstanceType<typeof PDFDocument>;
+
 export async function qrDeFolio(folio: string): Promise<Buffer> {
   const dataUrl = await QRCode.toDataURL(folio, {
-    width: 200,
-    margin: 2,
+    width: 500,
+    margin: 1,
     color: { dark: '#000000', light: '#ffffff' }
   });
   return Buffer.from(dataUrl.replace('data:image/png;base64,', ''), 'base64');
 }
 
-type Doc = InstanceType<typeof PDFDocument>;
+function renglon(
+  doc: Doc,
+  etiqueta: string,
+  valor: string,
+  x: number,
+  y: number,
+  ancho: number,
+  tamano = 8.2,
+  valorBold = false
+): void {
+  doc
+    .fillColor('#000000')
+    .font('Helvetica-Bold')
+    .fontSize(tamano)
+    .text(`${etiqueta}: `, x, y, { continued: true, lineBreak: false });
+  doc
+    .font(valorBold ? 'Helvetica-Bold' : 'Helvetica')
+    .text(valor, { width: ancho - 88, lineBreak: false, ellipsis: true });
+}
 
-/** Tabla de conceptos: concepto | cantidad | unidad. Devuelve la Y final. */
-function dibujarConceptos(doc: Doc, datos: DatosFolioEntrega, x: number, y: number, ancho: number): number {
-  const colCant = 70;
-  const colUnidad = 110;
-  const colNombre = ancho - colCant - colUnidad;
-  const columnas = [colNombre, colCant, colUnidad];
-  const altoFila = 16;
+function dibujarTablaConceptos(
+  doc: Doc,
+  datos: DatosFolioEntrega,
+  x: number,
+  y: number,
+  ancho: number
+): number {
+  const columnas = [296, 56, 52, 65, ancho - 296 - 56 - 52 - 65];
+  const encabezados = ['CONCEPTO DE APOYO', 'CANTIDAD', 'UNIDAD', 'COSTALES', 'SUPERFICIE\n(HA)'];
+  const altoEncabezado = 18;
+  const altoFila = 15;
 
-  doc.fontSize(8).font('Helvetica-Bold');
   let cx = x;
-  const encabezados = ['CONCEPTO', 'CANTIDAD', 'UNIDAD DE MEDIDA'];
+  doc.font('Helvetica-Bold').fontSize(7);
   encabezados.forEach((titulo, i) => {
-    doc.rect(cx, y, columnas[i], altoFila).fillAndStroke('#f5f5f5', '#999999');
-    doc.fillColor('#000000').text(titulo, cx + 4, y + 4, {
-      width: columnas[i] - 8,
-      align: i === 1 ? 'right' : 'left',
-      lineBreak: false
-    });
+    doc.rect(cx, y, columnas[i], altoEncabezado).fillAndStroke('#eeeeee', '#999999');
+    doc
+      .fillColor('#000000')
+      .text(titulo, cx + 2, y + 4, {
+        width: columnas[i] - 4,
+        height: altoEncabezado - 4,
+        align: 'center',
+        lineBreak: true
+      });
     cx += columnas[i];
   });
 
-  let fy = y + altoFila;
-  doc.fontSize(9).font('Helvetica');
+  const filas = datos.conceptos.length > 0 ? datos.conceptos : [{
+    nombre: 'Sin concepto registrado',
+    cantidad: '—',
+    cantidad_numero: 0,
+    unidad: '—',
+    costales: '—'
+  }];
 
-  if (datos.conceptos.length === 0) {
-    doc.rect(x, fy, ancho, altoFila).stroke('#999999');
-    doc.fillColor('#000000').text('Sin conceptos registrados', x + 4, fy + 4, {
-      width: ancho - 8,
-      lineBreak: false
-    });
-    return fy + altoFila;
-  }
-
-  for (const c of datos.conceptos) {
-    const celdas = [c.nombre, c.cantidad, c.unidad];
+  let fy = y + altoEncabezado;
+  doc.fontSize(7.4).font('Helvetica');
+  for (const c of filas.slice(0, 5)) {
+    const valores = [c.nombre, c.cantidad, c.unidad, c.costales, datos.superficie_ha];
     cx = x;
-    celdas.forEach((valor, i) => {
-      doc.rect(cx, fy, columnas[i], altoFila).stroke('#999999');
-      doc.fillColor('#000000').text(valor, cx + 4, fy + 4, {
-        width: columnas[i] - 8,
-        align: i === 1 ? 'right' : 'left',
-        // Sin salto: una fila de alto fijo mantiene alineadas las tres
-        // columnas; un concepto larguisimo se recorta en vez de desfasar.
-        lineBreak: false,
-        ellipsis: true
-      });
+    valores.forEach((valor, i) => {
+      doc.rect(cx, fy, columnas[i], altoFila).stroke('#aaaaaa');
+      doc
+        .fillColor('#000000')
+        .font(i === 3 && valor !== '—' ? 'Helvetica-Bold' : 'Helvetica')
+        .text(valor, cx + 2, fy + 4, {
+          width: columnas[i] - 4,
+          align: i === 0 ? 'left' : 'center',
+          lineBreak: false,
+          ellipsis: true
+        });
       cx += columnas[i];
     });
     fy += altoFila;
   }
+
   return fy;
 }
 
-/**
- * Traza UN folio de entrega completo (sus dos hojas) en el documento recibido.
- *
- * Asume que `doc` ya esta posicionado en una pagina Carta horizontal en blanco
- * y deja el cursor al final de la hoja 2; quien llame decide si agrega otra
- * pagina para el siguiente folio. No llama a `doc.end()`.
- */
+function totalCostales(datos: DatosFolioEntrega): number | null {
+  let total = 0;
+  let alguno = false;
+  for (const concepto of datos.conceptos) {
+    if (concepto.costales === '—') continue;
+    const n = Number(concepto.costales);
+    if (!Number.isFinite(n)) continue;
+    total += n;
+    alguno = true;
+  }
+  return alguno ? total : null;
+}
+
+function resumenApoyoInferior(datos: DatosFolioEntrega): string {
+  if (datos.conceptos.length === 0) return 'APOYO REGISTRADO';
+  if (datos.conceptos.length === 1) {
+    const c = datos.conceptos[0];
+    return `${c.cantidad} ${c.unidad} DE ${c.nombre}`.toUpperCase();
+  }
+  return datos.conceptos
+    .map((c) => `${c.cantidad} ${c.unidad} ${c.nombre}`.toUpperCase())
+    .join(' / ');
+}
+
+function cuerpoFolioInferior(doc: Doc, folio: string): number {
+  doc.font('Helvetica-Bold');
+  let cuerpo = 40;
+  const anchoMaximo = ANCHO_UTIL * 0.97;
+  while (cuerpo > 22) {
+    doc.fontSize(cuerpo);
+    if (doc.widthOfString(folio) <= anchoMaximo) break;
+    cuerpo -= 0.5;
+  }
+  return cuerpo;
+}
+
+/** Dibuja una hoja Carta vertical para un beneficiario. */
 export function dibujarFolioEntrega(doc: Doc, datos: DatosFolioEntrega, qr: Buffer): void {
-  // ---------------- Hoja 1: datos + QR ----------------
-  // Membrete: los logotipos oficiales sustituyen al rotulo naranja "SEDEA" y a
-  // la linea "Secretaría de Desarrollo Agropecuario", que el propio lockup ya
-  // trae impresa. Si los PNG faltaran se vuelve al rotulo tipografico, para
-  // que un folio de entrega nunca deje de imprimirse por un archivo ausente.
-  if (hayLogos()) {
-    const yFin = membrete(doc, MARGEN, MARGEN, ANCHO_UTIL, 30);
-    doc.fillColor('#000000').fontSize(14).font('Helvetica-Bold')
-      .text('FOLIO DE ENTREGA DE APOYO', MARGEN, yFin + 10, { width: ANCHO_UTIL, align: 'center' });
-  } else {
-    doc.fillColor('#FF5A1F').fontSize(20).font('Helvetica-Bold')
-      .text('SEDEA', MARGEN, MARGEN, { width: ANCHO_UTIL, align: 'center' });
-    doc.fillColor('#000000').fontSize(10).font('Helvetica')
-      .text('Secretaría de Desarrollo Agropecuario', { width: ANCHO_UTIL, align: 'center' });
-    doc.fontSize(14).font('Helvetica-Bold')
-      .text('FOLIO DE ENTREGA DE APOYO', { width: ANCHO_UTIL, align: 'center' });
+  // ---------------- Mitad superior: copia para expediente ----------------
+  if (hayLogosFolio()) {
+    membreteFolioEntrega(doc, MARGEN_X, 18, ANCHO_UTIL, 330);
   }
 
-  const yLinea = doc.y + 6;
-  doc.moveTo(MARGEN, yLinea).lineTo(MARGEN + ANCHO_UTIL, yLinea).lineWidth(2).stroke('#000000');
-
-  // Banner del folio: el dato con el que se busca el expediente en la mesa de
-  // entrega, asi que ocupa su propia franja de ancho completo.
-  const yBanner = yLinea + 12;
-  const altoBanner = 52;
-  doc.rect(MARGEN, yBanner, ANCHO_UTIL, altoBanner).fill('#f5f5f5');
-  doc.fillColor('#444444').fontSize(8).font('Helvetica-Bold')
-    .text('FOLIO', MARGEN, yBanner + 6, { width: ANCHO_UTIL, align: 'center', characterSpacing: 2 });
-  // El folio puede crecer (prefijo de proyecto + consecutivo): se reduce el
-  // cuerpo si a 30pt no cabria a lo ancho, en vez de desbordar la hoja.
-  const cuerpoBanner = Math.min(30, (ANCHO_UTIL / Math.max(datos.folio.length, 1)) * 1.6);
-  doc.fillColor('#000000').fontSize(cuerpoBanner).font('Courier-Bold')
-    .text(datos.folio, MARGEN, yBanner + 19, { width: ANCHO_UTIL, align: 'center', lineBreak: false });
-
-  // Cuerpo en tres columnas: beneficiario | apoyo | QR. En horizontal el ancho
-  // sobra y el alto escasea, por eso no se apilan.
-  const yCuerpo = yBanner + altoBanner + 18;
-  const anchoQr = 150;
-  const separacion = 20;
-  const anchoRestante = ANCHO_UTIL - anchoQr - separacion * 2;
-  const anchoCol1 = anchoRestante / 3;
-  const anchoCol2 = (anchoRestante / 3) * 2;
-  const xCol1 = MARGEN;
-  const xCol2 = xCol1 + anchoCol1 + separacion;
-  const xQr = xCol2 + anchoCol2 + separacion;
-
-  const seccion = (titulo: string, x: number, ancho: number): number => {
-    doc.fillColor('#000000').fontSize(11).font('Helvetica-Bold')
-      .text(titulo, x, yCuerpo, { width: ancho });
-    const y = doc.y + 4;
-    doc.moveTo(x, y).lineTo(x + ancho, y).lineWidth(1).stroke('#cccccc');
-    return y + 8;
-  };
-
-  const renglon = (etiqueta: string, valor: string, x: number, ancho: number, y: number): number => {
-    doc.fillColor('#000000').fontSize(9).font('Helvetica-Bold')
-      .text(`${etiqueta}: `, x, y, { width: ancho, continued: true });
-    doc.font('Helvetica').text(valor);
-    return doc.y + 4;
-  };
-
-  let y1 = seccion('DATOS DEL BENEFICIARIO', xCol1, anchoCol1);
-  y1 = renglon('Nombre', datos.beneficiario_nombre, xCol1, anchoCol1, y1);
-  if (datos.representante_nombre) {
-    y1 = renglon(
-      datos.representante_etiqueta ?? 'Representante',
-      datos.representante_nombre,
-      xCol1,
-      anchoCol1,
-      y1
-    );
-  }
-  y1 = renglon('CURP', datos.beneficiario_curp, xCol1, anchoCol1, y1);
-  renglon('Regional', datos.regional_nombre, xCol1, anchoCol1, y1);
-
-  let y2 = seccion('DATOS DEL APOYO', xCol2, anchoCol2);
-  y2 = renglon('Programa', datos.programa_nombre, xCol2, anchoCol2, y2);
-  y2 = renglon('Proyecto', datos.proyecto_nombre, xCol2, anchoCol2, y2);
-  dibujarConceptos(doc, datos, xCol2, y2 + 4, anchoCol2);
-
-  doc.image(qr, xQr, yCuerpo, { width: anchoQr, height: anchoQr });
-  doc.fillColor('#000000').fontSize(8).font('Helvetica-Oblique')
-    .text('Escanee este código QR para verificar la entrega del apoyo', xQr, yCuerpo + anchoQr + 6, {
-      width: anchoQr,
-      align: 'center'
-    });
-
-  const yPie = ALTO_HOJA - MARGEN - 24;
-  doc.moveTo(MARGEN, yPie).lineTo(MARGEN + ANCHO_UTIL, yPie).lineWidth(1).stroke('#cccccc');
-  doc.fillColor('#000000').fontSize(8).font('Helvetica-Oblique')
-    .text('Este documento debe presentarse al momento de recibir el apoyo', MARGEN, yPie + 8, {
+  doc
+    .fillColor('#000000')
+    .font('Helvetica-Bold')
+    .fontSize(11.5)
+    .text('FOLIO DE ENTREGA DE APOYO', MARGEN_X, 63, {
       width: ANCHO_UTIL,
       align: 'center'
     });
 
-  // ---------------- Hoja 2: folio gigante ----------------
-  doc.addPage();
-  // Courier avanza 0.6em por glifo: N caracteres miden 0.6 * N * cuerpo.
-  // Despejando para el ancho util (dejando ~10% de aire) sale el factor 1.5.
-  const cuerpoGigante = (ANCHO_UTIL / Math.max(datos.folio.length, 1)) * 1.5;
-  doc.fillColor('#000000').font('Courier-Bold').fontSize(cuerpoGigante);
-  const alturaTexto = doc.currentLineHeight();
-  doc.text(datos.folio, MARGEN, (ALTO_HOJA - alturaTexto) / 2, {
-    width: ANCHO_UTIL,
-    align: 'center',
-    lineBreak: false
+  doc
+    .fontSize(6.8)
+    .text('COPIA PARA EXPEDIENTE', MARGEN_X, 79, {
+      width: ANCHO_UTIL,
+      align: 'center'
+    });
+
+  // Folio a todo el ancho. Se retiró la Fecha de Entrega por instrucción operativa.
+  const yBanner = 92;
+  doc.rect(MARGEN_X, yBanner, ANCHO_UTIL, 22).fillAndStroke('#eeeeee', '#aaaaaa');
+  doc
+    .fillColor('#000000')
+    .font('Helvetica-Bold')
+    .fontSize(8.5)
+    .text('FOLIO ', MARGEN_X + 4, yBanner + 7, { continued: true, lineBreak: false });
+  doc
+    .font('Courier-Bold')
+    .fontSize(13)
+    .text(datos.folio, { lineBreak: false });
+
+  const xDatos = MARGEN_X + 2;
+  const anchoDatos = 365;
+  let y = 126;
+  renglon(doc, 'BENEFICIARIO', datos.beneficiario_nombre, xDatos, y, anchoDatos, 9.4, true);
+  y += 13;
+  if (datos.representante_nombre) {
+    renglon(
+      doc,
+      (datos.representante_etiqueta ?? 'REPRESENTANTE').toUpperCase(),
+      datos.representante_nombre,
+      xDatos,
+      y,
+      anchoDatos,
+      8.2
+    );
+    y += 12;
+  }
+  renglon(doc, 'CURP', datos.beneficiario_curp, xDatos, y, anchoDatos);
+  y += 12;
+  renglon(doc, 'MUNICIPIO', datos.municipio_nombre, xDatos, y, anchoDatos);
+  y += 12;
+  renglon(doc, 'LOCALIDAD / EJIDO', datos.localidad_ejido, xDatos, y, anchoDatos);
+  y += 12;
+  renglon(doc, 'DIRECCIÓN REGIONAL', datos.regional_nombre, xDatos, y, anchoDatos);
+  y += 12;
+  renglon(doc, 'PROGRAMA', datos.programa_nombre, xDatos, y, anchoDatos);
+  y += 12;
+  renglon(doc, 'COMPONENTE', datos.componente_nombre, xDatos, y, anchoDatos);
+  y += 12;
+  renglon(doc, 'PROYECTO', datos.proyecto_nombre, xDatos, y, anchoDatos);
+
+  const qrSuperior = 102;
+  doc.image(qr, ANCHO_HOJA - MARGEN_X - qrSuperior - 4, 125, {
+    width: qrSuperior,
+    height: qrSuperior
+  });
+
+  const finTabla = dibujarTablaConceptos(doc, datos, MARGEN_X, 244, ANCHO_UTIL);
+
+  // La leyenda queda pegada a la tabla para liberar el mayor espacio posible
+  // para la firma o huella del beneficiario.
+  const yConformidad = finTabla + 3;
+  doc
+    .fillColor('#000000')
+    .font('Helvetica-Bold')
+    .fontSize(7.4)
+    .text('RECIBÍ DE CONFORMIDAD ', MARGEN_X, yConformidad, { continued: true });
+  doc
+    .font('Helvetica')
+    .text('el apoyo descrito en este documento, correspondiente al folio señalado.');
+
+  // Una sola firma: se retiró Nombre/Firma de quien entrega.
+  const yFirma = Math.min(CORTE_Y - 22, Math.max(finTabla + 58, 352));
+  doc.moveTo(165, yFirma).lineTo(447, yFirma).lineWidth(0.7).stroke('#666666');
+  doc
+    .fillColor('#000000')
+    .font('Helvetica-Bold')
+    .fontSize(6.4)
+    .text('FIRMA O HUELLA DEL BENEFICIARIO', 155, yFirma + 5, {
+      width: 302,
+      align: 'center'
+    });
+
+  // Guía de corte al centro de la hoja.
+  doc
+    .save()
+    .dash(8, { space: 4 })
+    .moveTo(28, CORTE_Y)
+    .lineTo(ANCHO_HOJA - 28, CORTE_Y)
+    .lineWidth(1)
+    .stroke('#666666')
+    .undash()
+    .restore();
+
+  // ---------------- Mitad inferior: talón del beneficiario ----------------
+  if (hayLogosFolio()) {
+    membreteFolioEntrega(doc, MARGEN_X, CORTE_Y + 18, ANCHO_UTIL, 330);
+  }
+
+  const cuerpo = cuerpoFolioInferior(doc, datos.folio);
+  doc
+    .fillColor('#000000')
+    .font('Helvetica-Bold')
+    .fontSize(cuerpo)
+    .text(datos.folio, MARGEN_X, CORTE_Y + 77, {
+      width: ANCHO_UTIL,
+      align: 'center',
+      lineBreak: false
+    });
+
+  const xIzq = 48;
+  const anchoIzq = 300;
+  const yBase = CORTE_Y + 157;
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(15.5)
+    .text(datos.beneficiario_nombre.toUpperCase(), xIzq, yBase, {
+      width: anchoIzq,
+      align: 'center',
+      lineBreak: false,
+      ellipsis: true
+    });
+
+  doc
+    .fontSize(11.5)
+    .text(`MUNICIPIO: ${datos.municipio_nombre.toUpperCase()}`, xIzq, yBase + 34, {
+      width: anchoIzq,
+      align: 'center',
+      lineBreak: false,
+      ellipsis: true
+    });
+  doc
+    .text(`LOCALIDAD: ${datos.localidad_ejido.toUpperCase()}`, xIzq, yBase + 54, {
+      width: anchoIzq,
+      align: 'center',
+      lineBreak: false,
+      ellipsis: true
+    });
+
+  doc
+    .fontSize(11)
+    .text(resumenApoyoInferior(datos), xIzq, yBase + 88, {
+      width: anchoIzq,
+      align: 'center',
+      lineBreak: true
+    });
+
+  const costales = totalCostales(datos);
+  if (costales !== null) {
+    doc
+      .fontSize(20)
+      .text(String(costales), xIzq, yBase + 135, { width: anchoIzq, align: 'center' });
+    doc
+      .fontSize(13.5)
+      .text('COSTALES', xIzq, yBase + 165, { width: anchoIzq, align: 'center' });
+  }
+
+  const qrInferior = 190;
+  const xQr = ANCHO_HOJA - MARGEN_X - qrInferior - 2;
+  const yQr = yBase - 12;
+  doc.rect(xQr - 12, yQr - 10, qrInferior + 24, qrInferior + 24).stroke('#aaaaaa');
+  doc.image(qr, xQr, yQr, { width: qrInferior, height: qrInferior });
+}
+
+function nuevoDocumento(): Doc {
+  return new PDFDocument({
+    size: 'LETTER',
+    layout: 'portrait',
+    margin: 0,
+    autoFirstPage: true
   });
 }
 
-/** Documento nuevo en Carta horizontal, ya listo para el primer folio. */
-function nuevoDocumento(): Doc {
-  return new PDFDocument({ size: 'LETTER', layout: 'landscape', margin: MARGEN, autoFirstPage: true });
-}
-
-/** Cierra el documento y devuelve el buffer completo. */
 async function finalizar(doc: Doc, chunks: Buffer[]): Promise<Buffer> {
-  // PDFKit vacia el stream de forma asincrona: hay que esperar el 'end' o el
-  // buffer sale truncado/vacio.
   const listo = new Promise<void>((resolve, reject) => {
     doc.on('end', () => resolve());
     doc.on('error', reject);
@@ -369,12 +541,7 @@ export async function generarFolioEntregaPdf(solicitudId: number): Promise<Buffe
   return finalizar(doc, chunks);
 }
 
-/**
- * Un solo PDF con los folios de N solicitudes, dos hojas por folio y salto de
- * pagina entre beneficiarios. Los ids llegan ya filtrados por el endpoint
- * (alcance regional + autorizacion del Secretario): aqui no se decide quien
- * entra, solo se dibuja.
- */
+/** Un PDF multipágina: una hoja Carta vertical por beneficiario. */
 export async function generarFolioEntregaLotePdf(
   solicitudIds: number[]
 ): Promise<{ pdf: Buffer; folios: string[] }> {
@@ -386,7 +553,6 @@ export async function generarFolioEntregaLotePdf(
   doc.on('data', (chunk: Buffer) => chunks.push(chunk));
 
   for (let i = 0; i < lote.length; i++) {
-    // La primera pagina ya existe; a partir del segundo folio hay que abrirla.
     if (i > 0) doc.addPage();
     dibujarFolioEntrega(doc, lote[i], await qrDeFolio(lote[i].folio));
   }

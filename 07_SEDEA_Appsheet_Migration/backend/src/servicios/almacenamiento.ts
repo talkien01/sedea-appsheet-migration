@@ -83,6 +83,27 @@ export function guardarAdjuntoSolicitud(
   return { url, rutaAbsoluta, hash, bytes: buffer.length };
 }
 
+/**
+ * Conserva el PDF multipagina original de un lote de recibos de camion.
+ * Se guarda sin transformaciones para que siempre exista la evidencia exacta
+ * que produjo el escaner documental.
+ */
+export function guardarPdfConciliacion(buffer: Buffer, uuid: string): FotoGuardada {
+  const ahora = new Date();
+  const anio = String(ahora.getUTCFullYear());
+  const mes = String(ahora.getUTCMonth() + 1).padStart(2, '0');
+  const directorio = path.join(config.directorioMedia, 'conciliaciones', anio, mes);
+  fs.mkdirSync(directorio, { recursive: true });
+
+  const nombre = `${uuid}.pdf`;
+  const rutaAbsoluta = path.join(directorio, nombre);
+  fs.writeFileSync(rutaAbsoluta, buffer);
+
+  const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+  const url = `${config.rutaPublicaMedia}/conciliaciones/${anio}/${mes}/${nombre}`;
+  return { url, rutaAbsoluta, hash, bytes: buffer.length };
+}
+
 /** Traduce una url publica /media/... a su ruta absoluta en disco. */
 export function rutaAbsolutaDesdeUrl(url: string): string | null {
   if (!url.startsWith(config.rutaPublicaMedia)) return null;

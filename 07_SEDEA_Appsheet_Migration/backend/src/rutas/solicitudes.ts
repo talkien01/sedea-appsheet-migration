@@ -4,8 +4,11 @@
 //  - Solo los roles `ventanilla` y `admin` entran aqui (D34).
 //  - El alcance por municipios/componentes se aplica en el BACKEND (D36).
 //  - La solicitud entra DIRECTO a produccion, sin pasar por staging (D33).
-//  - No existe edicion ni borrado de solicitudes (D44): no hay PATCH ni DELETE
-//    sobre /api/solicitudes/:id, solo sobre su checklist de documentos.
+//  - No existe edicion ni borrado de solicitudes para ventanilla/capturista
+//    (D44): no hay PATCH ni DELETE sobre /api/solicitudes/:id para esos roles,
+//    solo sobre su checklist de documentos. La UNICA excepcion es
+//    PATCH /api/admin/solicitudes/:id (solo admin, motivo obligatorio,
+//    reautenticacion por contrasena, folio nunca editable) — ver mas abajo.
 import crypto from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ZodError } from 'zod';
@@ -15,9 +18,11 @@ import {
   PATRON_CORREO,
   PATRON_CURP,
   TIPOS_PERSONA,
+  CAMPOS_EDITABLES_ADMIN_SOLICITUD,
   esquemaActualizarDocumento,
   esquemaCrearSolicitud,
   esquemaDocumentosRequeridos,
+  esquemaEditarSolicitudAdmin,
   esquemaVerificarCurpConcepto,
   normalizarTelefono,
   type EntradaCrearSolicitud,
@@ -62,6 +67,8 @@ import {
   obtenerSolicitud,
   tiposApoyoActivos
 } from '../db/queries/solicitudes.js';
+import { obtenerHash } from '../db/queries/usuarios.js';
+import { verificarPassword } from '../servicios/passwords.js';
 
 const consultarUna = async <T extends Record<string, unknown>>(sql: string, values?: unknown[]) => {
   const { rows } = await pool.query<T>(sql, values);
@@ -875,10 +882,14 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
     const { data, total } = await listarSolicitudes({
       alcance,
       regional_id: regionalForzada(usuario),
+      // Filtro explicito de Regional (para el buscador de edicion
+      // administrativa) — el alcance normal del usuario lo sigue acotando.
+      regional_filtro_id: q.regional_id ? Number(q.regional_id) : null,
       q: q.q || null,
       componente_id: q.componente_id ? Number(q.componente_id) : null,
       municipio_id: q.municipio_id ? Number(q.municipio_id) : null,
       ventanilla_id: q.ventanilla_id ? Number(q.ventanilla_id) : null,
+      capturado_por_id: q.capturado_por_id ? Number(q.capturado_por_id) : null,
       desde: q.desde || null,
       hasta: q.hasta || null,
       page,
@@ -1214,6 +1225,180 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
     }
   );
 
-  // Nota: no se registra PATCH ni DELETE sobre /api/solicitudes/:id (D44).
-  // Fastify responde 404 con el manejador global.
+  // ---------------------------------------------------------------------------
+  // Edicion administrativa (solo admin): la UNICA excepcion a D44. Corrige
+  // datos mal capturados — nombre, tipo de persona, CURP, telefono, municipio
+  // del apoyo, localidad, y cantidad/monto de los conceptos YA EXISTENTES (no
+  // se agregan ni quitan conceptos aqui: eso crea/borra beneficiarios y es
+  // demasiado riesgoso para una v1). El folio NUNCA se edita — es la identidad
+  // legal del expediente; si esta mal, la via es anular y volver a capturar.
+  // Exige motivo y reautenticacion por contrasena (defensa en profundidad:
+  // protege contra una sesion abierta sin vigilancia, no reemplaza el rol).
+  // ---------------------------------------------------------------------------
+  app.patch<{ Params: { id: string } }>(
+    '/api/admin/solicitudes/:id',
+    protegida,
+    async (peticion, respuesta) => {
+      const usuario = peticion.usuario!;
+      if (!tieneRol(usuario, 'admin')) {
+        throw error403('rol_no_autorizado', 'Solo un administrador puede editar una solicitud.');
+      }
+
+      const id = Number(peticion.params.id);
+      if (!Number.isInteger(id) || id <= 0) throw error404('La solicitud no existe.');
+
+      const analisis = esquemaEditarSolicitudAdmin.safeParse(peticion.body ?? {});
+      if (!analisis.success) throw traducirFalloZod(analisis.error);
+      const entrada = analisis.data;
+
+      const hash = await obtenerHash(usuario.id);
+      if (!hash || !verificarPassword(entrada.password, hash)) {
+        throw new ErrorApi(401, 'password_incorrecta', 'Tu contraseña no es correcta.');
+      }
+
+      const previa = await obtenerSolicitud(id);
+      if (!previa) throw error404('La solicitud no existe.');
+
+      const campos = { ...entrada.campos } as Record<string, unknown>;
+      if (campos.ubi_municipio_id !== undefined) {
+        const municipio = await municipioActivo(Number(campos.ubi_municipio_id));
+        if (!municipio) {
+          throw error422('municipio_invalido', 'El municipio seleccionado no existe o está inactivo.');
+        }
+      }
+      if (typeof campos.curp === 'string') {
+        const curpNormalizada = campos.curp.trim().toUpperCase();
+        if (!PATRON_CURP.test(curpNormalizada)) {
+          throw error422('curp_invalida', 'La CURP no tiene el formato correcto.');
+        }
+        campos.curp = curpNormalizada;
+      }
+      if (typeof campos.telefono === 'string') {
+        const normalizado = normalizarTelefono(campos.telefono);
+        if (!normalizado) throw error422('telefono_invalido', 'El teléfono debe tener 10 dígitos.');
+        campos.telefono = normalizado;
+      }
+      if (typeof campos.nombre_solicitante === 'string') {
+        campos.nombre_solicitante = campos.nombre_solicitante.trim().toUpperCase();
+      }
+
+      const conceptosPrevios = entrada.conceptos.length ? await conceptosDeSolicitud(id) : [];
+      for (const c of entrada.conceptos) {
+        if (!conceptosPrevios.some((p) => Number(p.id) === c.id)) {
+          throw error404(`El concepto ${c.id} no pertenece a esta solicitud.`);
+        }
+      }
+
+      const cambiosCampos: { campo: string; anterior: unknown; nuevo: unknown }[] = [];
+      const cambiosConceptos: { id: number; campo: string; anterior: unknown; nuevo: unknown }[] = [];
+
+      const MAPA_CASCADA_BENEFICIARIO: Record<string, string> = {
+        nombre_solicitante: 'nombre_completo',
+        curp: 'curp',
+        telefono: 'telefono',
+        ubi_municipio_id: 'municipio_id',
+        ubi_localidad: 'localidad'
+      };
+
+      const huboCambios = await enTransaccion(async (cliente) => {
+        const clavesCampos = Object.keys(campos);
+        if (clavesCampos.length > 0) {
+          const set: string[] = [];
+          const valores: unknown[] = [];
+          let i = 1;
+          for (const clave of clavesCampos) {
+            const nuevo = campos[clave];
+            const anterior = (previa as Record<string, unknown>)[clave];
+            if (String(anterior ?? '') !== String(nuevo ?? '')) {
+              cambiosCampos.push({ campo: clave, anterior, nuevo });
+            }
+            set.push(`${clave} = $${i}`);
+            valores.push(nuevo);
+            i++;
+          }
+
+          if (cambiosCampos.length > 0) {
+            await cliente.query(
+              `UPDATE solicitudes SET ${set.join(', ')}, actualizado_en = now() WHERE id = $${i}`,
+              [...valores, id]
+            );
+
+            const cascadaSet: string[] = [];
+            const cascadaValores: unknown[] = [];
+            let j = 1;
+            for (const cambio of cambiosCampos) {
+              const columna = MAPA_CASCADA_BENEFICIARIO[cambio.campo];
+              if (!columna) continue;
+              cascadaSet.push(`${columna} = $${j}`);
+              cascadaValores.push(cambio.nuevo);
+              j++;
+            }
+            if (cascadaSet.length > 0) {
+              await cliente.query(
+                `UPDATE beneficiarios SET ${cascadaSet.join(', ')}, actualizado_en = now()
+                   WHERE solicitud_id = $${j}`,
+                [...cascadaValores, id]
+              );
+            }
+          }
+        }
+
+        for (const c of entrada.conceptos) {
+          const previoConcepto = conceptosPrevios.find((p) => Number(p.id) === c.id)!;
+          const cantidadPrevia = Number(previoConcepto.cantidad);
+          const montoPrevio = Number(previoConcepto.monto_total);
+          const cambioCantidad = cantidadPrevia !== c.cantidad;
+          const cambioMonto = montoPrevio !== c.monto_total;
+          if (!cambioCantidad && !cambioMonto) continue;
+
+          if (cambioCantidad) {
+            cambiosConceptos.push({ id: c.id, campo: 'cantidad', anterior: cantidadPrevia, nuevo: c.cantidad });
+          }
+          if (cambioMonto) {
+            cambiosConceptos.push({ id: c.id, campo: 'monto_total', anterior: montoPrevio, nuevo: c.monto_total });
+          }
+
+          await cliente.query(
+            `UPDATE solicitud_conceptos SET cantidad = $1, monto_total = $2 WHERE id = $3 AND solicitud_id = $4`,
+            [c.cantidad, c.monto_total, c.id, id]
+          );
+          if (previoConcepto.beneficiario_id) {
+            await cliente.query(
+              `UPDATE beneficiarios SET cantidad_asignada = $1, actualizado_en = now() WHERE id = $2`,
+              [c.cantidad, previoConcepto.beneficiario_id]
+            );
+          }
+        }
+
+        if (cambiosCampos.length === 0 && cambiosConceptos.length === 0) return false;
+
+        await bitacoraEnTransaccion(cliente, {
+          usuarioId: usuario.id,
+          accion: 'edicion_admin_solicitud',
+          entidad: 'solicitud',
+          entidadId: id,
+          detalle: {
+            folio: previa.folio,
+            motivo: entrada.motivo,
+            campos: cambiosCampos,
+            conceptos: cambiosConceptos
+          },
+          ip: peticion.ip,
+          userAgent: (peticion.headers['user-agent'] as string | undefined)?.slice(0, 300) ?? null
+        });
+        return true;
+      });
+
+      if (!huboCambios) throw error422('sin_cambios', 'No hay cambios que guardar.');
+
+      return respuesta.status(200).send({
+        ok: true,
+        solicitud: await obtenerSolicitud(id),
+        conceptos: await conceptosDeSolicitud(id)
+      });
+    }
+  );
+
+  // Nota: para ventanilla/capturista NO hay PATCH ni DELETE sobre
+  // /api/solicitudes/:id (D44). Fastify responde 404 con el manejador global.
 }

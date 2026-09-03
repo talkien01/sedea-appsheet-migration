@@ -357,6 +357,7 @@ export interface FilaSolicitud {
   ventanilla: string;
   municipio: string | null;
   capturado_por_nombre: string | null;
+  regional: string | null;
   conceptos: number;
   monto_total: number;
   documentos_recibidos: string;
@@ -536,3 +537,45 @@ export function cantidadPorEscalon(
   // Por encima del techo: se queda en el ultimo escalon.
   return { tipo: 'fijo', cantidad: validos[validos.length - 1].cantidad, topado: true };
 }
+
+// ============================================================================
+// Edicion administrativa de solicitudes (solo admin, D44 sigue vigente para
+// TODOS los demas roles: esta es la UNICA via de edicion, con lista blanca
+// estricta, motivo obligatorio y reautenticacion por contrasena). El folio
+// NUNCA esta en esta lista: es la identidad legal del expediente.
+// ============================================================================
+
+export const CAMPOS_EDITABLES_ADMIN_SOLICITUD = [
+  'nombre_solicitante',
+  'tipo_persona',
+  'curp',
+  'telefono',
+  'ubi_municipio_id',
+  'ubi_localidad'
+] as const;
+export type CampoEditableAdminSolicitud = (typeof CAMPOS_EDITABLES_ADMIN_SOLICITUD)[number];
+
+export const esquemaConceptoEditadoAdmin = z.object({
+  id: z.number().int().positive(),
+  cantidad: z.number().positive(),
+  monto_total: z.number().nonnegative()
+});
+
+export const esquemaEditarSolicitudAdmin = z.object({
+  motivo: z.string().trim().min(5, 'El motivo debe tener al menos 5 caracteres.').max(500),
+  password: z.string().min(1, 'Ingresa tu contraseña.'),
+  campos: z
+    .object({
+      nombre_solicitante: z.string().trim().min(1).max(200).optional(),
+      tipo_persona: z.enum(TIPOS_PERSONA).optional(),
+      curp: z.string().trim().length(18).optional(),
+      telefono: z.string().trim().max(20).optional(),
+      ubi_municipio_id: z.number().int().positive().optional(),
+      ubi_localidad: z.string().trim().max(120).optional()
+    })
+    .strict()
+    .optional()
+    .default({}),
+  conceptos: z.array(esquemaConceptoEditadoAdmin).max(20).optional().default([])
+});
+export type EditarSolicitudAdminInput = z.infer<typeof esquemaEditarSolicitudAdmin>;

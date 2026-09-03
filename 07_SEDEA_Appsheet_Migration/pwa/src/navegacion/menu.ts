@@ -155,6 +155,17 @@ export const DESTINOS: Destino[] = [
     roles: ['admin'],
     grupo: 'Administración',
     Icono: IconoOjo
+  },
+  // Edicion administrativa de solicitudes. SOLO admin: es la unica excepcion
+  // a la inmutabilidad de solicitudes (D44), con motivo + reautenticacion.
+  {
+    id: 'edicion-admin-solicitudes',
+    ruta: '/admin/solicitudes',
+    etiqueta: 'Editar solicitudes',
+    testId: 'nav-edicion-admin-solicitudes',
+    roles: ['admin'],
+    grupo: 'Administración',
+    Icono: IconoLapiz
   }
 ];
 

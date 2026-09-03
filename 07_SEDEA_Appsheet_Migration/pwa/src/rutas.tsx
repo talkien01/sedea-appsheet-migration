@@ -38,6 +38,7 @@ import DictamenDetalle from './pantallas/DictamenDetalle';
 import EscaneoMovil from './pantallas/EscaneoMovil';
 import RegistrarEntrega from './pantallas/RegistrarEntrega';
 import Monitor from './pantallas/Monitor';
+import EdicionAdminSolicitudes from './pantallas/EdicionAdminSolicitudes';
 
 const CAMPO = ['capturista', 'admin'];
 const AUDITORIA = ['auditor', 'admin'];
@@ -47,6 +48,8 @@ const GESTION = ['admin', 'auditor', 'editor_datos'];
 const USUARIOS = ['admin', 'editor_datos'];
 // Monitor de actividad en vivo: SOLO admin (no lo hereda editor_datos).
 const MONITOR = ['admin'];
+// Edicion administrativa de solicitudes: SOLO admin (unica excepcion a D44).
+const EDICION_ADMIN = ['admin'];
 // Modulo de ventanilla: rol nuevo `ventanilla` y admin (D34).
 const VENTANILLA = ['ventanilla', 'capturista', 'admin'];
 // Build 13: pre-dictaminacion con IA. El rol `dictaminador` NO hereda
@@ -215,6 +218,21 @@ export default function Rutas() {
           element={
             <RutaProtegida roles={MONITOR}>
               <Monitor />
+            </RutaProtegida>
+          }
+        />
+
+        {/*
+          Edicion administrativa de solicitudes. SOLO admin — unica excepcion
+          a D44 (inmutabilidad de solicitudes). El backend aplica el mismo
+          candado en PATCH /api/admin/solicitudes/:id, mas motivo obligatorio
+          y reautenticacion por contrasena.
+        */}
+        <Route
+          path="/admin/solicitudes"
+          element={
+            <RutaProtegida roles={EDICION_ADMIN}>
+              <EdicionAdminSolicitudes />
             </RutaProtegida>
           }
         />

@@ -191,6 +191,9 @@ export async function listarSolicitudes(params: {
   componente_id: number | null;
   municipio_id: number | null;
   ventanilla_id: number | null;
+  capturado_por_id: number | null;
+  /** Filtro explicito de Regional (independiente del alcance forzado de arriba). */
+  regional_filtro_id: number | null;
   desde: string | null;
   hasta: string | null;
   page: number;
@@ -227,6 +230,16 @@ export async function listarSolicitudes(params: {
     valores.push(params.ventanilla_id);
     i++;
   }
+  if (params.capturado_por_id) {
+    condiciones.push(`s.capturado_por = $${i}`);
+    valores.push(params.capturado_por_id);
+    i++;
+  }
+  if (params.regional_filtro_id) {
+    condiciones.push(`s.regional_id = $${i}`);
+    valores.push(params.regional_filtro_id);
+    i++;
+  }
   if (params.desde) {
     condiciones.push(`s.recibida_en >= $${i}::timestamptz`);
     valores.push(params.desde);
@@ -250,6 +263,7 @@ export async function listarSolicitudes(params: {
             c.clave AS componente, p.clave AS proyecto, v.clave AS ventanilla,
             m.nombre AS municipio,
             u.nombre_completo AS capturado_por_nombre,
+            r.nombre AS regional,
             (SELECT count(*) FROM solicitud_conceptos sc WHERE sc.solicitud_id = s.id)::int AS conceptos,
             coalesce((SELECT sum(sc.monto_total) FROM solicitud_conceptos sc
                        WHERE sc.solicitud_id = s.id), 0)::float8 AS monto_total,
@@ -263,6 +277,7 @@ export async function listarSolicitudes(params: {
        JOIN ventanillas v  ON v.id = s.ventanilla_id
        LEFT JOIN municipios m ON m.id = s.ubi_municipio_id
        LEFT JOIN usuarios u ON u.id = s.capturado_por
+       LEFT JOIN direcciones_regionales r ON r.id = s.regional_id
       WHERE ${donde}
       ORDER BY s.recibida_en DESC, s.id DESC
       LIMIT $${i} OFFSET $${i + 1}`,
@@ -281,6 +296,7 @@ export async function listarSolicitudes(params: {
       ventanilla: f.ventanilla,
       municipio: f.municipio,
       capturado_por_nombre: f.capturado_por_nombre,
+      regional: f.regional,
       conceptos: f.conceptos,
       monto_total: f.monto_total,
       documentos_recibidos: `${f.docs_recibidos}/${f.docs_total}`

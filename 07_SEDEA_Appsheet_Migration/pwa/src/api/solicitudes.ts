@@ -169,5 +169,25 @@ export const apiSolicitudes = {
       method: 'PUT',
       body: JSON.stringify(cuerpo)
     });
+  },
+
+  /**
+   * Edicion administrativa (solo admin, unica excepcion a D44). Exige motivo
+   * y la contraseña del propio admin (reautenticacion). El folio nunca va en
+   * `campos`: el backend lo rechaza con 422 `campo_no_editable`.
+   */
+  editarAdmin(
+    id: number,
+    cuerpo: {
+      motivo: string;
+      password: string;
+      campos: Record<string, unknown>;
+      conceptos: { id: number; cantidad: number; monto_total: number }[];
+    }
+  ): Promise<{ ok: true; solicitud: Record<string, unknown>; conceptos: unknown[] }> {
+    return peticion(`/admin/solicitudes/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(cuerpo)
+    });
   }
 };

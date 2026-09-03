@@ -4,6 +4,7 @@
 // usuario puede sobrescribirlo; una vez editado a mano, esa fila deja de
 // autocalcularse (Assumption 48: el papel admite aportaciones de terceros).
 import {
+  CLAVE_PROYECTO_CASAS_EJIDALES,
   CLAVE_PROYECTO_TOPE_MONTO,
   TOPE_MONTO_PROYECTO_PEO,
   type CatalogosVentanilla,
@@ -15,10 +16,12 @@ export interface FilaConcepto {
   tipo_apoyo_id: string;
   /**
    * Descripcion homologada del concepto, copiada del catalogo al elegirlo.
-   * Es de solo lectura en la tabla: a diferencia de `cantidad` o `monto_total`
-   * (que varian legitimamente por solicitante y por eso admiten captura a
-   * mano), la descripcion debe ser identica para todos los solicitantes del
-   * mismo concepto, asi que solo se cambia editando el catalogo.
+   * Es de solo lectura en la tabla para todos los proyectos: a diferencia de
+   * `cantidad` o `monto_total` (que varian legitimamente por solicitante y
+   * por eso admiten captura a mano), la descripcion debe ser identica para
+   * todos los solicitantes del mismo concepto, asi que solo se cambia
+   * editando el catalogo. EXCEPCION: Casas Ejidales (proyecto PEO) — ahi SI
+   * se escribe a mano, ver `CLAVE_PROYECTO_CASAS_EJIDALES`.
    */
   descripcion: string;
   cantidad: string;
@@ -176,20 +179,35 @@ export default function TablaConceptos({
                   )}
                 </td>
                 {/*
-                  La descripcion NO se captura aqui: viene del catalogo del
-                  concepto y se muestra en modo lectura, para que sea identica
-                  en todas las solicitudes del mismo concepto. Se cambia
-                  unicamente editando el concepto en /catalogos.
+                  La descripcion es de solo lectura (homologada desde el
+                  catalogo) para TODOS los proyectos, EXCEPTO Casas Ejidales
+                  (PEO): ahi el apoyo real varia por beneficiario (cubetas de
+                  pintura, laminas, instalacion de bano...) y el catalogo hoy
+                  solo tiene un concepto generico, asi que aqui SI se escribe
+                  a mano. Se cambia editando el concepto en /catalogos SOLO
+                  para los demas proyectos.
                 */}
                 <td>
-                  <span
-                    className="descripcion-concepto"
-                    data-testid="input-concepto-descripcion"
-                    aria-label="Descripción del concepto"
-                    title={fila.descripcion || undefined}
-                  >
-                    {fila.descripcion || '—'}
-                  </span>
+                  {proyectoClave === CLAVE_PROYECTO_CASAS_EJIDALES ? (
+                    <input
+                      type="text"
+                      className="descripcion-concepto"
+                      data-testid="input-concepto-descripcion"
+                      aria-label="Descripción del apoyo"
+                      placeholder="Ej. Láminas para techo, cubetas de pintura, instalación de baño…"
+                      value={fila.descripcion}
+                      onChange={(e) => cambiar(indice, 'descripcion', e.target.value)}
+                    />
+                  ) : (
+                    <span
+                      className="descripcion-concepto"
+                      data-testid="input-concepto-descripcion"
+                      aria-label="Descripción del concepto"
+                      title={fila.descripcion || undefined}
+                    >
+                      {fila.descripcion || '—'}
+                    </span>
+                  )}
                 </td>
                 <td className="col-num">
                   <input

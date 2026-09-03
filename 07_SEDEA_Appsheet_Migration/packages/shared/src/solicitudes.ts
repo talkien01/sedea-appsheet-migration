@@ -546,6 +546,8 @@ export function cantidadPorEscalon(
  */
 export const CLAVE_PROYECTO_TOPE_MONTO = 'PEO';
 export const TOPE_MONTO_PROYECTO_PEO = 150000;
+/** Mismo proyecto (PEO), nombre mas claro para el resto de reglas de Casas Ejidales. */
+export const CLAVE_PROYECTO_CASAS_EJIDALES = CLAVE_PROYECTO_TOPE_MONTO;
 
 // ============================================================================
 // Edicion administrativa de solicitudes (solo admin, D44 sigue vigente para

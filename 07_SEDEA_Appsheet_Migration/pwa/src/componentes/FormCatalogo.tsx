@@ -86,6 +86,7 @@ export default function FormCatalogo({
       datos.categoria = formData.get('categoria') || null;
       datos.unidad_medida = formData.get('unidad_medida') || null;
       datos.descripcion = formData.get('descripcion') || null;
+      datos.autorizado_de_facto = formData.get('autorizado_de_facto') === 'on';
     }
 
     alGuardar(datos);
@@ -307,6 +308,25 @@ export default function FormCatalogo({
               <span className="dato">
                 Se muestra tal cual en la tabla de conceptos de cada solicitud que use este
                 concepto. Ventanilla no puede cambiarla.
+              </span>
+            </div>
+
+            <div className="campo">
+              <label className="casilla">
+                <input
+                  type="checkbox"
+                  id="input-autorizado-de-facto"
+                  name="autorizado_de_facto"
+                  data-testid="input-autorizado-de-facto"
+                  defaultChecked={registro?.autorizado_de_facto === true}
+                />
+                Autorizado de facto (exento de la firma del Secretario)
+              </label>
+              <span className="dato">
+                Mientras esté marcado, las solicitudes con este concepto pueden imprimir su folio
+                de entrega y registrar la entrega física sin esperar la autorización del
+                Secretario. No modifica ni sustituye esa firma: solo evita que bloquee el proceso.
+                Actívalo únicamente por instrucción operativa.
               </span>
             </div>
           </>

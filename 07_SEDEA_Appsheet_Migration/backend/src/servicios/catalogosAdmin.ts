@@ -348,6 +348,11 @@ export async function crearEntidad(
       valores.push(datos.descripcion ?? null);
       marcadores.push(`$${idx++}`);
     }
+    if (datos.autorizado_de_facto !== undefined) {
+      columnas.push('autorizado_de_facto');
+      valores.push(Boolean(datos.autorizado_de_facto));
+      marcadores.push(`$${idx++}`);
+    }
   }
 
   // Campos especificos de documentos_requeridos.
@@ -483,12 +488,20 @@ export async function editarEntidad(
     idx++;
   }
 
-  // tipos_apoyo no necesita bloque propio en el UPDATE: `categoria`,
-  // `unidad_medida` y `descripcion` ya los cubre el bucle de camposTexto. El
-  // bloque que habia aqui las repetia y Postgres rechazaba el UPDATE con
-  // "multiple assignments to same column", asi que editar un concepto de
-  // apoyo devolvia 500. Mismo caso que el ya corregido en
-  // documentos_requeridos (F-13).
+  // tipos_apoyo: `categoria`, `unidad_medida` y `descripcion` ya los cubre el
+  // bucle de camposTexto (repetirlos aqui producia "multiple assignments to
+  // same column", mismo caso ya corregido en documentos_requeridos, F-13).
+  // `autorizado_de_facto` SI necesita bloque propio: es booleano, camposTexto
+  // solo cubre columnas de texto.
+  if (entidad === 'tipos_apoyo' && datos.autorizado_de_facto !== undefined) {
+    const nuevo = Boolean(datos.autorizado_de_facto);
+    actualizaciones.push(`autorizado_de_facto = $${idx}`);
+    valores.push(nuevo);
+    if (actual.autorizado_de_facto !== nuevo) {
+      cambios.autorizado_de_facto = { anterior: actual.autorizado_de_facto, nuevo };
+    }
+    idx++;
+  }
 
   // F-13: documentos_requeridos no necesita bloque propio: `requisito` ya lo
   // cubre camposTexto, los enteros camposEnteros y los arreglos camposArreglo.

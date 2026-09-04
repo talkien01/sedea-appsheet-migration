@@ -1,25 +1,21 @@
 // Exenciones operativas al candado de autorización del Secretario.
 //
-// Por instrucción operativa, los apoyos de semilla de AVENA y GARBANZO se
-// consideran autorizados de facto para impresión y entrega. La excepción se
-// aplica por ID de tipo_apoyo para no depender del texto visible del catálogo.
+// Que tipos_apoyo estan exentos vive en la columna tipos_apoyo.autorizado_de_facto
+// (migracion 033), editable desde Catalogos -> Conceptos de apoyo — ya NO es
+// una lista de IDs fija en codigo. Quien llama a estas funciones es responsable
+// de traer ese campo con su propia consulta (join a tipos_apoyo) y pasarlo aqui;
+// esta capa solo interpreta el valor, no vuelve a consultar la base.
 //
 // Importante: esta regla NO modifica solicitudes.autorizada_secretario ni
 // atribuye la autorización al Secretario. Solo resuelve el candado operativo.
-export const IDS_TIPOS_APOYO_AUTORIZADOS_DE_FACTO = [160, 161] as const;
-export const TIPOS_APOYO_AUTORIZADOS_DE_FACTO = new Set<number>(
-  IDS_TIPOS_APOYO_AUTORIZADOS_DE_FACTO
-);
-
-export function esTipoApoyoAutorizadoDeFacto(tipoApoyoId: unknown): boolean {
-  const id = Number(tipoApoyoId);
-  return Number.isInteger(id) && TIPOS_APOYO_AUTORIZADOS_DE_FACTO.has(id);
+export function esAutorizadoDeFacto(concepto: { autorizado_de_facto?: unknown } | null | undefined): boolean {
+  return concepto?.autorizado_de_facto === true;
 }
 
 export function conceptosAutorizadosDeFacto(
-  conceptos: Array<{ tipo_apoyo_id?: unknown }> | null | undefined
+  conceptos: Array<{ autorizado_de_facto?: unknown }> | null | undefined
 ): boolean {
   return Array.isArray(conceptos) &&
     conceptos.length > 0 &&
-    conceptos.every((concepto) => esTipoApoyoAutorizadoDeFacto(concepto.tipo_apoyo_id));
+    conceptos.every((concepto) => esAutorizadoDeFacto(concepto));
 }

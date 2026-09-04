@@ -71,6 +71,7 @@ import {
 } from '../db/queries/solicitudes.js';
 import { obtenerHash } from '../db/queries/usuarios.js';
 import { verificarPassword } from '../servicios/passwords.js';
+import { conceptosAutorizadosDeFacto } from '../servicios/autorizacion-operativa.js';
 
 const consultarUna = async <T extends Record<string, unknown>>(sql: string, values?: unknown[]) => {
   const { rows } = await pool.query<T>(sql, values);
@@ -989,7 +990,23 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       if (usuario.rol !== 'admin') {
         exigirAlcanceSobre(usuario, await leerAlcance(usuario), solicitud);
       }
-      exigirAutorizacionSecretario(solicitud);
+
+      // Mismo candado de facto que ya aplican el PDF del folio y el registro
+      // de entrega (autorizacion-operativa.ts): un concepto marcado
+      // autorizado_de_facto en el catalogo no exige autorizacion del
+      // Secretario para llegar a esta pantalla tampoco.
+      if (solicitud.autorizada_secretario !== true) {
+        const conceptos = await consultar<{ autorizado_de_facto: boolean }>(
+          `SELECT t.autorizado_de_facto
+             FROM solicitud_conceptos sc
+             JOIN tipos_apoyo t ON t.id = sc.tipo_apoyo_id
+            WHERE sc.solicitud_id = $1`,
+          [id]
+        );
+        if (!conceptosAutorizadosDeFacto(conceptos)) {
+          exigirAutorizacionSecretario(solicitud);
+        }
+      }
 
       return respuesta.status(200).send({
         solicitud,

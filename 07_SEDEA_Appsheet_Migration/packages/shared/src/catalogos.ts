@@ -119,7 +119,14 @@ export const esquemaTipoApoyoAlta = z.object({
   nombre: z.string().trim().min(3).max(300),
   categoria: z.string().trim().max(200).nullable().optional(),
   unidad_medida: z.string().trim().max(100).nullable().optional(),
-  descripcion: z.string().trim().max(2000).nullable().optional()
+  descripcion: z.string().trim().max(2000).nullable().optional(),
+  /**
+   * Exime al concepto del candado de autorizacion del Secretario para
+   * imprimir folio y registrar entrega (autorizacion-operativa.ts, D... ver
+   * migracion 033). NO modifica autorizada_secretario ni la atribuye al
+   * Secretario: solo resuelve el candado operativo.
+   */
+  autorizado_de_facto: z.boolean().optional()
 }).strict();
 
 export const esquemaTipoApoyoEdicion = z.object({
@@ -127,7 +134,8 @@ export const esquemaTipoApoyoEdicion = z.object({
   nombre: z.string().trim().min(3).max(300).optional(),
   categoria: z.string().trim().max(200).nullable().optional(),
   unidad_medida: z.string().trim().max(100).nullable().optional(),
-  descripcion: z.string().trim().max(2000).nullable().optional()
+  descripcion: z.string().trim().max(2000).nullable().optional(),
+  autorizado_de_facto: z.boolean().optional()
 }).strict();
 
 // TipoApoyo ya esta definido en dto.ts, se re-exporta alli

@@ -27,7 +27,7 @@ import {
 } from '../plugins/errores.js';
 import { registrarAuditoria } from '../plugins/auditoria.js';
 import { guardarFoto } from '../servicios/almacenamiento.js';
-import { esTipoApoyoAutorizadoDeFacto } from '../servicios/autorizacion-operativa.js';
+import { esAutorizadoDeFacto } from '../servicios/autorizacion-operativa.js';
 import { exigirAutorizacionSecretario } from './solicitudes.js';
 
 interface ConceptoConSolicitud {
@@ -37,6 +37,7 @@ interface ConceptoConSolicitud {
   folio: string;
   regional_id: number;
   autorizada_secretario: boolean;
+  autorizado_de_facto: boolean;
 }
 
 export default async function rutasEntregas(app: FastifyInstance): Promise<void> {
@@ -139,9 +140,11 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
       // 4) El concepto existe y su solicitud esta al alcance del usuario.
       const concepto = await consultarUna<ConceptoConSolicitud>(
         `SELECT sc.id, sc.solicitud_id, sc.tipo_apoyo_id,
-                s.folio, s.regional_id, s.autorizada_secretario
+                s.folio, s.regional_id, s.autorizada_secretario,
+                t.autorizado_de_facto
            FROM solicitud_conceptos sc
            JOIN solicitudes s ON s.id = sc.solicitud_id
+           JOIN tipos_apoyo t ON t.id = sc.tipo_apoyo_id
           WHERE sc.id = $1`,
         [datos.solicitud_concepto_id]
       );
@@ -152,10 +155,10 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
         throw errorProhibido('La solicitud pertenece a otra Direccion Regional.');
       }
 
-      // 5) Candado de autorización. Avena (160) y Garbanzo (161) están
-      //    autorizados de facto y no requieren autorización del Secretario.
-      //    Para cualquier otro concepto se conserva exactamente el candado.
-      if (!esTipoApoyoAutorizadoDeFacto(concepto.tipo_apoyo_id)) {
+      // 5) Candado de autorización. Los conceptos marcados autorizado_de_facto
+      //    en el catalogo (Catalogos -> Conceptos de apoyo) no requieren
+      //    autorización del Secretario. Para cualquier otro se conserva el candado.
+      if (!esAutorizadoDeFacto(concepto)) {
         exigirAutorizacionSecretario(concepto);
       }
 
@@ -223,7 +226,7 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
           solicitud_concepto_id: datos.solicitud_concepto_id,
           solicitud_id: Number(concepto.solicitud_id),
           folio: concepto.folio,
-          autorizacion_de_facto: esTipoApoyoAutorizadoDeFacto(concepto.tipo_apoyo_id),
+          autorizacion_de_facto: esAutorizadoDeFacto(concepto),
           lat: datos.lat,
           lng: datos.lng,
           precision_m: datos.precision_m
@@ -268,8 +271,8 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
         throw errorValidacion('tipo_apoyo_id es obligatorio para preparar el evento.');
       }
 
-      const tipoApoyo = await consultarUna<{ id: number; nombre: string }>(
-        'SELECT id, nombre FROM tipos_apoyo WHERE id = $1',
+      const tipoApoyo = await consultarUna<{ id: number; nombre: string; autorizado_de_facto: boolean }>(
+        'SELECT id, nombre, autorizado_de_facto FROM tipos_apoyo WHERE id = $1',
         [tipoApoyoId]
       );
       if (!tipoApoyo) throw errorNoEncontrado('El tipo de apoyo no existe.');
@@ -287,7 +290,7 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
         filtroRegional = `AND s.regional_id = $${parametros.length}`;
       }
 
-      const filtroAutorizacion = esTipoApoyoAutorizadoDeFacto(tipoApoyoId)
+      const filtroAutorizacion = esAutorizadoDeFacto(tipoApoyo)
         ? ''
         : 'AND s.autorizada_secretario = TRUE';
 

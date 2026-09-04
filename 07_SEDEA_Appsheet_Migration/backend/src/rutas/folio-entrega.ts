@@ -33,12 +33,17 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
       const solicitud = await obtenerSolicitud(id);
       if (!solicitud) throw new ErrorApi(404, 'no_encontrado', 'Solicitud no encontrada.');
 
-      // Avena (160) y Garbanzo (161) están autorizados de facto por regla
-      // operativa. No se altera el campo autorizada_secretario ni se atribuye
-      // esa decisión al Secretario; simplemente no aplica el candado.
+      // Los conceptos marcados autorizado_de_facto en el catalogo (Catalogos ->
+      // Conceptos de apoyo) estan autorizados de facto por regla operativa. No
+      // se altera el campo autorizada_secretario ni se atribuye esa decisión
+      // al Secretario; simplemente no aplica el candado.
       if (solicitud.autorizada_secretario !== true) {
-        const conceptos = await consultar<{ tipo_apoyo_id: string | number }>(
-          'SELECT tipo_apoyo_id FROM solicitud_conceptos WHERE solicitud_id = $1 ORDER BY orden',
+        const conceptos = await consultar<{ autorizado_de_facto: boolean }>(
+          `SELECT t.autorizado_de_facto
+             FROM solicitud_conceptos sc
+             JOIN tipos_apoyo t ON t.id = sc.tipo_apoyo_id
+            WHERE sc.solicitud_id = $1
+            ORDER BY sc.orden`,
           [id]
         );
         if (!conceptosAutorizadosDeFacto(conceptos)) {
@@ -85,16 +90,19 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
       const filas = await consultar<{
         solicitud_id: string;
         autorizada: boolean;
-        tipos_apoyo_ids: Array<string | number>;
+        todos_autorizados_de_facto: boolean;
       }>(
         `SELECT DISTINCT s.id AS solicitud_id,
                 s.autorizada_secretario AS autorizada,
-                ARRAY(
-                  SELECT sc.tipo_apoyo_id
-                    FROM solicitud_conceptos sc
-                   WHERE sc.solicitud_id = s.id
-                   ORDER BY sc.orden
-                ) AS tipos_apoyo_ids,
+                -- bool_and es NULL si la solicitud no tiene conceptos; COALESCE
+                -- a FALSE reproduce el criterio anterior ("todos" exige al
+                -- menos un concepto, ver conceptosAutorizadosDeFacto).
+                COALESCE((
+                  SELECT bool_and(t2.autorizado_de_facto)
+                    FROM solicitud_conceptos sc2
+                    JOIN tipos_apoyo t2 ON t2.id = sc2.tipo_apoyo_id
+                   WHERE sc2.solicitud_id = s.id
+                ), FALSE) AS todos_autorizados_de_facto,
                 ${expresionApellido('b')} AS apellido,
                 b.nombre_completo
            FROM beneficiarios b
@@ -132,10 +140,7 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
       }
 
       const esAutorizadaOperativamente = (fila: typeof filasLote[number]) =>
-        fila.autorizada === true ||
-        conceptosAutorizadosDeFacto(
-          (fila.tipos_apoyo_ids ?? []).map((tipo_apoyo_id) => ({ tipo_apoyo_id }))
-        );
+        fila.autorizada === true || fila.todos_autorizados_de_facto === true;
 
       const autorizadas = filasLote
         .filter(esAutorizadaOperativamente)

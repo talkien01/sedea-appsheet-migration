@@ -181,11 +181,16 @@ export default function Monitor() {
   return (
     <div className="tarjeta pantalla-ancha" data-testid="pantalla-monitor">
       <h1>Monitor de actividad</h1>
+      {/* .mensaje es flex; el texto va en un solo <span> porque flex trata cada
+          nodo de texto suelto como un item aparte y partia el parrafo en
+          fragmentos sueltos en vez de fluir como una sola linea. */}
       <p className="mensaje aviso">
-        Quién está usando el sistema en este momento y qué se ha hecho. Se actualiza solo cada{' '}
-        {INTERVALO_REFRESCO_MS / 1000} segundos. Se considera <strong>activo</strong> a quien dio
-        señal en los últimos {umbral} minutos; la app avisa cada minuto y deja de avisar cuando la
-        pestaña queda en segundo plano.
+        <span>
+          Quién está usando el sistema en este momento y qué se ha hecho. Se actualiza solo cada{' '}
+          {INTERVALO_REFRESCO_MS / 1000} segundos. Se considera <strong>activo</strong> a quien dio
+          señal en los últimos {umbral} minutos; la app avisa cada minuto y deja de avisar cuando
+          la pestaña queda en segundo plano.
+        </span>
       </p>
 
       {error && (

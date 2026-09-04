@@ -33,9 +33,20 @@ const SELECT_BASE = `
 type ConsultaBeneficiarios = ReturnType<typeof esquemaConsultaBeneficiarios.parse>;
 
 /**
- * "Apellido" adivinado en SQL: todo lo que sigue a la primera palabra del
- * nombre completo (no hay campo apellido_paterno/materno separado). Espejo
- * EXACTO de `apellidoDeNombre`/`primeraLetraApellido` en
+ * "Apellido(s)" adivinados en SQL: las ULTIMAS 1 o 2 palabras del nombre
+ * completo (no hay campo apellido_paterno/materno separado). v2: cuenta
+ * desde el final, no desde el inicio — en Mexico el numero de NOMBRES varia
+ * (1 a 3) pero el numero de APELLIDOS es casi siempre 2, asi que contar
+ * desde el inicio ("todo despues de la primera palabra") salia desfasado
+ * con nombres compuestos como "JUAN CARLOS PEREZ LOPEZ" (tomaba "CARLOS"
+ * como apellido). Reglas:
+ *   - 3+ palabras: las ultimas DOS = apellido paterno + materno.
+ *   - 2 palabras: se asume un solo apellido capturado (la ultima palabra).
+ *   - 1 palabra: no hay apellido que adivinar, se usa esa palabra.
+ * Sigue sin resolver apellidos compuestos con particula ("DE LA CRUZ") sin
+ * un campo estructurado — es la mejor aproximacion disponible.
+ *
+ * Espejo EXACTO de `apellidoDeNombre`/`primeraLetraApellido` en
  * packages/shared/src/nombres.ts — si se cambia uno, cambiar el otro, para
  * que la pantalla offline y el PDF impreso queden en el mismo orden.
  *
@@ -43,14 +54,18 @@ type ConsultaBeneficiarios = ReturnType<typeof esquemaConsultaBeneficiarios.pars
  * mismo alias en las tres consultas que comparten este filtro).
  */
 export function expresionApellido(alias = 'b'): string {
-  const nombreNormalizado = `regexp_replace(trim(${alias}.nombre_completo), '\\s+', ' ', 'g')`;
-  return `nullif(substring(${nombreNormalizado} from position(' ' in ${nombreNormalizado}) + 1), '')`;
+  const partes = `string_to_array(regexp_replace(trim(${alias}.nombre_completo), '\\s+', ' ', 'g'), ' ')`;
+  const n = `array_length(${partes}, 1)`;
+  return `(CASE
+      WHEN ${n} >= 3 THEN array_to_string((${partes})[${n} - 1 : ${n}], ' ')
+      WHEN ${n} = 2 THEN (${partes})[2]
+      ELSE (${partes})[1]
+    END)`;
 }
 
-/** Primera letra del apellido (mayusculas, sin acentos) para comparar contra A-Z. */
+/** Primera letra del apellido paterno (mayusculas, sin acentos) para comparar contra A-Z. */
 function expresionPrimeraLetraApellido(alias = 'b'): string {
-  const apellido = `coalesce(${expresionApellido(alias)}, ${alias}.nombre_completo)`;
-  return `upper(unaccent(left(${apellido}, 1)))`;
+  return `upper(unaccent(left(${expresionApellido(alias)}, 1)))`;
 }
 
 /**

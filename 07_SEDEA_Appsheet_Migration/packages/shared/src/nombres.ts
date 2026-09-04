@@ -3,23 +3,37 @@
 //
 // No existe un campo apellido_paterno/materno separado en el sistema — el
 // nombre siempre se captura como un solo texto ("ANGELINA ORDOÑEZ GONZALEZ").
-// La heuristica asume el patron mas comun de captura en Mexico: UN nombre de
-// pila seguido de apellido(s), asi que el "apellido" para ordenar/filtrar es
-// TODO lo que viene despues de la primera palabra. Casos raros (dos nombres
-// de pila como "MARIA JOSE", apellidos con particula como "DE LA CRUZ") no
-// se resuelven perfecto con ninguna heuristica posible sin un campo
-// estructurado — esta es la aproximacion mas simple y predecible.
+//
+// v1 asumia UN solo nombre de pila ("todo despues de la primera palabra") y
+// salia muy desfasada: en Mexico el numero de NOMBRES varia (1 a 3), pero el
+// numero de APELLIDOS es casi siempre 2 (paterno + materno). Con nombres
+// compuestos ("JUAN CARLOS PEREZ LOPEZ") la v1 tomaba "CARLOS" como apellido
+// y ordenaba por C en vez de P.
+//
+// v2: se cuenta desde el FINAL, no desde el inicio.
+//   - 3+ palabras: las ULTIMAS DOS son apellido paterno + materno.
+//   - 2 palabras: se asume que solo se capturo un apellido (la ultima).
+//   - 1 palabra: no hay apellido que adivinar, se usa esa palabra.
+// El apellido paterno (primera palabra del resultado) es el que se usa para
+// ordenar/filtrar por letra — igual que en un directorio telefonico.
+//
+// Sigue sin ser perfecto: apellidos compuestos con particula ("DE LA CRUZ",
+// "DEL RIO") pierden la particula, porque no hay forma de distinguirlos de
+// un nombre de pila compuesto sin un campo estructurado. Es la mejor
+// aproximacion disponible con el dato que existe.
 //
 // IMPORTANTE: esta misma logica esta espejada en SQL en
 // backend/src/rutas/beneficiarios.ts (`expresionApellido`). Si se cambia
 // aqui, hay que cambiarla alla tambien para que la pantalla (offline, esta
 // funcion) y el PDF impreso (backend, SQL) queden en el mismo orden.
 
-/** Apellido "adivinado": todo despues de la primera palabra del nombre completo. */
+/** Apellido(s) "adivinados": las ultimas 1 o 2 palabras del nombre completo. */
 export function apellidoDeNombre(nombreCompleto: string): string {
   const partes = nombreCompleto.trim().split(/\s+/).filter(Boolean);
-  if (partes.length <= 1) return partes[0] ?? '';
-  return partes.slice(1).join(' ');
+  const n = partes.length;
+  if (n >= 3) return partes.slice(n - 2).join(' ');
+  if (n === 2) return partes[1];
+  return partes[0] ?? '';
 }
 
 /** Primera letra del apellido, en mayusculas y sin acentos (para comparar contra A-Z). */

@@ -9,7 +9,8 @@
 // Modelo de confianza: el celular NO se autentica. El token de la sesion es la
 // credencial, y por eso:
 //   - lo genera el servidor con 24 bytes aleatorios (no es adivinable),
-//   - vive 10 minutos (se puede cerrar antes desde el escritorio),
+//   - vive MINUTOS_VIGENCIA_ESCANEO minutos DESLIZANTES (se renueva con cada
+//     escaneo; se puede cerrar antes desde el escritorio),
 //   - solo el usuario que la creo puede sondearla o cerrarla.
 // Lo peor que puede hacer quien robe un token es meter una o varias CURP en
 // la pantalla de otro capturista, que las ve antes de guardar cada una. No da
@@ -19,9 +20,12 @@
 // ("de un solo uso") y el celular se quedaba sin nada que hacer — se sentia
 // como que "se trababa" y habia que volver a vincular desde cero para la
 // siguiente persona. Ahora la MISMA sesion admite varios escaneos seguidos
-// mientras siga vigente: cada uno actualiza `datos` y sube `version`; el
-// escritorio se entera del ultimo por sondeo comparando `version`. Solo se
-// cierra si el capturista lo hace a proposito (E60.4) o si vence el tiempo.
+// mientras siga vigente: cada uno actualiza `datos`, sube `version` Y RENUEVA
+// `expira_en` (vigencia deslizante) — asi una solicitud que tarde en llenarse
+// (varios pasos de formulario) no hace vencer la sesion a medio uso, solo la
+// inactividad real la vence. El escritorio se entera del ultimo escaneo por
+// sondeo comparando `version`. Solo se cierra si el capturista lo hace a
+// proposito (E60.4) o si de verdad pasa el tiempo sin ningun escaneo.
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import {
@@ -154,12 +158,17 @@ export default async function rutasEscaneoCurp(app: FastifyInstance): Promise<vo
 
     // El WHERE repite estado/expiracion para que dos envios simultaneos no se
     // pisen entre si: cada uno sube `version` en 1, nunca se pierde ninguno.
+    // `expira_en` se RENUEVA aqui (vigencia deslizante): un escaneo exitoso
+    // demuestra que la vinculacion sigue en uso, asi que la sesion no debe
+    // vencer solo porque el capturista se tarda llenando el formulario entre
+    // una persona y la siguiente.
+    const nuevaExpiracion = new Date(Date.now() + MINUTOS_VIGENCIA_ESCANEO * 60_000);
     const guardado = await consultarUna<{ version: number }>(
       `UPDATE sesiones_escaneo_curp
-          SET datos = $2, version = version + 1
+          SET datos = $2, version = version + 1, expira_en = $3
         WHERE id = $1 AND estado = 'pendiente' AND expira_en > now()
         RETURNING version`,
-      [fila.id, JSON.stringify(datos)]
+      [fila.id, JSON.stringify(datos), nuevaExpiracion]
     );
     if (!guardado) {
       // Se cerro o vencio justo entre el SELECT y el UPDATE (carrera rara).
@@ -171,8 +180,8 @@ export default async function rutasEscaneoCurp(app: FastifyInstance): Promise<vo
 
   // --- E60.4 Cerrar la sesion a proposito (escritorio, autenticado) ---------
   // "Terminar vinculación": deja de aceptar escaneos nuevos de inmediato, sin
-  // esperar los 10 minutos de vigencia. Idempotente: cerrar una sesion ya
-  // cerrada o vencida no es error.
+  // esperar a que la vigencia deslizante se agote sola. Idempotente: cerrar
+  // una sesion ya cerrada o vencida no es error.
   app.post('/api/escaneo-curp/sesiones/:token/cerrar', protegida, async (peticion) => {
     const { token } = peticion.params as { token: string };
     const fila = await consultarUna<{ id: number; creada_por: number }>(

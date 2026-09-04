@@ -18,7 +18,7 @@
 // tras CURP sin que nadie vuelva a apuntar la camara al QR de enlace.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import type { DatosCurpQr } from '@sedea/shared';
+import { MINUTOS_VIGENCIA_ESCANEO, type DatosCurpQr } from '@sedea/shared';
 import { api, ErrorPeticion } from '../api/cliente';
 import { useSesion } from '../App';
 
@@ -82,6 +82,16 @@ export default function VincularCelular({ onDatos, onCerrar }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [escaneos, setEscaneos] = useState(0);
   const [cerrando, setCerrando] = useState(false);
+  /**
+   * true cuando esta vinculacion viene de reusar un token guardado (no de
+   * abrir una sesion nueva). Distingue la pantalla: mostrar el QR de nuevo,
+   * como si fuera la primera vez, es justo lo que hacia parecer que "se
+   * cortaba" la vinculacion entre una solicitud y la siguiente — aqui SI
+   * sigue vinculado, solo que el codigo (por si hace falta retomar) queda
+   * oculto detras de un boton en vez de ser lo primero que se ve.
+   */
+  const [reusado, setReusado] = useState(false);
+  const [mostrarQr, setMostrarQr] = useState(false);
 
   // `onDatos` en un ref: el efecto de sondeo no debe reiniciarse porque el
   // padre reconstruya el callback en cada render.
@@ -156,6 +166,7 @@ export default function VincularCelular({ onDatos, onCerrar }: Props) {
       tokenActivo.current = sesion.token;
       ultimaVersionVista.current = 0;
       setEscaneos(0);
+      setReusado(false);
       await pintarQr(sesion.token);
       if (!vivo) return;
       setEstado('esperando');
@@ -176,6 +187,7 @@ export default function VincularCelular({ onDatos, onCerrar }: Props) {
             // aplicar: solo cuenta lo que llegue de aqui en adelante.
             ultimaVersionVista.current = sesion.version;
             setEscaneos(sesion.version);
+            setReusado(true);
             await pintarQr(guardado.token);
             if (!vivo) return;
             setEstado('esperando');
@@ -237,7 +249,53 @@ export default function VincularCelular({ onDatos, onCerrar }: Props) {
           </p>
         )}
 
-        {estado === 'esperando' && (
+        {estado === 'esperando' && reusado && (
+          <>
+            <div className="mensaje exito" role="status" data-testid="vinculo-reusado">
+              ✓ Este celular ya está vinculado desde la solicitud anterior. No hace falta
+              escanear nada en la computadora — sigue leyendo Constancias CURP en la misma
+              pantalla del celular.
+            </div>
+            {escaneos > 0 && (
+              <p className="dato" data-testid="contador-escaneos-vincular-celular">
+                Escaneos recibidos en esta vinculación: <strong>{escaneos}</strong>
+              </p>
+            )}
+            {!mostrarQr ? (
+              <button
+                type="button"
+                className="secundario"
+                data-testid="btn-mostrar-qr-retomar"
+                onClick={() => setMostrarQr(true)}
+              >
+                El celular ya no muestra esa pantalla — mostrar código para retomar
+              </button>
+            ) : (
+              <>
+                <p className="dato">
+                  Escanea este código otra vez con la cámara del celular para retomar donde se
+                  quedó — es la misma vinculación, no una nueva.
+                </p>
+                {imagenQr && (
+                  <img
+                    src={imagenQr}
+                    alt="Código QR para retomar la vinculación del celular"
+                    data-testid="qr-vincular-celular"
+                    style={{ display: 'block', margin: '0 auto', width: 260, height: 260 }}
+                  />
+                )}
+                {url && (
+                  <p className="dato" style={{ wordBreak: 'break-all', fontSize: '0.85em' }}>
+                    O abre esta dirección en el celular:{' '}
+                    <code data-testid="url-vincular-celular">{url}</code>
+                  </p>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {estado === 'esperando' && !reusado && (
           <>
             <p className="dato">
               Escanea este código con la cámara de tu celular y ahí lee el QR de la Constancia
@@ -253,7 +311,8 @@ export default function VincularCelular({ onDatos, onCerrar }: Props) {
               />
             )}
             <p className="dato" data-testid="estado-vincular-celular">
-              Esperando al celular... El código vence en 10 minutos si nadie lo usa.
+              Esperando al celular... El código sigue vivo mientras se use; solo vence si
+              pasan {MINUTOS_VIGENCIA_ESCANEO} minutos sin escanear nada.
             </p>
             {escaneos > 0 && (
               <p className="dato" data-testid="contador-escaneos-vincular-celular">

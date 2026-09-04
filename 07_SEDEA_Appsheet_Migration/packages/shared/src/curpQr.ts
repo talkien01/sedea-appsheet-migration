@@ -91,10 +91,18 @@ export function parsearQrCurp(texto: string): DatosCurpQr | null {
 // parsea y el navegador de escritorio lo recoge.
 //
 // El celular NO se autentica: el token de la sesion es la credencial, por eso
-// es aleatorio, de un solo uso y de vida corta.
+// es aleatorio y de vida corta.
+//
+// Vigencia DESLIZANTE (multi-lectura, E60-v2): cada escaneo que llega renueva
+// los minutos de vida en vez de contarlos fijo desde la creacion. Antes, una
+// sola solicitud (5 pasos del formulario) podia tardar mas que la vigencia
+// fija, y la sesion vencia de verdad a media captura sin que el capturista
+// hiciera nada mal — parecia un bug ("hay que volver a leer el QR") cuando
+// en realidad ya habian pasado los minutos. Con vigencia deslizante, la
+// sesion solo muere por inactividad real (nadie escanea nada en ese lapso).
 
-/** Minutos de vida de una sesion desde que se crea. */
-export const MINUTOS_VIGENCIA_ESCANEO = 10;
+/** Minutos de vida desde el ultimo escaneo (o desde que se crea, si ninguno). */
+export const MINUTOS_VIGENCIA_ESCANEO = 15;
 
 /**
  * Estado de la sesion visto por el escritorio.
@@ -102,7 +110,7 @@ export const MINUTOS_VIGENCIA_ESCANEO = 10;
  * - `completada`: se cerro a proposito desde el escritorio ("Terminar
  *   vinculación"). Ya NO admite escaneos nuevos, a diferencia del significado
  *   anterior ("ya recibio un resultado, un solo uso").
- * - `expirada`: se agoto la vigencia de 10 minutos.
+ * - `expirada`: pasaron los minutos de vigencia SIN ningun escaneo nuevo.
  */
 export type EstadoSesionEscaneo = 'pendiente' | 'completada' | 'expirada';
 

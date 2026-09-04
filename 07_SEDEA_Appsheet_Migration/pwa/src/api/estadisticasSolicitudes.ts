@@ -24,6 +24,15 @@ export interface ResumenSolicitudesDashboard {
     nombre_completo: string;
     solicitudes: number;
   }>;
+  por_concepto: Array<{
+    tipo_apoyo_id: number;
+    clave: string;
+    nombre: string;
+    unidad_medida: string;
+    solicitado: number;
+    autorizado: number;
+    entregado: number;
+  }>;
 }
 
 export async function obtenerResumenSolicitudes(

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import TarjetaMetrica from './TarjetaMetrica';
 import {
   obtenerResumenSolicitudes,
@@ -11,10 +11,25 @@ interface Props {
   version: number;
 }
 
+/** Formatea kg como toneladas (2 decimales) cuando el toggle esta en toneladas. */
+function formatearCantidad(valor: number, unidad: string, enToneladas: boolean): string {
+  if (enToneladas && unidad.toLowerCase() === 'kg') {
+    return `${(valor / 1000).toLocaleString('es-MX', { maximumFractionDigits: 2 })} t`;
+  }
+  return `${valor.toLocaleString('es-MX', { maximumFractionDigits: 2 })} ${unidad}`;
+}
+
 export default function BloqueSolicitudesRegional({ regional, regionalNombre, version }: Props) {
   const [datos, setDatos] = useState<ResumenSolicitudesDashboard | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(false);
+  const [enToneladas, setEnToneladas] = useState(false);
+
+  // El toggle kg/toneladas solo tiene sentido si algun concepto usa kg.
+  const hayConceptosEnKg = useMemo(
+    () => (datos?.por_concepto ?? []).some((c) => c.unidad_medida?.toLowerCase() === 'kg'),
+    [datos]
+  );
 
   useEffect(() => {
     let vigente = true;
@@ -91,6 +106,53 @@ export default function BloqueSolicitudesRegional({ regional, regionalNombre, ve
               Capturas excepcionales realizadas desde SEDEA Central: {datos.capturadas_central}. Ya
               están contabilizadas en la Regional del predio correspondiente.
             </p>
+          )}
+
+          {datos.por_concepto.length > 0 && (
+            <div data-testid="bloque-cantidades-concepto">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <h3 style={{ margin: 0 }}>Distribución por concepto de apoyo</h3>
+                {hayConceptosEnKg && (
+                  <div role="group" aria-label="Unidad de despliegue" className="acciones">
+                    <button
+                      type="button"
+                      className={enToneladas ? 'secundario' : ''}
+                      data-testid="btn-unidad-kg"
+                      onClick={() => setEnToneladas(false)}
+                    >
+                      kg
+                    </button>
+                    <button
+                      type="button"
+                      className={enToneladas ? '' : 'secundario'}
+                      data-testid="btn-unidad-toneladas"
+                      onClick={() => setEnToneladas(true)}
+                    >
+                      toneladas
+                    </button>
+                  </div>
+                )}
+              </div>
+              {datos.por_concepto.map((concepto) => (
+                <div key={concepto.tipo_apoyo_id} className="tarjetas-resumen" style={{ marginBottom: '12px' }}>
+                  <TarjetaMetrica
+                    testId={`concepto-${concepto.clave}-solicitado`}
+                    etiqueta={`${concepto.nombre} · solicitado`}
+                    valor={formatearCantidad(concepto.solicitado, concepto.unidad_medida, enToneladas)}
+                  />
+                  <TarjetaMetrica
+                    testId={`concepto-${concepto.clave}-autorizado`}
+                    etiqueta={`${concepto.nombre} · autorizado`}
+                    valor={formatearCantidad(concepto.autorizado, concepto.unidad_medida, enToneladas)}
+                  />
+                  <TarjetaMetrica
+                    testId={`concepto-${concepto.clave}-entregado`}
+                    etiqueta={`${concepto.nombre} · entregado`}
+                    valor={formatearCantidad(concepto.entregado, concepto.unidad_medida, enToneladas)}
+                  />
+                </div>
+              ))}
+            </div>
           )}
 
           <h3>Avance por municipio</h3>

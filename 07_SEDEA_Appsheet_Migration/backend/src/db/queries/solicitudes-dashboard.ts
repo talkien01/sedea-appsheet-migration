@@ -30,6 +30,23 @@ export interface ResumenSolicitudesDashboard {
     nombre_completo: string;
     solicitudes: number;
   }>;
+  /**
+   * Cantidad fisica (kg, litros, etc.) por concepto de apoyo, en 3 cortes:
+   * solicitado (todos los conceptos capturados), autorizado (autorizada por
+   * el Secretario O el concepto es autorizado_de_facto, mismo criterio que
+   * autorizacion-operativa.ts) y entregado (ya tiene fila en entregas_apoyo).
+   * Generalizado: cualquier tipo_apoyo con unidad_medida capturada entra
+   * aqui, no solo avena/garbanzo.
+   */
+  por_concepto: Array<{
+    tipo_apoyo_id: number;
+    clave: string;
+    nombre: string;
+    unidad_medida: string;
+    solicitado: number;
+    autorizado: number;
+    entregado: number;
+  }>;
 }
 
 function filtroRegional(regionalId: number | null, parametros: unknown[]): string {
@@ -132,6 +149,38 @@ export async function resumenSolicitudesDashboard(
     parametrosCapturista
   );
 
+  const parametrosConcepto: unknown[] = [];
+  const regionalConcepto = filtroRegional(regionalId, parametrosConcepto);
+  const porConcepto = await consultar<{
+    tipo_apoyo_id: number;
+    clave: string;
+    nombre: string;
+    unidad_medida: string;
+    solicitado: string;
+    autorizado: string;
+    entregado: string;
+  }>(
+    `SELECT
+       t.id AS tipo_apoyo_id,
+       t.clave,
+       t.nombre,
+       t.unidad_medida,
+       COALESCE(SUM(sc.cantidad), 0)::float8 AS solicitado,
+       COALESCE(SUM(sc.cantidad) FILTER (
+         WHERE s.autorizada_secretario = TRUE OR t.autorizado_de_facto = TRUE
+       ), 0)::float8 AS autorizado,
+       COALESCE(SUM(sc.cantidad) FILTER (WHERE ea.uuid IS NOT NULL), 0)::float8 AS entregado
+     FROM tipos_apoyo t
+     JOIN solicitud_conceptos sc ON sc.tipo_apoyo_id = t.id
+     JOIN solicitudes s ON s.id = sc.solicitud_id
+     JOIN municipios m ON m.id = s.ubi_municipio_id
+     LEFT JOIN entregas_apoyo ea ON ea.solicitud_concepto_id = sc.id
+     WHERE t.unidad_medida IS NOT NULL ${regionalConcepto}
+     GROUP BY t.id, t.clave, t.nombre, t.unidad_medida
+     ORDER BY t.nombre`,
+    parametrosConcepto
+  );
+
   const total = Number(resumen?.total_solicitudes ?? 0);
   const autorizadas = Number(resumen?.autorizadas ?? 0);
 
@@ -158,6 +207,15 @@ export async function resumenSolicitudesDashboard(
       usuario: fila.usuario,
       nombre_completo: fila.nombre_completo,
       solicitudes: Number(fila.solicitudes)
+    })),
+    por_concepto: porConcepto.map((fila) => ({
+      tipo_apoyo_id: Number(fila.tipo_apoyo_id),
+      clave: fila.clave,
+      nombre: fila.nombre,
+      unidad_medida: fila.unidad_medida,
+      solicitado: Number(fila.solicitado),
+      autorizado: Number(fila.autorizado),
+      entregado: Number(fila.entregado)
     }))
   };
 }

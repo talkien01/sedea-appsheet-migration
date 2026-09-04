@@ -19,6 +19,8 @@ import { api, ErrorPeticion, type FilaActividad } from '../api/cliente';
 const INTERVALO_REFRESCO_MS = 20_000;
 /** Filas de bitacora que se traen de una vez. */
 const FILAS_ACTIVIDAD = 200;
+/** A partir de cuantos segundos sin latido se resalta a alguien como inactivo "de a de veras". */
+const SEGUNDOS_INACTIVIDAD_ALERTA = 7 * 24 * 60 * 60;
 
 /** "hace 30 segundos" / "hace 2 minutos" / "hace 3 horas". */
 function haceCuanto(segundos: number): string {
@@ -164,6 +166,12 @@ export default function Monitor() {
     return () => window.clearInterval(temporizador);
   }, [cargar]);
 
+  // Alerta de inactividad: mismo dato que "Estuvieron conectados", solo
+  // resaltando a quien lleva mas de SEGUNDOS_INACTIVIDAD_ALERTA sin latido.
+  const inactivosLargos = inactivos.filter(
+    (f) => f.segundos_desde_visto > SEGUNDOS_INACTIVIDAD_ALERTA
+  );
+
   // Personas que aparecen en la bitacora o en la presencia, para el filtro.
   const opcionesUsuario = new Map<string, string>();
   for (const fila of [...activos, ...inactivos]) {
@@ -213,6 +221,15 @@ export default function Monitor() {
         </p>
       ) : (
         <TablaPresencia filas={activos} testId="tabla-activos" />
+      )}
+
+      {inactivosLargos.length > 0 && (
+        <p className="mensaje aviso" data-testid="alerta-inactivos-largo">
+          <span>
+            {inactivosLargos.length} {inactivosLargos.length === 1 ? 'usuario lleva' : 'usuarios llevan'} más
+            de 7 días sin actividad: {inactivosLargos.map((f) => f.nombre_completo).join(', ')}.
+          </span>
+        </p>
       )}
 
       <h2>Estuvieron conectados</h2>

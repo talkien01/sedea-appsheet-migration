@@ -15,8 +15,10 @@ import { contarBeneficiarios } from '../db/repositorios';
 
 /** Destino tras el cambio, segun el rol (mismo criterio que el login). */
 async function destinoPorRol(perfil: PerfilUsuario | null): Promise<string> {
+  if (perfil?.rol === 'ventanilla') return '/solicitudes';
   if (perfil?.rol === 'editor_datos') return '/depuracion';
   if (perfil?.rol === 'auditor') return '/auditoria';
+  if (perfil?.rol === 'director') return '/dashboard';
   if (perfil?.rol === 'admin') return '/beneficiarios';
   const total = await contarBeneficiarios();
   return total === 0 ? '/sync' : '/beneficiarios';

@@ -188,8 +188,13 @@ export const DESTINOS: Destino[] = [
   }
 ];
 
-/** Orden de los encabezados de grupo en la barra lateral. */
-export const GRUPOS: Grupo[] = ['Campo', 'Gestión', 'Ventanilla', 'Administración'];
+/**
+ * Orden de los encabezados de grupo en la barra lateral. Gestion y
+ * Administracion primero (lo que usa un perfil de escritorio: dashboard,
+ * usuarios, monitor); Campo al final (herramientas de captura en campo, poco
+ * usadas desde ese mismo perfil).
+ */
+export const GRUPOS: Grupo[] = ['Gestión', 'Administración', 'Ventanilla', 'Campo'];
 
 /** Verifica si un multi-rol (ej. "capturista+ventanilla") tiene al menos uno de los roles requeridos. */
 function tieneAlgunRol(multiRol: string, rolesRequeridos: string[]): boolean {

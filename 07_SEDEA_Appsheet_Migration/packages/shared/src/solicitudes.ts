@@ -179,6 +179,14 @@ export const esquemaCrearSolicitud = z
 
     tipo_persona: z.enum(TIPOS_PERSONA),
     nombre_solicitante: z.string(),
+    // Nombre estructurado (E63): opcionales para no romper capturas viejas
+    // del cliente que aun no mande estos 3 campos. Cuando SI vienen (QR de
+    // RENAPO o el formulario nuevo con 3 cajas), se guardan ademas del
+    // nombre_solicitante combinado de arriba, que sigue siendo la fuente
+    // para imprimir/mostrar/buscar.
+    nombre_pila: texto(200),
+    apellido_paterno: texto(100),
+    apellido_materno: texto(100),
     sexo: z.enum(['H', 'M']).nullable().optional(),
     fecha_nacimiento: texto(10),
     correo: texto(200),

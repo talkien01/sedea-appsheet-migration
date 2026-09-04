@@ -403,14 +403,18 @@ export async function insertarBeneficiarioDeSolicitud(
     cantidad_asignada: number;
     solicitud_id: number;
     datos_extra: Record<string, unknown>;
+    /** Nombre estructurado (E63), heredado tal cual de la solicitud. */
+    nombre_pila?: string | null;
+    apellido_paterno?: string | null;
+    apellido_materno?: string | null;
   }
 ): Promise<number> {
   const { rows } = await cliente.query<{ id: string }>(
     `INSERT INTO beneficiarios (
         folio, curp, nombre_completo, regional_id, municipio_id, colonia, localidad,
         domicilio, telefono, tipo_apoyo_id, cantidad_asignada, datos_extra,
-        origen_import_id, solicitud_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,NULL,$13)
+        origen_import_id, solicitud_id, nombre_pila, apellido_paterno, apellido_materno)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,NULL,$13,$14,$15,$16)
      RETURNING id`,
     [
       datos.folio,
@@ -425,7 +429,10 @@ export async function insertarBeneficiarioDeSolicitud(
       datos.tipo_apoyo_id,
       datos.cantidad_asignada,
       JSON.stringify(datos.datos_extra),
-      datos.solicitud_id
+      datos.solicitud_id,
+      datos.nombre_pila ?? null,
+      datos.apellido_paterno ?? null,
+      datos.apellido_materno ?? null
     ]
   );
   return Number(rows[0].id);

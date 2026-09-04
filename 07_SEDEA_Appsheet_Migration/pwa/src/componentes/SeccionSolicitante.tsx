@@ -18,7 +18,16 @@ import VincularCelular from './VincularCelular';
 
 export interface DatosSolicitante {
   tipo_persona: TipoPersona;
+  /**
+   * Nombre completo combinado: nombre_pila + apellido_paterno +
+   * apellido_materno, en ese orden. Se sigue guardando porque varias
+   * pantallas (folio impreso, listados, busqueda) lo usan tal cual — se
+   * recalcula solo aqui mismo cada vez que cambia alguna de las 3 partes.
+   */
   nombre_solicitante: string;
+  nombre_pila: string;
+  apellido_paterno: string;
+  apellido_materno: string;
   sexo: string;
   fecha_nacimiento: string;
   correo: string;
@@ -63,14 +72,43 @@ export default function SeccionSolicitante({ valores, municipios, cambiar, aviso
 
   // Mismo destino para las dos vias de escaneo: la camara de este equipo y la
   // del celular vinculado. Lo unico que cambia es de donde viene el texto.
+  //
+  // El QR de RENAPO YA trae nombre(s)/paterno/materno separados (E63): se
+  // guardan tal cual, exactos — nada de heuristica aqui, esa solo hace falta
+  // para lo que se captura a mano o lo historico sin este dato.
   const aplicarEscaneo = (datos: DatosCurpQr) => {
     cambiar('curp', aMayusculas(datos.curp));
     cambiar('nombre_solicitante', aMayusculas(datos.nombre_solicitante));
+    cambiar('nombre_pila', aMayusculas(datos.nombre_pila));
+    cambiar('apellido_paterno', aMayusculas(datos.apellido_paterno));
+    cambiar('apellido_materno', aMayusculas(datos.apellido_materno));
     if (datos.sexo) cambiar('sexo', datos.sexo);
     if (datos.fecha_nacimiento) cambiar('fecha_nacimiento', datos.fecha_nacimiento);
     setEscaneando(false);
     setVinculando(false);
     setEscaneoOk(true);
+  };
+
+  // Captura manual (sin QR): 3 cajas en vez de 1 (E63). El nombre completo
+  // combinado se recalcula aqui cada vez, porque varias pantallas (folio
+  // impreso, listados, busqueda) siguen usando ese campo unico.
+  const cambiarParteNombre = (
+    campo: 'nombre_pila' | 'apellido_paterno' | 'apellido_materno',
+    valorCrudo: string
+  ) => {
+    const valor = aMayusculas(valorCrudo);
+    cambiar(campo, valor);
+    const partes = {
+      nombre_pila: campo === 'nombre_pila' ? valor : valores.nombre_pila,
+      apellido_paterno: campo === 'apellido_paterno' ? valor : valores.apellido_paterno,
+      apellido_materno: campo === 'apellido_materno' ? valor : valores.apellido_materno
+    };
+    const combinado = [partes.nombre_pila, partes.apellido_paterno, partes.apellido_materno]
+      .filter((p) => p.trim() !== '')
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    cambiar('nombre_solicitante', combinado);
   };
 
   return (
@@ -164,19 +202,57 @@ export default function SeccionSolicitante({ valores, municipios, cambiar, aviso
           <VincularCelular onDatos={aplicarEscaneo} onCerrar={() => setVinculando(false)} />
         )}
 
+        {/*
+          3 cajas en vez de 1 (E63): nombre de pila, apellido paterno,
+          apellido materno por separado — igual que ya vienen separados en el
+          QR de la Constancia CURP. `nombre_solicitante` se sigue mandando al
+          backend, pero ahora se RECALCULA solo (ver cambiarParteNombre), no
+          se escribe directo.
+        */}
         <div className="campo">
-          <label htmlFor="input-nombre-solicitante" data-testid="etiqueta-nombre-solicitante">
+          <label htmlFor="input-nombre-pila" data-testid="etiqueta-nombre-solicitante">
             {ETIQUETAS_NOMBRE_SOLICITANTE[valores.tipo_persona]}
           </label>
           <input
-            id="input-nombre-solicitante"
-            data-testid="input-nombre-solicitante"
+            id="input-nombre-pila"
+            data-testid="input-nombre-pila"
             type="text"
-            value={valores.nombre_solicitante}
+            placeholder="Nombre(s)"
+            value={valores.nombre_pila}
             style={ESTILO_MAYUSCULAS}
-            onChange={(e) => cambiar('nombre_solicitante', aMayusculas(e.target.value))}
+            onChange={(e) => cambiarParteNombre('nombre_pila', e.target.value)}
           />
         </div>
+
+        <div className="campo">
+          <label htmlFor="input-apellido-paterno">Apellido paterno</label>
+          <input
+            id="input-apellido-paterno"
+            data-testid="input-apellido-paterno"
+            type="text"
+            value={valores.apellido_paterno}
+            style={ESTILO_MAYUSCULAS}
+            onChange={(e) => cambiarParteNombre('apellido_paterno', e.target.value)}
+          />
+        </div>
+
+        <div className="campo">
+          <label htmlFor="input-apellido-materno">Apellido materno</label>
+          <input
+            id="input-apellido-materno"
+            data-testid="input-apellido-materno"
+            type="text"
+            value={valores.apellido_materno}
+            style={ESTILO_MAYUSCULAS}
+            onChange={(e) => cambiarParteNombre('apellido_materno', e.target.value)}
+          />
+        </div>
+
+        {valores.nombre_solicitante && (
+          <p className="dato" data-testid="preview-nombre-completo">
+            Nombre completo: <strong>{valores.nombre_solicitante}</strong>
+          </p>
+        )}
 
         <div className="campo">
           <label htmlFor="select-sexo">Sexo</label>

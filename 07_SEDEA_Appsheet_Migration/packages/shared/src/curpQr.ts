@@ -18,8 +18,21 @@
 /** Datos ya normalizados, listos para volcarse al formulario. */
 export interface DatosCurpQr {
   curp: string;
-  /** Nombre(s) + apellidos, en mayusculas y sin espacios dobles. */
+  /**
+   * Nombre(s) + apellidos, en mayusculas y sin espacios dobles. Se conserva
+   * combinado porque varias pantallas (folio impreso, listados, busqueda)
+   * siguen usando un solo campo — es la union de los 3 de abajo.
+   */
   nombre_solicitante: string;
+  /**
+   * Nombre(s), apellido paterno y apellido materno YA VIENEN SEPARADOS en el
+   * QR de RENAPO (campos 4, 2 y 3 respectivamente) — antes se descartaba esa
+   * separacion al armar `nombre_solicitante`. Vacio ('') si el campo del QR
+   * vino vacio (pasa con el materno quando no aplica).
+   */
+  nombre_pila: string;
+  apellido_paterno: string;
+  apellido_materno: string;
   /** 'H' | 'M' | '' — mismos valores que el <select> de sexo. */
   sexo: string;
   /** ISO `YYYY-MM-DD`, el formato que espera <input type="date">. */
@@ -75,6 +88,9 @@ export function parsearQrCurp(texto: string): DatosCurpQr | null {
   return {
     curp,
     nombre_solicitante,
+    nombre_pila: nombres,
+    apellido_paterno: paterno,
+    apellido_materno: materno,
     sexo: aSexo(campos[5]),
     fecha_nacimiento: aFechaIso(campos[6])
   };

@@ -326,6 +326,13 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
     // --- Validaciones de negocio (ninguna escribe nada) --------------------
     const nombre = textoMayus(datos.nombre_solicitante);
     if (!nombre) throw error422('payload_invalido', 'Escribe el nombre del solicitante.');
+    // Nombre estructurado (E63): opcionales, el cliente los manda cuando el
+    // dato vino del QR de RENAPO o del formulario de 3 cajas. No se derivan
+    // aqui a partir de `nombre` — si el cliente no los manda, quedan NULL y
+    // los cubre el backfill de la migracion 032 (heuristica, no exacto).
+    const nombrePila = textoMayus(datos.nombre_pila);
+    const apellidoPaterno = textoMayus(datos.apellido_paterno);
+    const apellidoMaterno = textoMayus(datos.apellido_materno);
 
     const tipoPersona = datos.tipo_persona as TipoPersona;
     const razonSocial = textoMayus(datos.razon_social);
@@ -642,7 +649,8 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
                ben_hombres_lengua_indigena, ben_mujeres_total, ben_mujeres_discapacidad,
                ben_mujeres_lengua_indigena,
                ubi_municipio_id, ubi_localidad, ubi_ejido, ubi_coordenadas,
-               declaracion_aceptada, declaracion_version, observaciones, origen)
+               declaracion_aceptada, declaracion_version, observaciones, origen,
+               nombre_pila, apellido_paterno, apellido_materno)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,
                      $10,$11,$12,$13::date,$14,$15,$16,
                      $17,$18,
@@ -652,7 +660,8 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
                      $38,$39,$40,$41,
                      $42,$43,$44,$45,$46,$47,$48,
                      $49,$50,$51,$52,
-                     TRUE,$53,$54,'solicitud_ventanilla')
+                     TRUE,$53,$54,'solicitud_ventanilla',
+                     $55,$56,$57)
              RETURNING id`,
             [
               folio,
@@ -716,7 +725,11 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
               texto(ubicacion.coordenadas),
 
               DECLARACIONES_VERSION,
-              texto(datos.observaciones)
+              texto(datos.observaciones),
+
+              nombrePila,
+              apellidoPaterno,
+              apellidoMaterno
             ]
           );
           solicitudId = Number(rows[0].id);
@@ -803,7 +816,10 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
             solicitud_folio: folio,
             concepto_orden: orden,
             coordenadas_declaradas: texto(ubicacion.coordenadas)
-          }
+          },
+          nombre_pila: nombrePila,
+          apellido_paterno: apellidoPaterno,
+          apellido_materno: apellidoMaterno
         });
 
         await cliente.query(

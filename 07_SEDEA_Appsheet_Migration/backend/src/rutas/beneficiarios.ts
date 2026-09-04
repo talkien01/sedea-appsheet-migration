@@ -33,6 +33,27 @@ const SELECT_BASE = `
 type ConsultaBeneficiarios = ReturnType<typeof esquemaConsultaBeneficiarios.parse>;
 
 /**
+ * "Apellido" adivinado en SQL: todo lo que sigue a la primera palabra del
+ * nombre completo (no hay campo apellido_paterno/materno separado). Espejo
+ * EXACTO de `apellidoDeNombre`/`primeraLetraApellido` en
+ * packages/shared/src/nombres.ts — si se cambia uno, cambiar el otro, para
+ * que la pantalla offline y el PDF impreso queden en el mismo orden.
+ *
+ * `alias` es la tabla de beneficiarios en cada consulta (siempre "b" hoy,
+ * mismo alias en las tres consultas que comparten este filtro).
+ */
+export function expresionApellido(alias = 'b'): string {
+  const nombreNormalizado = `regexp_replace(trim(${alias}.nombre_completo), '\\s+', ' ', 'g')`;
+  return `nullif(substring(${nombreNormalizado} from position(' ' in ${nombreNormalizado}) + 1), '')`;
+}
+
+/** Primera letra del apellido (mayusculas, sin acentos) para comparar contra A-Z. */
+function expresionPrimeraLetraApellido(alias = 'b'): string {
+  const apellido = `coalesce(${expresionApellido(alias)}, ${alias}.nombre_completo)`;
+  return `upper(unaccent(left(${apellido}, 1)))`;
+}
+
+/**
  * Traduce el filtro del padron a un WHERE parametrizado.
  *
  * Vive fuera del handler porque TRES endpoints deben coincidir exactamente en
@@ -84,6 +105,17 @@ export function construirFiltrosBeneficiarios(
         OR unaccent(lower(b.folio)) LIKE unaccent(lower($${i})))`
     );
   }
+  // Rango de letras de apellido (E62): para lotes de impresion por mesa
+  // ("Mesa 1 = A-C"). El apellido es una heuristica (ver expresionApellido);
+  // sin campo estructurado, es la mejor aproximacion disponible.
+  if (q.apellido_desde) {
+    parametros.push(q.apellido_desde);
+    condiciones.push(`${expresionPrimeraLetraApellido('b')} >= $${parametros.length}`);
+  }
+  if (q.apellido_hasta) {
+    parametros.push(q.apellido_hasta);
+    condiciones.push(`${expresionPrimeraLetraApellido('b')} <= $${parametros.length}`);
+  }
 
   return {
     where: condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '',
@@ -111,7 +143,9 @@ export default async function rutasBeneficiarios(app: FastifyInstance): Promise<
 
     const desplazamiento = (q.page - 1) * q.page_size;
     const filas = await consultar(
-      `${SELECT_BASE} ${where} ORDER BY b.id LIMIT ${q.page_size} OFFSET ${desplazamiento}`,
+      `${SELECT_BASE} ${where}
+       ORDER BY ${expresionApellido('b')}, b.nombre_completo, b.id
+       LIMIT ${q.page_size} OFFSET ${desplazamiento}`,
       parametros
     );
 
@@ -189,7 +223,7 @@ export default async function rutasBeneficiarios(app: FastifyInstance): Promise<
            LEFT JOIN municipios m ON m.id = b.municipio_id
            LEFT JOIN tipos_apoyo t ON t.id = b.tipo_apoyo_id
            ${where}
-          ORDER BY b.id
+          ORDER BY ${expresionApellido('b')}, b.nombre_completo, b.id
           LIMIT 50000`,
         parametros
       );

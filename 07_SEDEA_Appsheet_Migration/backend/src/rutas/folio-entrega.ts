@@ -10,7 +10,7 @@ import { consultar } from '../db/pool.js';
 import { registrarAuditoria } from '../plugins/auditoria.js';
 import { conceptosAutorizadosDeFacto } from '../servicios/autorizacion-operativa.js';
 import { exigirAutorizacionSecretario } from './solicitudes.js';
-import { construirFiltrosBeneficiarios } from './beneficiarios.js';
+import { construirFiltrosBeneficiarios, expresionApellido } from './beneficiarios.js';
 
 /**
  * Protección contra peticiones enormes de clientes viejos que no mandan
@@ -76,6 +76,12 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
       const q = esquemaConsultaBeneficiarios.parse(cuerpo);
       const { where, parametros, regional } = construirFiltrosBeneficiarios(usuario, q);
 
+      // Mismo orden que la pantalla y el CSV (E62): por apellido, para que
+      // "lote 1" en el PDF sea el mismo grupo de gente que "pagina 1" en la
+      // pantalla, y para poder armar mesas por rango de letra de apellido.
+      // SELECT DISTINCT obliga a que las columnas de ORDER BY esten en el
+      // SELECT — de ahi el apellido y nombre_completo aqui, sin usarse en el
+      // PDF mismo (ese dato lo vuelve a leer generarFolioEntregaLotePdf).
       const filas = await consultar<{
         solicitud_id: string;
         autorizada: boolean;
@@ -88,11 +94,13 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
                     FROM solicitud_conceptos sc
                    WHERE sc.solicitud_id = s.id
                    ORDER BY sc.orden
-                ) AS tipos_apoyo_ids
+                ) AS tipos_apoyo_ids,
+                ${expresionApellido('b')} AS apellido,
+                b.nombre_completo
            FROM beneficiarios b
            JOIN solicitudes s ON s.id = b.solicitud_id
            ${where}
-          ORDER BY s.id`,
+          ORDER BY apellido, b.nombre_completo, s.id`,
         parametros
       );
 

@@ -51,7 +51,13 @@ export const esquemaConsultaBeneficiarios = z.object({
   colonia: z.string().optional(),
   seccion: z.string().optional(),
   q: z.string().optional(),
-  since: z.string().optional()
+  since: z.string().optional(),
+  // Rango de letras del apellido (E62): para armar lotes de impresion por
+  // mesa ("Mesa 1 = A-C"). Una sola letra cada uno, A-Z. El apellido se
+  // "adivina" del nombre completo (no hay campo separado) — ver
+  // `expresionApellido` en backend/src/rutas/beneficiarios.ts.
+  apellido_desde: z.string().trim().length(1).toUpperCase().optional(),
+  apellido_hasta: z.string().trim().length(1).toUpperCase().optional()
 });
 
 export const esquemaConsultaAuditoria = z.object({

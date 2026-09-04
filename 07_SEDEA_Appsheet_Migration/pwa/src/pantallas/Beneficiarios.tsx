@@ -12,6 +12,7 @@ type Estado = 'todos' | 'pendientes' | 'capturados';
 
 const OPCIONES_POR_PAGINA = [25, 50, 100, 200] as const;
 const POR_PAGINA_PREDETERMINADO = 50;
+const LETRAS = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i));
 
 /** Dispara la descarga de un blob ya obtenido, sin dejar el objeto URL colgando. */
 function descargarBlob(blob: Blob, nombre: string): void {
@@ -38,6 +39,11 @@ export default function Beneficiarios() {
   const [municipioClave, setMunicipioClave] = useState<string>('');
   const [coloniaClave, setColoniaClave] = useState<string>('');
   const [seccionValor, setSeccionValor] = useState<string>('');
+  // Rango de letras de apellido (E62): para armar lotes de impresion por
+  // mesa, ej. "Mesa 1 = A-C". El apellido es una heuristica (no hay campo
+  // separado) — ver apellidoDeNombre en @sedea/shared.
+  const [apellidoDesde, setApellidoDesde] = useState<string>('');
+  const [apellidoHasta, setApellidoHasta] = useState<string>('');
 
   const [texto, setTexto] = useState('');
   const [estado, setEstado] = useState<Estado>('todos');
@@ -92,10 +98,21 @@ export default function Beneficiarios() {
       municipio_id: municipioId,
       colonia: coloniaValor,
       seccion: seccionValor || null,
-      estado
+      estado,
+      apellido_desde: apellidoDesde || null,
+      apellido_hasta: apellidoHasta || null
     });
     setFilas(resultado);
-  }, [texto, regionalId, municipioId, coloniaValor, seccionValor, estado]);
+  }, [
+    texto,
+    regionalId,
+    municipioId,
+    coloniaValor,
+    seccionValor,
+    estado,
+    apellidoDesde,
+    apellidoHasta
+  ]);
 
   useEffect(() => {
     void recargar();
@@ -105,7 +122,17 @@ export default function Beneficiarios() {
   // usuario parado en una pagina que ya no exista despues del nuevo filtro.
   useEffect(() => {
     setPagina(1);
-  }, [texto, regionalId, municipioClave, coloniaClave, seccionValor, estado, porPagina]);
+  }, [
+    texto,
+    regionalId,
+    municipioClave,
+    coloniaClave,
+    seccionValor,
+    estado,
+    porPagina,
+    apellidoDesde,
+    apellidoHasta
+  ]);
 
   const totalPaginas = Math.max(1, Math.ceil(filas.length / porPagina));
 
@@ -142,8 +169,10 @@ export default function Beneficiarios() {
     if (coloniaValor) p.colonia = coloniaValor;
     if (seccionValor) p.seccion = seccionValor;
     if (texto.trim()) p.q = texto.trim();
+    if (apellidoDesde) p.apellido_desde = apellidoDesde;
+    if (apellidoHasta) p.apellido_hasta = apellidoHasta;
     return p;
-  }, [regionalId, municipioId, coloniaValor, seccionValor, texto]);
+  }, [regionalId, municipioId, coloniaValor, seccionValor, texto, apellidoDesde, apellidoHasta]);
 
   const exportarCsv = async () => {
     setTrabajando('csv');
@@ -315,7 +344,53 @@ export default function Beneficiarios() {
               ))}
             </select>
           </div>
+
+          <div className="campo">
+            <label htmlFor="apellido-desde">Apellido desde</label>
+            <select
+              id="apellido-desde"
+              data-testid="select-apellido-desde"
+              value={apellidoDesde}
+              onChange={(e) => setApellidoDesde(e.target.value)}
+            >
+              <option value="">Sin límite</option>
+              {LETRAS.map((letra) => (
+                <option key={letra} value={letra}>
+                  {letra}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="campo">
+            <label htmlFor="apellido-hasta">Apellido hasta</label>
+            <select
+              id="apellido-hasta"
+              data-testid="select-apellido-hasta"
+              value={apellidoHasta}
+              onChange={(e) => setApellidoHasta(e.target.value)}
+            >
+              <option value="">Sin límite</option>
+              {LETRAS.map((letra) => (
+                <option key={letra} value={letra}>
+                  {letra}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
+
+        {(apellidoDesde || apellidoHasta) && (
+          <p className="dato" data-testid="aviso-rango-apellido">
+            Beneficiarios ordenados y filtrados por apellido
+            {apellidoDesde && apellidoHasta
+              ? ` de la ${apellidoDesde} a la ${apellidoHasta}`
+              : apellidoDesde
+                ? ` desde la ${apellidoDesde}`
+                : ` hasta la ${apellidoHasta}`}
+            . El apellido se toma del nombre completo (todo después de la primera palabra).
+          </p>
+        )}
 
         <div className="chips">
           {(['todos', 'pendientes', 'capturados'] as Estado[]).map((valor) => (

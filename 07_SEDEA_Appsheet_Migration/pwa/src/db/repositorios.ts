@@ -6,6 +6,7 @@ import type {
   Beneficiario,
   PaqueteEventoEntrega
 } from '@sedea/shared';
+import { apellidoEnRango, compararPorApellido } from '@sedea/shared';
 import {
   db,
   type CapturaLocal,
@@ -165,6 +166,9 @@ export interface FiltrosBeneficiarios {
   colonia?: string | null;
   seccion?: string | null;
   estado?: 'todos' | 'pendientes' | 'capturados';
+  /** Rango de letras de apellido (E62), para armar lotes de impresion por mesa. */
+  apellido_desde?: string | null;
+  apellido_hasta?: string | null;
 }
 
 /** Busca en IndexedDB aplicando todos los filtros de la pantalla. */
@@ -189,6 +193,9 @@ export async function buscarBeneficiarios(
         );
         if (!objetivo.includes(texto)) return false;
       }
+      if (!apellidoEnRango(b.nombre_completo, filtros.apellido_desde, filtros.apellido_hasta)) {
+        return false;
+      }
       const capturado = conCaptura.has(b.id) || (b.total_capturas ?? 0) > 0;
       if (filtros.estado === 'pendientes' && capturado) return false;
       if (filtros.estado === 'capturados' && !capturado) return false;
@@ -198,7 +205,9 @@ export async function buscarBeneficiarios(
       ...b,
       capturado: conCaptura.has(b.id) || (b.total_capturas ?? 0) > 0
     }))
-    .sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo));
+    // Mismo orden que el backend (E62): por apellido, para que "pagina N"
+    // en pantalla sea el mismo grupo de gente que "lote N" en el PDF.
+    .sort((a, b) => compararPorApellido(a.nombre_completo, b.nombre_completo));
 }
 
 // --------------------------------------------------------------------------

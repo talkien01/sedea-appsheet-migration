@@ -19,3 +19,5 @@ export * from './entregas.js';
 export * from './configuracion.js';
 // Monitor de presencia: quien esta conectado y en que pantalla (solo admin).
 export * from './presencia.js';
+// Heuristica de apellido a partir del nombre completo (E62: folios por mesa).
+export * from './nombres.js';

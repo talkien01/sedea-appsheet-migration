@@ -15,9 +15,8 @@ import { useLocation } from 'react-router-dom';
 import { useSesion } from '../App';
 import { contarPendientes } from '../db/repositorios';
 import { useEstadoRed } from '../sync/estadoRed';
-import { alCambiarCola, sincronizarPendientes } from '../sync/motor';
+import { alCambiarCola } from '../sync/motor';
 import { tituloDeRuta } from '../navegacion/menu';
-import { IconoSincronizar } from './Iconos';
 import Marca from './Marca';
 import ToggleTema from './ToggleTema';
 
@@ -31,7 +30,6 @@ export default function FranjaEstado({ ancho }: Props) {
   const enLinea = useEstadoRed();
   const ubicacion = useLocation();
   const [pendientes, setPendientes] = useState(0);
-  const [sincronizando, setSincronizando] = useState(false);
 
   const refrescar = useCallback(async () => {
     setPendientes(await contarPendientes());
@@ -46,16 +44,6 @@ export default function FranjaEstado({ ancho }: Props) {
       clearInterval(intervalo);
     };
   }, [refrescar]);
-
-  const sincronizarAhora = async () => {
-    setSincronizando(true);
-    try {
-      await sincronizarPendientes();
-    } finally {
-      setSincronizando(false);
-      await refrescar();
-    }
-  };
 
   const esMovil = ancho === 'movil';
 
@@ -84,9 +72,6 @@ export default function FranjaEstado({ ancho }: Props) {
     );
   }
 
-  const puedeSincronizar = enLinea && pendientes > 0 && !sincronizando;
-  const textoSincronizar = sincronizando ? 'Sincronizando…' : 'Sincronizar ahora';
-
   return (
     <header className="franja-estado barra-estado">
       {/* En movil manda la marca; en tablet/escritorio la marca vive en el
@@ -111,18 +96,6 @@ export default function FranjaEstado({ ancho }: Props) {
       >
         Pendientes: {pendientes}
       </span>
-
-      <button
-        type="button"
-        className="secundario"
-        onClick={() => void sincronizarAhora()}
-        disabled={!puedeSincronizar}
-        aria-label={textoSincronizar}
-        title={textoSincronizar}
-      >
-        <IconoSincronizar tamano={16} />
-        {!esMovil && <span>{textoSincronizar}</span>}
-      </button>
 
       <span className="usuario" data-testid="usuario-actual">
         {perfil && (

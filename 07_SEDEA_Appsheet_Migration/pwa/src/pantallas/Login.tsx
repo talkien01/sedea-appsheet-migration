@@ -27,6 +27,9 @@ async function destinoPorRol(
   if (perfilUsuario?.rol === 'ventanilla') return '/solicitudes';
   if (perfilUsuario?.rol === 'editor_datos') return '/depuracion';
   if (perfilUsuario?.rol === 'auditor') return '/auditoria';
+  // El director no tiene /beneficiarios ni /auditoria: su pantalla propia es
+  // el dashboard (acotado a su Regional cuando la tiene).
+  if (perfilUsuario?.rol === 'director') return '/dashboard';
   const total = await contarBeneficiarios();
   return total === 0 ? '/sync' : '/beneficiarios';
 }

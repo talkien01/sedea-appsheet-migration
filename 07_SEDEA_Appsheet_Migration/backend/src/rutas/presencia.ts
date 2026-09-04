@@ -2,7 +2,8 @@
 //
 // Dos endpoints con permisos MUY distintos:
 //   POST /api/presencia        -> cualquier usuario autenticado reporta LA SUYA.
-//   GET  /api/admin/presencia  -> solo admin, ve la de todos.
+//   GET  /api/admin/presencia  -> admin (todas) o director (la suya, o todas
+//                                  si es el perfil central sin Regional).
 //
 // El "que hizo" historico NO vive aqui: eso ya lo cubre auditoria_log y se lee
 // con GET /api/auditoria/log. Esta tabla solo responde "donde esta ahora".
@@ -16,20 +17,24 @@ import {
 } from '@sedea/shared';
 import { consultar, pool } from '../db/pool.js';
 import { ErrorApi, errorNoAutorizado } from '../plugins/errores.js';
+import { regionalForzada } from '../plugins/rbac.js';
 
 /**
- * Guarda de rol ESTRICTA: solo `admin`. Mismo criterio que el resto de
- * /api/admin: saber quien esta conectado y en que pantalla es supervision, no
- * captura ni edicion de datos, asi que `editor_datos` tampoco alcanza.
+ * Guarda de rol: `admin` o `director`. Mismo criterio estricto que el resto
+ * de /api/admin (saber quien esta conectado y en que pantalla es
+ * supervision, no captura ni edicion de datos, asi que `editor_datos` no
+ * alcanza), abierto a `director` porque es justo lo que ese perfil pidio ver.
+ * El aislamiento por Regional de un director se aplica despues, en el SELECT.
  */
-async function soloAdmin(peticion: FastifyRequest, _respuesta: FastifyReply) {
+async function adminODirector(peticion: FastifyRequest, _respuesta: FastifyReply) {
   const usuario = peticion.usuario;
   if (!usuario) throw errorNoAutorizado();
-  if (!usuario.rol.split('+').includes('admin')) {
+  const roles = usuario.rol.split('+');
+  if (!roles.includes('admin') && !roles.includes('director')) {
     throw new ErrorApi(
       403,
       'rol_no_autorizado',
-      'Solo un administrador puede ver el monitor de actividad.'
+      'Solo un administrador o director puede ver el monitor de actividad.'
     );
   }
 }
@@ -46,7 +51,14 @@ function traducirFalloZod(error: ZodError): ErrorApi {
   return new ErrorApi(422, 'payload_invalido', mensaje);
 }
 
-const SELECT_PRESENCIA = `
+/**
+ * `filtroRegional` se agrega solo cuando quien consulta es un director con
+ * Regional asignada: recorta a los usuarios de ESA Regional (la suya y la de
+ * quienes capturan/dictaminan ahi). Admin y director central (sin Regional)
+ * ven todo, igual que siempre.
+ */
+function selectPresencia(filtroRegional: boolean): string {
+  return `
   SELECT p.usuario_id,
          u.usuario,
          u.nombre_completo,
@@ -62,8 +74,10 @@ const SELECT_PRESENCIA = `
     FROM presencia_usuarios p
     JOIN usuarios u ON u.id = p.usuario_id
     LEFT JOIN direcciones_regionales r ON r.id = u.regional_id
+   ${filtroRegional ? 'WHERE u.regional_id = $2' : ''}
    ORDER BY p.visto_en DESC
    LIMIT 300`;
+}
 
 export default async function rutasPresencia(app: FastifyInstance): Promise<void> {
   /**
@@ -111,18 +125,26 @@ export default async function rutasPresencia(app: FastifyInstance): Promise<void
   });
 
   /**
-   * Foto completa para el monitor del admin. Separa en dos listas usando un
-   * unico criterio (MINUTOS_PRESENCIA_ACTIVA, definido en @sedea/shared):
+   * Foto completa para el monitor de admin/director. Separa en dos listas
+   * usando un unico criterio (MINUTOS_PRESENCIA_ACTIVA, definido en
+   * @sedea/shared):
    *   activos   -> ultimo latido dentro del umbral, estan en la app ahora.
    *   inactivos -> se conectaron alguna vez pero su ultimo latido ya expiro.
+   * Un director con Regional asignada solo ve las filas de su Regional
+   * (`regionalForzada`); admin y director central (sin Regional) ven todo.
    */
   app.get(
     '/api/admin/presencia',
-    { preHandler: [app.autenticar, soloAdmin] },
-    async (_peticion, respuesta) => {
-      const filas = await consultar<PresenciaUsuario>(SELECT_PRESENCIA, [
-        String(MINUTOS_PRESENCIA_ACTIVA)
-      ]);
+    { preHandler: [app.autenticar, adminODirector] },
+    async (peticion, respuesta) => {
+      const regional = regionalForzada(peticion.usuario!);
+      const parametros: unknown[] = [String(MINUTOS_PRESENCIA_ACTIVA)];
+      if (regional !== null) parametros.push(regional);
+
+      const filas = await consultar<PresenciaUsuario>(
+        selectPresencia(regional !== null),
+        parametros
+      );
 
       const cuerpo: RespuestaPresencia = {
         generado_en: new Date().toISOString(),

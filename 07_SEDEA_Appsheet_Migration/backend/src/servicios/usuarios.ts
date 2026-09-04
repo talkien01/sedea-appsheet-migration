@@ -87,7 +87,7 @@ function tieneRol(rol: string, rolBuscado: string): boolean {
 
 /**
  * Coherencia rol <-> Regional (D22): la Regional es obligatoria para el
- * capturista, y opcional para auditor, ventanilla y dictaminador.
+ * capturista, y opcional para auditor, ventanilla, dictaminador y director.
  * Devuelve el valor definitivo.
  *
  * El auditor con Regional se usa para supervision territorial: el backend
@@ -98,6 +98,11 @@ function tieneRol(rol: string, rolBuscado: string): boolean {
  * municipios capturables: sin Regional, un usuario de ventanilla representa
  * el caso excepcional de SEDEA Central. Para multi-rol basta con que la lista
  * contenga el rol.
+ *
+ * `director` sigue el mismo patron que auditor: con Regional es un perfil
+ * territorial (dashboard, monitor y padron acotados a esa Regional, sin
+ * exportar); sin Regional es el perfil central (Ing. Luis Gerson Rincon hoy)
+ * que ve las 4 regionales y puede exportar. Nunca hereda /auditoria.
  */
 export async function resolverRegional(
   rol: string,
@@ -123,12 +128,13 @@ export async function resolverRegional(
     return valor;
   }
 
-  // Auditor, ventanilla y dictaminador pueden ser perfiles regionales o
-  // centrales/estatales. Si llevan Regional, se valida siempre.
+  // Auditor, ventanilla, dictaminador y director pueden ser perfiles
+  // regionales o centrales/estatales. Si llevan Regional, se valida siempre.
   if (
     tieneRol(rol, 'auditor') ||
     tieneRol(rol, 'ventanilla') ||
-    tieneRol(rol, 'dictaminador')
+    tieneRol(rol, 'dictaminador') ||
+    tieneRol(rol, 'director')
   ) {
     if (valor === null) return null;
     if (!(await regionalValida(valor, cliente))) {
@@ -143,7 +149,7 @@ export async function resolverRegional(
   if (valor !== null) {
     throw error422(
       'regional_no_aplica',
-      'Solo los capturistas, auditores, ventanillas y dictaminadores llevan Dirección Regional.'
+      'Solo los capturistas, auditores, ventanillas, dictaminadores y directores llevan Dirección Regional.'
     );
   }
   return null;

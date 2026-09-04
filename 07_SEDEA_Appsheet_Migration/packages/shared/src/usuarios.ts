@@ -11,6 +11,8 @@ export const ROLES_ADMIN_USUARIOS = ['admin', 'editor_datos'] as const;
 /**
  * Los roles del sistema, en el orden en que se muestran en los select.
  * Build 13: se inserta `dictaminador` antes de `admin`, que va siempre al final.
+ * `director` (perfil de solo consulta: dashboard, monitor y padron de su
+ * Regional) se agrega en el mismo lugar.
  */
 export const ROLES_USUARIO = [
   'capturista',
@@ -18,6 +20,7 @@ export const ROLES_USUARIO = [
   'editor_datos',
   'ventanilla',
   'dictaminador',
+  'director',
   'admin'
 ] as const;
 
@@ -28,6 +31,7 @@ export const ETIQUETAS_ROL: Record<string, string> = {
   editor_datos: 'Editor de datos',
   ventanilla: 'Ventanilla',
   dictaminador: 'Dictaminador',
+  director: 'Director',
   admin: 'Administrador'
 };
 

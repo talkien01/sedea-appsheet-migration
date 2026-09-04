@@ -87,7 +87,7 @@ export const DESTINOS: Destino[] = [
     ruta: '/dashboard',
     etiqueta: 'Dashboard',
     testId: 'nav-dashboard',
-    roles: ['admin', 'auditor', 'editor_datos'],
+    roles: ['admin', 'auditor', 'editor_datos', 'director'],
     grupo: 'Gestión',
     Icono: IconoGrafica
   },
@@ -96,7 +96,7 @@ export const DESTINOS: Destino[] = [
     ruta: '/gestion/beneficiarios',
     etiqueta: 'Beneficiarios en línea',
     testId: 'nav-beneficiarios-online',
-    roles: ['auditor', 'admin'],
+    roles: ['auditor', 'admin', 'director'],
     grupo: 'Gestión',
     Icono: IconoUsuarios
   },
@@ -164,13 +164,14 @@ export const DESTINOS: Destino[] = [
     grupo: 'Administración',
     Icono: IconoCapas
   },
-  // Monitor de actividad en vivo. SOLO admin: es supervision de personas.
+  // Monitor de actividad en vivo. admin y director: es supervision de
+  // personas, el director lo ve acotado a su Regional (backend).
   {
     id: 'monitor',
     ruta: '/monitor',
     etiqueta: 'Monitor',
     testId: 'nav-monitor',
-    roles: ['admin'],
+    roles: ['admin', 'director'],
     grupo: 'Administración',
     Icono: IconoOjo
   },

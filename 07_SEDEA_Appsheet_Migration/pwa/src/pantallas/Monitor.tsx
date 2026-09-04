@@ -106,6 +106,10 @@ export default function Monitor() {
   const [actividad, setActividad] = useState<FilaActividad[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // La bitacora (/api/auditoria/log) es solo admin/auditor: un director ve
+  // presencia pero no la bitacora. Error propio para que un 403 ahi no tumbe
+  // tambien la seccion de presencia (antes viajaban juntos en un Promise.all).
+  const [errorActividad, setErrorActividad] = useState<string | null>(null);
   const [filtroUsuario, setFiltroUsuario] = useState('');
 
   // El filtro viaja por ref para que el temporizador de refresco no se recree
@@ -113,28 +117,37 @@ export default function Monitor() {
   const filtroRef = useRef(filtroUsuario);
   filtroRef.current = filtroUsuario;
 
+  const mensajeError = (fallo: unknown): string =>
+    fallo instanceof ErrorPeticion && fallo.estado === 0
+      ? 'Esta sección requiere conexión a internet.'
+      : (fallo as Error).message;
+
   const cargar = useCallback(async () => {
     setError(null);
-    try {
-      const parametros = new URLSearchParams({ page_size: String(FILAS_ACTIVIDAD) });
-      if (filtroRef.current) parametros.set('usuario_id', filtroRef.current);
-      const [presencia, bitacora] = await Promise.all([
-        api.presencia(),
-        api.actividadReciente(parametros)
-      ]);
-      setActivos(presencia.activos);
-      setInactivos(presencia.inactivos);
-      setUmbral(presencia.umbral_minutos);
-      setActividad(bitacora.data ?? []);
-    } catch (fallo) {
-      setError(
-        fallo instanceof ErrorPeticion && fallo.estado === 0
-          ? 'Esta sección requiere conexión a internet.'
-          : (fallo as Error).message
-      );
-    } finally {
-      setCargando(false);
+    setErrorActividad(null);
+    const parametros = new URLSearchParams({ page_size: String(FILAS_ACTIVIDAD) });
+    if (filtroRef.current) parametros.set('usuario_id', filtroRef.current);
+
+    const [presencia, bitacora] = await Promise.allSettled([
+      api.presencia(),
+      api.actividadReciente(parametros)
+    ]);
+
+    if (presencia.status === 'fulfilled') {
+      setActivos(presencia.value.activos);
+      setInactivos(presencia.value.inactivos);
+      setUmbral(presencia.value.umbral_minutos);
+    } else {
+      setError(mensajeError(presencia.reason));
     }
+
+    if (bitacora.status === 'fulfilled') {
+      setActividad(bitacora.value.data ?? []);
+    } else {
+      setErrorActividad(mensajeError(bitacora.reason));
+    }
+
+    setCargando(false);
   }, []);
 
   // Carga inicial y recarga inmediata al cambiar el filtro (sin esperar al
@@ -207,54 +220,62 @@ export default function Monitor() {
       )}
 
       <h2>Actividad reciente</h2>
-      <div className="campo">
-        <label htmlFor="monitor-filtro-usuario">Filtrar por usuario</label>
-        <select
-          id="monitor-filtro-usuario"
-          data-testid="filtro-usuario"
-          value={filtroUsuario}
-          onChange={(evento) => setFiltroUsuario(evento.target.value)}
-        >
-          <option value="">Todos los usuarios</option>
-          {[...opcionesUsuario.entries()].map(([id, etiqueta]) => (
-            <option key={id} value={id}>
-              {etiqueta}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {cargando ? (
-        <p className="vacio">Cargando…</p>
-      ) : actividad.length === 0 ? (
-        <p className="vacio" data-testid="sin-actividad">
-          Sin acciones registradas.
+      {errorActividad ? (
+        <p className="mensaje aviso" data-testid="error-actividad">
+          {errorActividad}
         </p>
       ) : (
-        <div className="tabla-contenedor">
-          <table data-testid="tabla-actividad">
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Usuario</th>
-                <th>Acción</th>
-                <th>Detalle</th>
-              </tr>
-            </thead>
-            <tbody>
-              {actividad.map((fila) => (
-                <tr key={fila.id} data-testid="fila-actividad">
-                  <td data-etiqueta="Fecha">{formatearFechaHora(fila.creado_en)}</td>
-                  <td data-etiqueta="Usuario">
-                    {fila.nombre_completo ?? fila.usuario ?? 'Sin sesión'}
-                  </td>
-                  <td data-etiqueta="Acción">{fila.accion}</td>
-                  <td data-etiqueta="Detalle">{resumirDetalle(fila)}</td>
-                </tr>
+        <>
+          <div className="campo">
+            <label htmlFor="monitor-filtro-usuario">Filtrar por usuario</label>
+            <select
+              id="monitor-filtro-usuario"
+              data-testid="filtro-usuario"
+              value={filtroUsuario}
+              onChange={(evento) => setFiltroUsuario(evento.target.value)}
+            >
+              <option value="">Todos los usuarios</option>
+              {[...opcionesUsuario.entries()].map(([id, etiqueta]) => (
+                <option key={id} value={id}>
+                  {etiqueta}
+                </option>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </select>
+          </div>
+
+          {cargando ? (
+            <p className="vacio">Cargando…</p>
+          ) : actividad.length === 0 ? (
+            <p className="vacio" data-testid="sin-actividad">
+              Sin acciones registradas.
+            </p>
+          ) : (
+            <div className="tabla-contenedor">
+              <table data-testid="tabla-actividad">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Usuario</th>
+                    <th>Acción</th>
+                    <th>Detalle</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {actividad.map((fila) => (
+                    <tr key={fila.id} data-testid="fila-actividad">
+                      <td data-etiqueta="Fecha">{formatearFechaHora(fila.creado_en)}</td>
+                      <td data-etiqueta="Usuario">
+                        {fila.nombre_completo ?? fila.usuario ?? 'Sin sesión'}
+                      </td>
+                      <td data-etiqueta="Acción">{fila.accion}</td>
+                      <td data-etiqueta="Detalle">{resumirDetalle(fila)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

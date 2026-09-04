@@ -1,11 +1,12 @@
 // Definicion de rutas de la aplicacion.
 // El control de acceso por rol se endurece a partir del build 2:
 //   /beneficiarios*, /sync   -> capturista, admin
-//   /gestion/beneficiarios   -> auditor, admin (consulta en linea)
-//   /auditoria*              -> auditor, admin
+//   /gestion/beneficiarios   -> auditor, admin, director (consulta en linea)
+//   /auditoria*              -> auditor, admin (director NO entra: es bitacora)
 //   /depuracion*             -> editor_datos, admin
 //   /correcciones*           -> editor_datos, admin
-//   /dashboard               -> admin, auditor, editor_datos
+//   /dashboard               -> admin, auditor, editor_datos, director
+//   /monitor                 -> admin, director (acotado a su Regional)
 //   /solicitudes*            -> ventanilla, admin (build 6, en linea)
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { puedeGestionarEntregas } from '@sedea/shared';
@@ -45,12 +46,17 @@ import EdicionAdminSolicitudes from './pantallas/EdicionAdminSolicitudes';
 
 const CAMPO = ['capturista', 'admin'];
 const AUDITORIA = ['auditor', 'admin'];
+// Padron administrativo de solo consulta. Incluye a `director` (acotado a su
+// Regional por el backend); NO usa AUDITORIA porque esa lista tambien abre
+// /auditoria (bitacora), que un director no debe ver.
+const GESTION_BENEFICIARIOS = ['auditor', 'admin', 'director'];
 const DEPURACION = ['editor_datos', 'admin'];
-const GESTION = ['admin', 'auditor', 'editor_datos'];
+const GESTION = ['admin', 'auditor', 'editor_datos', 'director'];
 // Administracion de usuarios: admin y editor de datos (D15).
 const USUARIOS = ['admin', 'editor_datos'];
-// Monitor de actividad en vivo: SOLO admin (no lo hereda editor_datos).
-const MONITOR = ['admin'];
+// Monitor de actividad en vivo: admin y director (acotado a su Regional en
+// el backend). No lo hereda editor_datos ni ningun otro rol de gestion.
+const MONITOR = ['admin', 'director'];
 // Edicion administrativa de solicitudes: SOLO admin (unica excepcion a D44).
 const EDICION_ADMIN = ['admin'];
 // Modulo de ventanilla: rol nuevo `ventanilla` y admin (D34).
@@ -145,7 +151,7 @@ export default function Rutas() {
         <Route
           path="/gestion/beneficiarios"
           element={
-            <RutaProtegida roles={AUDITORIA}>
+            <RutaProtegida roles={GESTION_BENEFICIARIOS}>
               <BeneficiariosOnline />
             </RutaProtegida>
           }
@@ -229,10 +235,11 @@ export default function Rutas() {
         />
 
         {/*
-          Monitor de actividad en vivo. Solo `admin` (mas estricto que
-          /usuarios): saber quien esta conectado y en que pantalla es
+          Monitor de actividad en vivo. `admin` o `director` (mas estricto
+          que /usuarios): saber quien esta conectado y en que pantalla es
           supervision de personas, no administracion de datos. El backend
-          aplica el mismo candado en GET /api/admin/presencia.
+          aplica el mismo candado en GET /api/admin/presencia y ademas acota
+          las filas a la Regional del director (regionalForzada).
         */}
         <Route
           path="/monitor"

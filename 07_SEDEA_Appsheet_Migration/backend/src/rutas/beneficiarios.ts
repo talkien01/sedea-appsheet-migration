@@ -15,8 +15,13 @@ import { ErrorApi } from '../plugins/errores.js';
  * El padron de campo es exclusivo de capturista y admin. El rol editor_datos
  * trabaja en /api/staging y /api/correcciones, nunca aqui (regla del build 2,
  * que el build 3 NO debilita: la excepcion es solo el PATCH de mas abajo).
+ *
+ * `director` entra en consulta (listado y ficha), acotado a su Regional por
+ * `regionalForzada` igual que un auditor regional. La exportacion a CSV NO
+ * la hereda cuando tiene Regional asignada (ver el handler de export.csv):
+ * exportar es exclusivo del perfil central.
  */
-const ROLES_PADRON = ['capturista', 'auditor', 'admin'];
+const ROLES_PADRON = ['capturista', 'auditor', 'admin', 'director'];
 
 const SELECT_BASE = `
   SELECT b.id, b.folio, b.curp, b.nombre_completo, b.regional_id, r.nombre AS regional_nombre,
@@ -217,6 +222,14 @@ export default async function rutasBeneficiarios(app: FastifyInstance): Promise<
     async (peticion, respuesta) => {
       const usuario = peticion.usuario;
       if (!usuario) throw errorNoAutorizado();
+
+      // Un director acotado a su Regional consulta pero no exporta: exportar
+      // a Excel/CSV es exclusivo del perfil central (sin Regional asignada).
+      // Un auditor regional SI conserva su export de siempre; esta restriccion
+      // es unicamente para el rol nuevo `director`.
+      if (usuario.rol.split('+').includes('director') && regionalForzada(usuario) !== null) {
+        throw errorProhibido('Exportar el padrón es exclusivo del perfil central.');
+      }
 
       const q = esquemaConsultaBeneficiarios.parse(peticion.query ?? {});
       const { where, parametros, regional } = construirFiltrosBeneficiarios(usuario, q);

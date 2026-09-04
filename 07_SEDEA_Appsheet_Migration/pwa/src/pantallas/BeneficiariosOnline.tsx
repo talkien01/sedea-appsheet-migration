@@ -35,6 +35,17 @@ export default function BeneficiariosOnline() {
   const { perfil } = useSesion();
   const enLinea = useEstadoRed();
 
+  // Un director con Regional asignada consulta pero no exporta: el backend
+  // rechaza /beneficiarios/export.csv en ese caso (ver beneficiarios.ts), asi
+  // que aqui solo se oculta el boton para no ofrecer una accion que fallaria.
+  const puedeExportar = !(
+    perfil?.rol.split('+').includes('director') && perfil?.regional_id
+  );
+  // El expediente (/auditoria/beneficiario/:id) vive en la bitacora de
+  // auditoria, que director no ve (no hereda /auditoria): mostrar el enlace
+  // solo llevaria a "sin permiso".
+  const puedeVerExpediente = !perfil?.rol.split('+').includes('director');
+
   const [catalogos, setCatalogos] = useState<RespuestaCatalogos | null>(null);
   const [filas, setFilas] = useState<Beneficiario[]>([]);
   const [total, setTotal] = useState(0);
@@ -251,17 +262,19 @@ export default function BeneficiariosOnline() {
           </div>
         </div>
 
-        <div className="acciones" style={{ marginBottom: '12px' }}>
-          <button
-            type="button"
-            className="secundario"
-            data-testid="btn-exportar-beneficiarios-online"
-            disabled={exportando || cargando}
-            onClick={() => void exportarCsv()}
-          >
-            {exportando ? 'Exportando…' : '⬇️ Exportar CSV filtrado'}
-          </button>
-        </div>
+        {puedeExportar && (
+          <div className="acciones" style={{ marginBottom: '12px' }}>
+            <button
+              type="button"
+              className="secundario"
+              data-testid="btn-exportar-beneficiarios-online"
+              disabled={exportando || cargando}
+              onClick={() => void exportarCsv()}
+            >
+              {exportando ? 'Exportando…' : '⬇️ Exportar CSV filtrado'}
+            </button>
+          </div>
+        )}
 
         {error && (
           <div className="mensaje error" role="alert">
@@ -329,13 +342,15 @@ export default function BeneficiariosOnline() {
                     <td>{b.telefono ?? '—'}</td>
                     <td>{Number(b.total_capturas ?? 0)}</td>
                     <td>
-                      <Link
-                        className="boton secundario"
-                        to={`/auditoria/beneficiario/${b.id}`}
-                        data-testid={`ver-beneficiario-online-${b.id}`}
-                      >
-                        Ver expediente
-                      </Link>
+                      {puedeVerExpediente && (
+                        <Link
+                          className="boton secundario"
+                          to={`/auditoria/beneficiario/${b.id}`}
+                          data-testid={`ver-beneficiario-online-${b.id}`}
+                        >
+                          Ver expediente
+                        </Link>
+                      )}
                     </td>
                   </tr>
                 ))}

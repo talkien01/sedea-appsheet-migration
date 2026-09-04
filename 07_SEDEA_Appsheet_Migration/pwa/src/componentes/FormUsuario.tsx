@@ -52,18 +52,23 @@ interface Props {
 const CENTRAL = 'central';
 
 /**
- * La Regional aplica al capturista, auditor, ventanilla y dictaminador
- * (multi-rol incluido). En auditor recorta el Dashboard y la auditoria.
+ * La Regional aplica al capturista, auditor, ventanilla, dictaminador y
+ * director (multi-rol incluido). En auditor y director recorta el Dashboard
+ * (y en auditor tambien la auditoria).
  */
 const aplicaRegional = (roles: string[]) =>
   roles.includes('capturista') ||
   roles.includes('auditor') ||
   roles.includes('ventanilla') ||
-  roles.includes('dictaminador');
+  roles.includes('dictaminador') ||
+  roles.includes('director');
 
-/** Auditor, ventanilla y dictaminador pueden ser perfiles centrales/estatales. */
+/** Auditor, ventanilla, dictaminador y director pueden ser perfiles centrales/estatales. */
 const aplicaCentral = (roles: string[]) =>
-  (roles.includes('auditor') || roles.includes('ventanilla') || roles.includes('dictaminador')) &&
+  (roles.includes('auditor') ||
+    roles.includes('ventanilla') ||
+    roles.includes('dictaminador') ||
+    roles.includes('director')) &&
   !roles.includes('capturista');
 
 const ALCANCE_TODOS: ValoresAlcance = {
@@ -316,6 +321,13 @@ export default function FormUsuario({
             <p className="dato">
               Para un Director Regional, asigna su Dirección Regional. Usa “SEDEA Central” solo
               para perfiles estatales que deban consultar todo el estado.
+            </p>
+          )}
+          {regionalAplica && tieneRol('director') && (
+            <p className="dato">
+              Con Dirección Regional, el Director ve dashboard, monitor y padrón acotados a esa
+              Regional, sin exportar. Usa “SEDEA Central” solo para el perfil que debe ver las
+              4 regionales y exportar a Excel/CSV.
             </p>
           )}
           {regionalAplica && tieneRol('ventanilla') && (

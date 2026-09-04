@@ -4,8 +4,9 @@ import { z } from 'zod';
 
 /** Roles que pueden corregir datos de beneficiarios en produccion (D9). */
 export const ROLES_CORRECCION = ['editor_datos', 'admin'] as const;
-/** Roles con acceso al dashboard de estadisticas (D12). */
-export const ROLES_ESTADISTICAS = ['admin', 'auditor', 'editor_datos'] as const;
+/** Roles con acceso al dashboard de estadisticas (D12). `director` se agrega
+ * como perfil de solo consulta, forzado a su Regional cuando tiene una. */
+export const ROLES_ESTADISTICAS = ['admin', 'auditor', 'editor_datos', 'director'] as const;
 
 /**
  * Lista blanca ESTRICTA de campos editables (D7). Cualquier otra clave del

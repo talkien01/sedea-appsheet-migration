@@ -68,8 +68,15 @@ export default function BeneficiariosOnline() {
         const respuesta = await peticion<RespuestaCatalogos>('/catalogos');
         setCatalogos(respuesta);
         // Un auditor Regional queda anclado por backend. Reflejamos ese alcance
-        // en el filtro sin depender de lo que mande el navegador.
-        if (perfil?.regional_id) setRegionalId(String(perfil.regional_id));
+        // en el filtro sin depender de lo que mande el navegador. Tambien
+        // limpiamos el filtro cuando el perfil pasa a SEDEA Central (regional_id
+        // null) para no dejar pegada una Regional anterior si el perfil se
+        // refresca sin recargar la app completa (ej. tras un cambio de rol).
+        if (perfil?.regional_id) {
+          setRegionalId(String(perfil.regional_id));
+        } else {
+          setRegionalId('');
+        }
       } catch {
         setError('No se pudieron cargar los catálogos.');
       }

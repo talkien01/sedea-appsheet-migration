@@ -103,6 +103,11 @@ function tieneRol(rol: string, rolBuscado: string): boolean {
  * territorial (dashboard, monitor y padron acotados a esa Regional, sin
  * exportar); sin Regional es el perfil central (Ing. Luis Gerson Rincon hoy)
  * que ve las 4 regionales y puede exportar. Nunca hereda /auditoria.
+ *
+ * Excepcion: `capturista` combinado con `ventanilla` SI puede ser SEDEA
+ * Central (sin Regional) — es el perfil que trabaja el padron completo del
+ * estado en campo, no solo el de una Regional. Un capturista SOLO (sin
+ * ventanilla) sigue exigiendo Regional siempre: esa combinacion no cambia.
  */
 export async function resolverRegional(
   rol: string,
@@ -111,8 +116,10 @@ export async function resolverRegional(
 ): Promise<number | null> {
   const valor = regionalId ?? null;
 
-  // Multi-rol: es 'capturista' si contiene ese rol en la lista.
-  if (tieneRol(rol, 'capturista')) {
+  // Multi-rol: capturista SOLO (sin ventanilla) exige Regional siempre.
+  // Combinado con ventanilla cae a la rama de abajo, donde SI puede ser
+  // SEDEA Central.
+  if (tieneRol(rol, 'capturista') && !tieneRol(rol, 'ventanilla')) {
     if (valor === null) {
       throw error422(
         'regional_requerida',
@@ -130,11 +137,13 @@ export async function resolverRegional(
 
   // Auditor, ventanilla, dictaminador y director pueden ser perfiles
   // regionales o centrales/estatales. Si llevan Regional, se valida siempre.
+  // (Y capturista+ventanilla: ver la excepcion arriba.)
   if (
     tieneRol(rol, 'auditor') ||
     tieneRol(rol, 'ventanilla') ||
     tieneRol(rol, 'dictaminador') ||
-    tieneRol(rol, 'director')
+    tieneRol(rol, 'director') ||
+    tieneRol(rol, 'capturista')
   ) {
     if (valor === null) return null;
     if (!(await regionalValida(valor, cliente))) {

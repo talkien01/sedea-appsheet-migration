@@ -63,13 +63,23 @@ const aplicaRegional = (roles: string[]) =>
   roles.includes('dictaminador') ||
   roles.includes('director');
 
-/** Auditor, ventanilla, dictaminador y director pueden ser perfiles centrales/estatales. */
-const aplicaCentral = (roles: string[]) =>
-  (roles.includes('auditor') ||
-    roles.includes('ventanilla') ||
+/**
+ * Auditor, ventanilla, dictaminador y director pueden ser perfiles
+ * centrales/estatales. Capturista SOLO (sin ventanilla) sigue exigiendo
+ * Regional siempre; combinado con ventanilla SI puede ser SEDEA Central (el
+ * capturista de ese usuario trabaja el padron completo del estado, no solo
+ * el de una Regional).
+ */
+const aplicaCentral = (roles: string[]) => {
+  const tieneVentanilla = roles.includes('ventanilla');
+  const centralizable =
+    roles.includes('auditor') ||
+    tieneVentanilla ||
     roles.includes('dictaminador') ||
-    roles.includes('director')) &&
-  !roles.includes('capturista');
+    roles.includes('director');
+  if (!centralizable) return false;
+  return !roles.includes('capturista') || tieneVentanilla;
+};
 
 const ALCANCE_TODOS: ValoresAlcance = {
   municipiosTodos: true,
@@ -334,6 +344,13 @@ export default function FormUsuario({
             <p className="dato">
               La ventanilla regional solo podrá capturar en los municipios de su Regional. SEDEA
               Central es un canal excepcional y no se trata como otra Regional.
+            </p>
+          )}
+          {regionalAplica && tieneRol('capturista') && tieneRol('ventanilla') && (
+            <p className="dato">
+              Con “SEDEA Central”, el capturista de este usuario trabajará con el padrón completo
+              del estado (no solo el de una Regional): el dispositivo sincronizará un volumen
+              mucho mayor de beneficiarios. Úsalo solo para un perfil central real.
             </p>
           )}
           {errorRegional && (

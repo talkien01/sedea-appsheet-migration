@@ -64,22 +64,13 @@ const aplicaRegional = (roles: string[]) =>
   roles.includes('director');
 
 /**
- * Auditor, ventanilla, dictaminador y director pueden ser perfiles
- * centrales/estatales. Capturista SOLO (sin ventanilla) sigue exigiendo
- * Regional siempre; combinado con ventanilla SI puede ser SEDEA Central (el
- * capturista de ese usuario trabaja el padron completo del estado, no solo
- * el de una Regional).
+ * Los 5 roles que usan Regional pueden ser perfiles centrales/estatales
+ * (mismo conjunto que aplicaRegional). Capturista sin Regional es SEDEA
+ * Central: estado EXCEPCIONAL (sincroniza el padron completo del estado en
+ * campo, no solo el de una Regional) — el select lo permite, pero el hint
+ * de abajo deja claro que es la excepcion, no la norma.
  */
-const aplicaCentral = (roles: string[]) => {
-  const tieneVentanilla = roles.includes('ventanilla');
-  const centralizable =
-    roles.includes('auditor') ||
-    tieneVentanilla ||
-    roles.includes('dictaminador') ||
-    roles.includes('director');
-  if (!centralizable) return false;
-  return !roles.includes('capturista') || tieneVentanilla;
-};
+const aplicaCentral = aplicaRegional;
 
 const ALCANCE_TODOS: ValoresAlcance = {
   municipiosTodos: true,
@@ -194,10 +185,10 @@ export default function FormUsuario({
     }
 
     if (regionalAplica && !regionalId) {
+      // permiteCentral === regionalAplica siempre (mismos 5 roles): el
+      // select ya ofrece "SEDEA Central" en todo caso donde esto aplica.
       setErrorRegional(
-        permiteCentral
-          ? 'Elige la Dirección Regional de esta cuenta, o "SEDEA Central" solo si es un perfil estatal/central.'
-          : 'Este rol debe tener una Dirección Regional asignada.'
+        'Elige la Dirección Regional de esta cuenta, o "SEDEA Central" solo para un perfil estatal/central.'
       );
       valido = false;
     }
@@ -346,11 +337,12 @@ export default function FormUsuario({
               Central es un canal excepcional y no se trata como otra Regional.
             </p>
           )}
-          {regionalAplica && tieneRol('capturista') && tieneRol('ventanilla') && (
+          {regionalAplica && tieneRol('capturista') && (
             <p className="dato">
-              Con “SEDEA Central”, el capturista de este usuario trabajará con el padrón completo
-              del estado (no solo el de una Regional): el dispositivo sincronizará un volumen
-              mucho mayor de beneficiarios. Úsalo solo para un perfil central real.
+              Para un capturista, “SEDEA Central” es un caso EXCEPCIONAL: sincronizará el padrón
+              completo del estado (no solo el de una Regional), un volumen de descarga mucho
+              mayor. La gran mayoría de capturistas debe llevar su Dirección Regional; úsalo solo
+              para el puñado de perfiles que de verdad necesitan ver todo el estado en campo.
             </p>
           )}
           {errorRegional && (

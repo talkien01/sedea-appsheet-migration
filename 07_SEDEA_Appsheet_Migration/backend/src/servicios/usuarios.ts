@@ -86,9 +86,9 @@ function tieneRol(rol: string, rolBuscado: string): boolean {
 }
 
 /**
- * Coherencia rol <-> Regional (D22): la Regional es obligatoria para el
- * capturista, y opcional para auditor, ventanilla, dictaminador y director.
- * Devuelve el valor definitivo.
+ * Coherencia rol <-> Regional (D22): la Regional es opcional para los 5
+ * roles que la usan (capturista, auditor, ventanilla, dictaminador,
+ * director). Devuelve el valor definitivo.
  *
  * El auditor con Regional se usa para supervision territorial: el backend
  * fuerza todas sus estadisticas a esa Regional. Un auditor sin Regional sigue
@@ -104,10 +104,11 @@ function tieneRol(rol: string, rolBuscado: string): boolean {
  * exportar); sin Regional es el perfil central (Ing. Luis Gerson Rincon hoy)
  * que ve las 4 regionales y puede exportar. Nunca hereda /auditoria.
  *
- * Excepcion: `capturista` combinado con `ventanilla` SI puede ser SEDEA
- * Central (sin Regional) — es el perfil que trabaja el padron completo del
- * estado en campo, no solo el de una Regional. Un capturista SOLO (sin
- * ventanilla) sigue exigiendo Regional siempre: esa combinacion no cambia.
+ * `capturista` sin Regional es SEDEA Central: sincroniza el padron completo
+ * del estado en campo (no solo el de una Regional). Es un estado
+ * EXCEPCIONAL — la inmensa mayoria de capturistas SI debe llevar su
+ * Regional para no descargar el padron entero al dispositivo por error; el
+ * sistema ya no lo impide, pero quien da de alta la cuenta es quien decide.
  */
 export async function resolverRegional(
   rol: string,
@@ -116,34 +117,14 @@ export async function resolverRegional(
 ): Promise<number | null> {
   const valor = regionalId ?? null;
 
-  // Multi-rol: capturista SOLO (sin ventanilla) exige Regional siempre.
-  // Combinado con ventanilla cae a la rama de abajo, donde SI puede ser
-  // SEDEA Central.
-  if (tieneRol(rol, 'capturista') && !tieneRol(rol, 'ventanilla')) {
-    if (valor === null) {
-      throw error422(
-        'regional_requerida',
-        'Los capturistas deben tener una Dirección Regional asignada.'
-      );
-    }
-    if (!(await regionalValida(valor, cliente))) {
-      throw error422(
-        'regional_invalida',
-        'La Dirección Regional seleccionada no existe o está inactiva.'
-      );
-    }
-    return valor;
-  }
-
-  // Auditor, ventanilla, dictaminador y director pueden ser perfiles
-  // regionales o centrales/estatales. Si llevan Regional, se valida siempre.
-  // (Y capturista+ventanilla: ver la excepcion arriba.)
+  // Capturista, auditor, ventanilla, dictaminador y director: Regional
+  // opcional para los 5. Si llevan Regional, se valida siempre.
   if (
+    tieneRol(rol, 'capturista') ||
     tieneRol(rol, 'auditor') ||
     tieneRol(rol, 'ventanilla') ||
     tieneRol(rol, 'dictaminador') ||
-    tieneRol(rol, 'director') ||
-    tieneRol(rol, 'capturista')
+    tieneRol(rol, 'director')
   ) {
     if (valor === null) return null;
     if (!(await regionalValida(valor, cliente))) {

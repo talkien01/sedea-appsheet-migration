@@ -189,5 +189,22 @@ export const apiSolicitudes = {
       method: 'PATCH',
       body: JSON.stringify(cuerpo)
     });
+  },
+
+  /**
+   * Reemite el folio (solo admin) cuando un dato que lo compone -tipicamente
+   * el municipio- se corrigio con `editarAdmin` y el folio impreso quedo
+   * desfasado. Recalcula con los datos YA corregidos; no recibe campos
+   * propios. Bloqueado (409 `folio_con_entrega`) si el concepto ya tiene
+   * entrega fisica registrada.
+   */
+  reemitirFolio(
+    id: number,
+    cuerpo: { motivo: string; password: string }
+  ): Promise<{ ok: true; folio_anterior: string; folio_nuevo: string; solicitud: Record<string, unknown> }> {
+    return peticion(`/admin/solicitudes/${id}/reemitir-folio`, {
+      method: 'POST',
+      body: JSON.stringify(cuerpo)
+    });
   }
 };

@@ -598,3 +598,16 @@ export const esquemaEditarSolicitudAdmin = z.object({
   conceptos: z.array(esquemaConceptoEditadoAdmin).max(20).optional().default([])
 });
 export type EditarSolicitudAdminInput = z.infer<typeof esquemaEditarSolicitudAdmin>;
+
+/**
+ * Reemision de folio (solo admin): cuando un dato que compone el folio
+ * (tipicamente el municipio) se corrigio via esquemaEditarSolicitudAdmin y
+ * el folio impreso quedo desfasado. Mismo candado de motivo + contrasena
+ * que la edicion de campos; no recibe campos propios porque recalcula el
+ * folio con los datos YA corregidos de la solicitud, no con datos nuevos.
+ */
+export const esquemaReemitirFolio = z.object({
+  motivo: z.string().trim().min(5, 'El motivo debe tener al menos 5 caracteres.').max(500),
+  password: z.string().min(1, 'Ingresa tu contraseña.')
+});
+export type ReemitirFolioInput = z.infer<typeof esquemaReemitirFolio>;

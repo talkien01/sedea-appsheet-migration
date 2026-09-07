@@ -25,6 +25,7 @@ import {
   esquemaCrearSolicitud,
   esquemaDocumentosRequeridos,
   esquemaEditarSolicitudAdmin,
+  esquemaReemitirFolio,
   esquemaVerificarCurpConcepto,
   normalizarTelefono,
   type EntradaCrearSolicitud,
@@ -1488,6 +1489,136 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
         ok: true,
         solicitud: await obtenerSolicitud(id),
         conceptos: await conceptosDeSolicitud(id)
+      });
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // Reemision de folio (solo admin). Para cuando un dato que compone el folio
+  // (tipicamente el municipio de la ubicacion del apoyo) se capturo mal, ya se
+  // corrigio con el PATCH de arriba, y el folio impreso quedo desfasado.
+  //
+  // El folio VIEJO nunca se reutiliza por diseno (el consecutivo de
+  // solicitud_folios es monotono, Assumption 47): no hace falta un candado
+  // aparte, solo dejar rastro en solicitudes_folios_historicos para poder
+  // resolver "a donde se fue este folio" si alguien lo busca despues.
+  //
+  // Bloqueado si el concepto ya se entrego fisicamente (entregas_apoyo) o ya
+  // se concilio contra un camion (conciliacion_recibos): ahi ya hay papel
+  // impreso con el folio viejo en manos de alguien, cambiarlo despues crea un
+  // descuadre real. En ese caso la via es anotar la discrepancia, no reemitir.
+  // ---------------------------------------------------------------------------
+  app.post<{ Params: { id: string } }>(
+    '/api/admin/solicitudes/:id/reemitir-folio',
+    protegida,
+    async (peticion, respuesta) => {
+      const usuario = peticion.usuario!;
+      if (!tieneRol(usuario, 'admin')) {
+        throw error403('rol_no_autorizado', 'Solo un administrador puede reemitir un folio.');
+      }
+
+      const id = Number(peticion.params.id);
+      if (!Number.isInteger(id) || id <= 0) throw error404('La solicitud no existe.');
+
+      const analisis = esquemaReemitirFolio.safeParse(peticion.body ?? {});
+      if (!analisis.success) throw traducirFalloZod(analisis.error);
+      const entrada = analisis.data;
+
+      const hash = await obtenerHash(usuario.id);
+      if (!hash || !verificarPassword(entrada.password, hash)) {
+        throw new ErrorApi(401, 'password_incorrecta', 'Tu contraseña no es correcta.');
+      }
+
+      const previa = await obtenerSolicitud(id);
+      if (!previa) throw error404('La solicitud no existe.');
+
+      const yaEntregado = await consultarUna<{ uuid: string }>(
+        `SELECT ea.uuid
+           FROM entregas_apoyo ea
+           JOIN solicitud_conceptos sc ON sc.id = ea.solicitud_concepto_id
+          WHERE sc.solicitud_id = $1
+          LIMIT 1`,
+        [id]
+      );
+      const yaConciliado = await consultarUna<{ id: number }>(
+        `SELECT id FROM conciliacion_recibos WHERE solicitud_id = $1 LIMIT 1`,
+        [id]
+      );
+      if (yaEntregado || yaConciliado) {
+        throw new ErrorApi(
+          409,
+          'folio_con_entrega',
+          'Esta solicitud ya tiene una entrega física registrada con el folio actual: no se puede reemitir. Anota la discrepancia por otra vía.'
+        );
+      }
+
+      const proyecto = await consultarUna<{ prefijo_folio: string }>(
+        'SELECT prefijo_folio FROM proyectos WHERE id = $1',
+        [previa.proyecto_id]
+      );
+      const ventanilla = await consultarUna<{ clave_folio: string }>(
+        'SELECT clave_folio FROM ventanillas WHERE id = $1',
+        [previa.ventanilla_id]
+      );
+      const municipio = await municipioActivo(Number(previa.ubi_municipio_id));
+      if (!proyecto || !ventanilla || !municipio) {
+        throw error422(
+          'datos_incompletos',
+          'Falta un dato del proyecto, la ventanilla o el municipio para recalcular el folio.'
+        );
+      }
+
+      const partesFolio = {
+        prefijo: String(proyecto.prefijo_folio).toUpperCase(),
+        claveRegional: String(ventanilla.clave_folio).toUpperCase(),
+        // El municipio YA corregido (via el PATCH de arriba) es el que manda.
+        siglasMunicipio: siglasMunicipio(municipio.siglas_folio, municipio.nombre),
+        // Se preserva el AÑO de recepcion original, no el de hoy: reemitir el
+        // folio no cambia cuando se recibio la solicitud.
+        anio: anioFolio(new Date(previa.recibida_en))
+      };
+
+      const folioAnterior = String(previa.folio);
+
+      const folioNuevo = await enTransaccion(async (cliente) => {
+        await cliente.query('SELECT id FROM solicitudes WHERE id = $1 FOR UPDATE', [id]);
+
+        const consecutivo = await reservarConsecutivo(cliente, partesFolio);
+        const nuevo = armarFolio(partesFolio, consecutivo);
+
+        await cliente.query(
+          'UPDATE solicitudes SET folio = $1, actualizado_en = now() WHERE id = $2',
+          [nuevo, id]
+        );
+        await cliente.query(
+          'UPDATE beneficiarios SET folio = $1, actualizado_en = now() WHERE solicitud_id = $2',
+          [nuevo, id]
+        );
+        await cliente.query(
+          `INSERT INTO solicitudes_folios_historicos
+             (solicitud_id, folio_anterior, folio_nuevo, motivo, reemplazado_por)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [id, folioAnterior, nuevo, entrada.motivo, usuario.id]
+        );
+
+        await bitacoraEnTransaccion(cliente, {
+          usuarioId: usuario.id,
+          accion: 'folio_reemitido',
+          entidad: 'solicitud',
+          entidadId: id,
+          detalle: { folio_anterior: folioAnterior, folio_nuevo: nuevo, motivo: entrada.motivo },
+          ip: peticion.ip,
+          userAgent: (peticion.headers['user-agent'] as string | undefined)?.slice(0, 300) ?? null
+        });
+
+        return nuevo;
+      });
+
+      return respuesta.status(200).send({
+        ok: true,
+        folio_anterior: folioAnterior,
+        folio_nuevo: folioNuevo,
+        solicitud: await obtenerSolicitud(id)
       });
     }
   );

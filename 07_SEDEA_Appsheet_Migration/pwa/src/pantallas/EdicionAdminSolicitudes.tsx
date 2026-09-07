@@ -1,6 +1,8 @@
 // Edicion administrativa de solicitudes. SOLO admin (D44: la unica excepcion
-// a la inmutabilidad de solicitudes). El folio NUNCA es editable — si esta
-// mal, la via es anular y volver a capturar, no editarlo aqui.
+// a la inmutabilidad de solicitudes). El folio no se edita como los demas
+// campos, pero SI se puede reemitir por completo (boton aparte, mas abajo)
+// cuando un dato que lo compone -tipicamente el municipio- se corrigio y el
+// folio impreso quedo desfasado. Ver POST .../reemitir-folio.
 //
 // Cada guardado exige: motivo obligatorio + reautenticacion con la propia
 // contraseña del admin (defensa en profundidad contra una sesion abierta sin
@@ -91,7 +93,8 @@ export default function EdicionAdminSolicitudes() {
         <h1>Edición administrativa de solicitudes</h1>
         <p className="dato">
           Corrige datos capturados incorrectamente (nombre, CURP, teléfono, conceptos...). El
-          folio nunca es editable.
+          folio no se edita como campo, pero se puede reemitir por completo si un dato que lo
+          compone (el municipio) se corrigió aquí.
         </p>
       </div>
 
@@ -236,6 +239,9 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
   const [conceptos, setConceptos] = useState<ConceptoSolicitud[]>([]);
   const [motivo, setMotivo] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmandoFolio, setConfirmandoFolio] = useState(false);
+  const [reemitiendoFolio, setReemitiendoFolio] = useState(false);
+  const [folioReemitidoDe, setFolioReemitidoDe] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -308,6 +314,32 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
     }
   };
 
+  const reemitirFolio = async () => {
+    if (motivo.trim().length < 5) {
+      setError('Escribe el motivo (mínimo 5 caracteres) antes de generar el folio nuevo.');
+      return;
+    }
+    if (!password) {
+      setError('Ingresa tu contraseña para confirmar.');
+      return;
+    }
+    setReemitiendoFolio(true);
+    setError(null);
+    try {
+      const resultado = await apiSolicitudes.reemitirFolio(id, {
+        motivo: motivo.trim(),
+        password
+      });
+      setFolio(resultado.folio_nuevo);
+      setFolioReemitidoDe(resultado.folio_anterior);
+      setConfirmandoFolio(false);
+    } catch (fallo) {
+      setError(fallo instanceof ErrorPeticion ? fallo.message : 'No se pudo generar el folio nuevo.');
+    } finally {
+      setReemitiendoFolio(false);
+    }
+  };
+
   return (
     <div className="modal-fondo" role="dialog" aria-modal="true" data-testid="modal-edicion-admin">
       <div className="modal tarjeta">
@@ -321,6 +353,55 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
               Folio: <strong className="mono" data-testid="folio-edicion-admin">{folio}</strong>{' '}
               <span className="pill">🔒 no editable</span>
             </p>
+
+            {folioReemitidoDe && (
+              <div className="mensaje exito" data-testid="aviso-folio-reemitido">
+                <span>
+                  Folio reemplazado. El anterior (<span className="mono">{folioReemitidoDe}</span>)
+                  quedó en el historial y no se puede volver a usar. Reimprime el Folio de entrega
+                  con el nuevo.
+                </span>
+              </div>
+            )}
+
+            {!confirmandoFolio ? (
+              <button
+                type="button"
+                className="secundario"
+                data-testid="btn-abrir-reemitir-folio"
+                onClick={() => setConfirmandoFolio(true)}
+              >
+                Generar folio nuevo
+              </button>
+            ) : (
+              <div className="mensaje aviso" data-testid="confirmar-reemitir-folio">
+                <span>
+                  Esto reemplaza el folio actual por uno calculado con los datos YA guardados de
+                  esta solicitud (si vas a corregir el municipio, guarda ese cambio primero). El
+                  folio viejo queda inutilizable para siempre. Cualquier Folio de entrega ya
+                  impreso con el folio actual habrá que reimprimirlo. Usa el motivo y la
+                  contraseña de abajo.
+                  <br />
+                  <button
+                    type="button"
+                    className="secundario"
+                    data-testid="btn-cancelar-reemitir-folio"
+                    onClick={() => setConfirmandoFolio(false)}
+                    disabled={reemitiendoFolio}
+                  >
+                    Cancelar
+                  </button>{' '}
+                  <button
+                    type="button"
+                    data-testid="btn-confirmar-reemitir-folio"
+                    onClick={() => void reemitirFolio()}
+                    disabled={reemitiendoFolio}
+                  >
+                    {reemitiendoFolio ? 'Generando…' : 'Sí, generar folio nuevo'}
+                  </button>
+                </span>
+              </div>
+            )}
 
             <div className="rejilla">
               <label className="campo">

@@ -447,8 +447,10 @@ export default function NuevaSolicitud() {
               nombre_pila: f.nombre_pila ?? null,
               apellido_paterno: f.apellido_paterno ?? null,
               apellido_materno: f.apellido_materno ?? null,
-              sexo: null,
-              fecha_nacimiento: null,
+              // CATALOGOS nunca capturo estos 2 por separado; el backend los
+              // deriva del propio CURP como respaldo (ver datosDesdeCurp).
+              sexo: f.sexo ?? null,
+              fecha_nacimiento: f.fecha_nacimiento ?? null,
               telefono: f.telefono ?? null,
               correo: f.correo ?? null,
               municipio_id: f.municipio_id ?? null,

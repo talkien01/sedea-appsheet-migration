@@ -11,6 +11,9 @@ export * from './declaraciones.js';
 export * from './catalogos.js';
 // Escaneo del QR de la Constancia CURP y traspaso celular -> PC (E60).
 export * from './curpQr.js';
+// Sexo y fecha de nacimiento derivados del propio CURP (respaldo cuando una
+// fuente historica no los capturo aparte).
+export * from './curp.js';
 // Reinicio de datos de prueba: fuente unica de verdad de tablas + frase.
 export * from './reinicio.js';
 // Registro de entrega del apoyo por concepto (evidencia en campo).

@@ -28,6 +28,7 @@ import {
   esquemaReemitirFolio,
   esquemaVerificarCurpConcepto,
   normalizarTelefono,
+  datosDesdeCurp,
   type EntradaCrearSolicitud,
   type PerfilUsuario,
   type TipoPersona
@@ -399,10 +400,24 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       )
     ]);
 
+    // Respaldo: CATALOGOS nunca capturo sexo/fecha_nacimiento por separado
+    // (la tabla no tiene esas columnas), y cualquier fuente podria traerlos
+    // en blanco por dato faltante. El CURP mismo los trae codificados (ver
+    // datosDesdeCurp) -- se usa solo si la fila no trajo el dato real.
+    const desdeCurp = datosDesdeCurp(curp);
+    const conRespaldoCurp = <T extends { sexo?: string | null; fecha_nacimiento?: unknown }>(
+      filas: T[]
+    ): T[] =>
+      filas.map((f) => ({
+        ...f,
+        sexo: f.sexo ?? desdeCurp.sexo,
+        fecha_nacimiento: f.fecha_nacimiento ?? desdeCurp.fecha_nacimiento
+      }));
+
     return respuesta.status(200).send({
-      sistema: delSistema.rows,
-      catalogos: historicoCatalogos.rows,
-      piipc: historicoPiipc.rows
+      sistema: conRespaldoCurp(delSistema.rows),
+      catalogos: conRespaldoCurp(historicoCatalogos.rows),
+      piipc: conRespaldoCurp(historicoPiipc.rows)
     });
   });
 

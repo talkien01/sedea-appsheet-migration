@@ -24,3 +24,5 @@ export * from './configuracion.js';
 export * from './presencia.js';
 // Heuristica de apellido a partir del nombre completo (E62: folios por mesa).
 export * from './nombres.js';
+// Modulo de Reportes (Beta): resumen agrupable de solicitudes vivas.
+export * from './reportes.js';

@@ -41,6 +41,8 @@ import rutasEscaneoCurp from './rutas/escaneoCurp.js';
 import rutasAdmin from './rutas/admin.js';
 // Registro de entrega del apoyo por concepto (evidencia en campo).
 import rutasEntregas from './rutas/entregas.js';
+// Modulo de Reportes (Beta): resumen agrupable de solicitudes vivas.
+import rutasReportes from './rutas/reportes.js';
 // Conciliacion posterior de recibos fisicos escaneados por camion.
 import rutasConciliacion from './rutas/conciliacion.js';
 // Monitor de presencia en vivo: latido de la PWA + consulta solo para admin.
@@ -180,6 +182,8 @@ async function construirApp() {
   await app.register(rutasConciliacion);
   // Monitor de presencia en vivo (quien esta conectado y en que pantalla).
   await app.register(rutasPresencia);
+  // Modulo de Reportes (Beta): resumen agrupable de solicitudes vivas.
+  await app.register(rutasReportes);
 
   return app;
 }

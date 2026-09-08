@@ -43,6 +43,7 @@ import EscaneoMovil from './pantallas/EscaneoMovil';
 import RegistrarEntrega from './pantallas/RegistrarEntregaMonitorizada';
 import Monitor from './pantallas/Monitor';
 import EdicionAdminSolicitudes from './pantallas/EdicionAdminSolicitudes';
+import Reportes from './pantallas/Reportes';
 
 const CAMPO = ['capturista', 'admin'];
 const AUDITORIA = ['auditor', 'admin'];
@@ -59,6 +60,10 @@ const USUARIOS = ['admin', 'editor_datos'];
 const MONITOR = ['admin', 'director'];
 // Edicion administrativa de solicitudes: SOLO admin (unica excepcion a D44).
 const EDICION_ADMIN = ['admin'];
+// Modulo de Reportes (Beta): admin y director SIEMPRE; el resto (capturista,
+// ventanilla, editor_datos...) lo obtiene combinando "+reportes" a su rol,
+// persona por persona -- ver ROLES_REPORTES en packages/shared/src/reportes.ts.
+const REPORTES = ['admin', 'director', 'reportes'];
 // Modulo de ventanilla: rol nuevo `ventanilla` y admin (D34).
 const VENTANILLA = ['ventanilla', 'capturista', 'admin'];
 // Build 13: pre-dictaminacion con IA. El rol `dictaminador` NO hereda
@@ -246,6 +251,22 @@ export default function Rutas() {
           element={
             <RutaProtegida roles={MONITOR}>
               <Monitor />
+            </RutaProtegida>
+          }
+        />
+
+        {/*
+          Modulo de Reportes (Beta): resumen agrupable de solicitudes vivas,
+          exportable a Excel. admin/director siempre; el resto combina
+          "+reportes" a su rol (ver REPORTES arriba). El backend aplica el
+          mismo candado en /api/reportes/* y ademas acota por Regional
+          (regionalForzada) igual que el resto del sistema.
+        */}
+        <Route
+          path="/reportes"
+          element={
+            <RutaProtegida roles={REPORTES}>
+              <Reportes />
             </RutaProtegida>
           }
         />

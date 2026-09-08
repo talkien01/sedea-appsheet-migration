@@ -91,6 +91,17 @@ export const DESTINOS: Destino[] = [
     grupo: 'Gestión',
     Icono: IconoGrafica
   },
+  // Modulo de Reportes (Beta): admin/director siempre; el resto combina
+  // "+reportes" a su rol persona por persona (ver ROLES_REPORTES en shared).
+  {
+    id: 'reportes',
+    ruta: '/reportes',
+    etiqueta: 'Reportes',
+    testId: 'nav-reportes',
+    roles: ['admin', 'director', 'reportes'],
+    grupo: 'Gestión',
+    Icono: IconoDocumento
+  },
   {
     id: 'beneficiarios-online',
     ruta: '/gestion/beneficiarios',

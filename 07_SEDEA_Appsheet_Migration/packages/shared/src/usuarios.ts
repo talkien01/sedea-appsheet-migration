@@ -21,7 +21,8 @@ export const ROLES_USUARIO = [
   'ventanilla',
   'dictaminador',
   'director',
-  'admin'
+  'admin',
+  'reportes'
 ] as const;
 
 /** Etiquetas en espanol de cada rol (UI y bitacora legible). */
@@ -32,7 +33,12 @@ export const ETIQUETAS_ROL: Record<string, string> = {
   ventanilla: 'Ventanilla',
   dictaminador: 'Dictaminador',
   director: 'Director',
-  admin: 'Administrador'
+  admin: 'Administrador',
+  // Capacidad aditiva (Beta), no un rol base: se combina con "+" al rol que
+  // ya tenga la persona (ej. "capturista+reportes", "ventanilla+reportes")
+  // para dar acceso al modulo de Reportes sin cambiarle su rol principal.
+  // admin y director SIEMPRE tienen acceso, no necesitan esta combinacion.
+  reportes: 'Reportes (acceso adicional)'
 };
 
 /** Patron del nombre de acceso: minusculas, digitos, punto, guion y guion bajo. */

@@ -1166,12 +1166,67 @@ td img.miniatura {
   margin: 0;
 }
 
+/*
+ * Dibujado propio (appearance: none) en vez de dejar el control nativo del
+ * SO. Reportado en Android/Chrome: al agrandar un <input type="radio"> nativo
+ * a 44px (bloque movil de abajo, S15.11.1) se ve como un circulo solido sin
+ * distinguir marcado de no marcado -- accent-color por si solo no alcanza en
+ * ese tamano/navegador. Dibujarlo a mano (borde + relleno + punto/check
+ * interior) se ve igual en todos los navegadores/SO y en claro/oscuro.
+ */
 input[type='checkbox'],
 input[type='radio'] {
-  accent-color: var(--accent);
+  appearance: none;
+  -webkit-appearance: none;
   width: 18px;
   height: 18px;
   min-height: 0;
+  flex-shrink: 0;
+  position: relative;
+  margin: 0;
+  border: 2px solid var(--border-strong);
+  background: var(--bg-elev);
+  cursor: pointer;
+}
+
+input[type='radio'] {
+  border-radius: 50%;
+}
+
+input[type='checkbox'] {
+  border-radius: 4px;
+}
+
+input[type='checkbox']:checked,
+input[type='radio']:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+input[type='radio']:checked::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--bg-elev);
+}
+
+input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: -1px;
+  width: 5px;
+  height: 10px;
+  border: solid var(--bg-elev);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+input[type='checkbox']:focus-visible,
+input[type='radio']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .lista-casillas {
@@ -1338,6 +1393,19 @@ input[type='radio'] {
     width: 44px;
     height: 44px;
     min-height: 44px;
+    border-width: 3px;
+  }
+
+  input[type='radio']:checked::after {
+    inset: 9px;
+  }
+
+  input[type='checkbox']:checked::after {
+    left: 14px;
+    top: 6px;
+    width: 10px;
+    height: 20px;
+    border-width: 0 3px 3px 0;
   }
 
   .chip {

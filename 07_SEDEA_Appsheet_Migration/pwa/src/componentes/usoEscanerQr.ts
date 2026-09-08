@@ -90,14 +90,42 @@ export function useEscanerQr({ alTexto, seamPrueba, activo = true }: Opciones): 
         return;
       }
       try {
+        // Resolucion alta a proposito (`ideal`, nunca `exact`: si el celular no
+        // la soporta, cae a lo maximo que tenga en vez de fallar): el QR de la
+        // Constancia CURP impresa es chico y denso, y muchos celulares por
+        // default abren la camara a 640x480 -- suficiente para video normal,
+        // insuficiente para que jsQR lo decodifique de cerca. Caso real
+        // reportado: la camara abre bien pero nunca detecta el codigo.
         const s = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' }
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
         });
         if (!vivo) {
           s.getTracks().forEach((t) => t.stop());
           return;
         }
         stream.current = s;
+        // Enfoque continuo (Android Chrome sobre todo): sin esto, algunos
+        // celulares enfocan una sola vez al abrir la camara y se quedan asi,
+        // borroso si el papel esta cerca del lente. `applyConstraints` es la
+        // unica forma de pedirlo -- no existe como constraint valido dentro de
+        // getUserMedia en todos los navegadores. Best-effort: si el navegador
+        // no soporta `focusMode`, falla en silencio y sigue con el enfoque que
+        // ya trae.
+        const pista = s.getVideoTracks()[0];
+        if (pista) {
+          try {
+            await pista.applyConstraints({
+              advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet]
+            });
+          } catch {
+            // Sin soporte de focusMode en este navegador/dispositivo: se sigue
+            // con el enfoque por default, no es un error real.
+          }
+        }
         if (video.current) {
           video.current.srcObject = s;
           await video.current.play().catch(() => undefined);

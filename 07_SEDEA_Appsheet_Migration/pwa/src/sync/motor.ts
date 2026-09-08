@@ -168,9 +168,13 @@ async function enviarEntregas(resultado: ResultadoSync): Promise<void> {
     const formulario = new FormData();
     formulario.append('uuid', entrega.uuid);
     formulario.append('solicitud_concepto_id', String(entrega.solicitud_concepto_id));
-    formulario.append('lat', String(entrega.lat));
-    formulario.append('lng', String(entrega.lng));
-    formulario.append('precision_m', String(entrega.precision_m));
+    if (entrega.sin_gps) {
+      formulario.append('sin_gps', 'true');
+    } else {
+      formulario.append('lat', String(entrega.lat));
+      formulario.append('lng', String(entrega.lng));
+      formulario.append('precision_m', String(entrega.precision_m));
+    }
     formulario.append('entregado_en', entrega.entregado_en);
     if (entrega.observaciones) formulario.append('observaciones', entrega.observaciones);
     const archivoFoto = entrega.foto.type.startsWith('image/')

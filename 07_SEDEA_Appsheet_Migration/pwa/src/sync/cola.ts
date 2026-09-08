@@ -59,9 +59,11 @@ export interface DatosNuevaEntrega {
   beneficiario_nombre: string;
   concepto_nombre: string;
   foto: Blob;
-  lat: number;
-  lng: number;
-  precision_m: number;
+  /** null solo cuando `sin_gps` es true. */
+  lat: number | null;
+  lng: number | null;
+  precision_m: number | null;
+  sin_gps: boolean;
   observaciones: string | null;
 }
 
@@ -78,6 +80,7 @@ export async function encolarEntrega(datos: DatosNuevaEntrega): Promise<EntregaL
     lat: datos.lat,
     lng: datos.lng,
     precision_m: datos.precision_m,
+    sin_gps: datos.sin_gps,
     observaciones: datos.observaciones,
     entregado_en: new Date().toISOString(),
     estado: 'pendiente',

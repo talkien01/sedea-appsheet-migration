@@ -37,24 +37,41 @@ const numeroDesdeTexto = z.union([z.number(), z.string()]).transform((v) => {
   return n;
 });
 
+/** Igual que arriba, pero para el campo `sin_gps` ('true'/'false' de texto). */
+const booleanoDesdeTexto = z.union([z.boolean(), z.string()]).transform((v) => {
+  if (typeof v === 'boolean') return v;
+  return v.trim().toLowerCase() === 'true';
+});
+
 /**
  * Cuerpo de POST /api/entregas. Calcado de `esquemaCaptura`: mismo uuid de
  * cliente como clave de idempotencia y las mismas coordenadas.
+ *
+ * `lat`/`lng`/`precision_m` son opcionales porque el sitio de entrega puede no
+ * tener señal ni vista al cielo suficiente para un GPS satelital (migracion
+ * 036) -- pero solo si `sin_gps` viene confirmado explicitamente, nunca por
+ * default silencioso (ver `.refine` abajo).
  */
-export const esquemaEntregaApoyo = z.object({
-  uuid: esquemaUuidV4,
-  solicitud_concepto_id: numeroDesdeTexto.pipe(z.number().int().positive()),
-  lat: numeroDesdeTexto.pipe(z.number().min(-90).max(90)),
-  lng: numeroDesdeTexto.pipe(z.number().min(-180).max(180)),
-  precision_m: numeroDesdeTexto.pipe(z.number().min(0).max(100000)),
-  entregado_en: z
-    .string()
-    .min(1)
-    .refine((v) => !Number.isNaN(Date.parse(v)), {
-      message: 'entregado_en debe ser una fecha ISO 8601 valida'
-    }),
-  observaciones: z.string().max(500).optional().nullable()
-});
+export const esquemaEntregaApoyo = z
+  .object({
+    uuid: esquemaUuidV4,
+    solicitud_concepto_id: numeroDesdeTexto.pipe(z.number().int().positive()),
+    lat: numeroDesdeTexto.pipe(z.number().min(-90).max(90)).optional(),
+    lng: numeroDesdeTexto.pipe(z.number().min(-180).max(180)).optional(),
+    precision_m: numeroDesdeTexto.pipe(z.number().min(0).max(100000)).optional(),
+    sin_gps: booleanoDesdeTexto.optional().default(false),
+    entregado_en: z
+      .string()
+      .min(1)
+      .refine((v) => !Number.isNaN(Date.parse(v)), {
+        message: 'entregado_en debe ser una fecha ISO 8601 valida'
+      }),
+    observaciones: z.string().max(500).optional().nullable()
+  })
+  .refine((datos) => datos.sin_gps || (datos.lat !== undefined && datos.lng !== undefined && datos.precision_m !== undefined), {
+    message: 'Faltan las coordenadas de la entrega (o confirma sin_gps si el GPS no estuvo disponible).',
+    path: ['lat']
+  });
 export type EntradaEntregaApoyo = z.infer<typeof esquemaEntregaApoyo>;
 
 export interface RespuestaEntregaApoyo {

@@ -93,9 +93,10 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
       const parseado = esquemaEntregaApoyo.safeParse({
         uuid: campos.uuid,
         solicitud_concepto_id: campos.solicitud_concepto_id,
-        lat: campos.lat,
-        lng: campos.lng,
-        precision_m: campos.precision_m,
+        lat: campos.lat || undefined,
+        lng: campos.lng || undefined,
+        precision_m: campos.precision_m || undefined,
+        sin_gps: campos.sin_gps,
         entregado_en: campos.entregado_en,
         observaciones: campos.observaciones ? campos.observaciones : null
       });
@@ -183,9 +184,11 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
       const insertadas = await consultar<{ uuid: string; foto_url: string }>(
         `INSERT INTO entregas_apoyo (
             uuid, solicitud_concepto_id, foto_url, foto_hash, geom, lat, lng,
-            precision_m, observaciones, entregado_en, entregado_por, dispositivo)
-         VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326), $6, $5,
-                 $7, $8, $9::timestamptz, $10, $11)
+            precision_m, sin_gps, observaciones, entregado_en, entregado_por, dispositivo)
+         VALUES ($1, $2, $3, $4,
+                 CASE WHEN $5::double precision IS NULL OR $6::double precision IS NULL THEN NULL
+                      ELSE ST_SetSRID(ST_MakePoint($6, $5), 4326) END,
+                 $5, $6, $7, $8, $9, $10::timestamptz, $11, $12)
          ON CONFLICT (uuid) DO NOTHING
          RETURNING uuid, foto_url`,
         [
@@ -193,9 +196,10 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
           datos.solicitud_concepto_id,
           guardada.url,
           guardada.hash,
-          datos.lng,
-          datos.lat,
-          datos.precision_m,
+          datos.lat ?? null,
+          datos.lng ?? null,
+          datos.precision_m ?? null,
+          datos.sin_gps,
           datos.observaciones ?? null,
           new Date(datos.entregado_en).toISOString(),
           usuario.id,
@@ -227,9 +231,10 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
           solicitud_id: Number(concepto.solicitud_id),
           folio: concepto.folio,
           autorizacion_de_facto: esAutorizadoDeFacto(concepto),
-          lat: datos.lat,
-          lng: datos.lng,
-          precision_m: datos.precision_m
+          lat: datos.lat ?? null,
+          lng: datos.lng ?? null,
+          precision_m: datos.precision_m ?? null,
+          sin_gps: datos.sin_gps
         }
       });
 

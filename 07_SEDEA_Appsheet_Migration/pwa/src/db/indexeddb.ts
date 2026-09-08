@@ -65,9 +65,12 @@ export interface EntregaLocal {
   concepto_nombre: string;
   foto?: Blob | null;
   foto_url?: string | null;
-  lat: number;
-  lng: number;
-  precision_m: number;
+  /** null cuando `sin_gps` es true (el sitio de entrega no tenia GPS disponible). */
+  lat: number | null;
+  lng: number | null;
+  precision_m: number | null;
+  /** Confirmado por el capturista en campo -- ver CapturaGPS.tsx. */
+  sin_gps: boolean;
   observaciones: string | null;
   entregado_en: string;
   estado: 'pendiente' | 'sincronizando' | 'sincronizada' | 'error';

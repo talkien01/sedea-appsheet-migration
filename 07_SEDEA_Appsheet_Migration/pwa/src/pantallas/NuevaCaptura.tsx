@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { Beneficiario } from '@sedea/shared';
 import CapturaFoto from '../componentes/CapturaFoto';
-import CapturaGPS, { type Ubicacion } from '../componentes/CapturaGPS';
+import CapturaGPS, { type ResultadoUbicacion } from '../componentes/CapturaGPS';
 import { catalogosPorGrupo, obtenerBeneficiario } from '../db/repositorios';
 import type { EntradaCatalogoLocal } from '../db/indexeddb';
 import { encolarCaptura } from '../sync/cola';
@@ -18,7 +18,11 @@ export default function NuevaCaptura() {
   const [beneficiario, setBeneficiario] = useState<Beneficiario | null>(null);
   const [tiposApoyo, setTiposApoyo] = useState<EntradaCatalogoLocal[]>([]);
   const [foto, setFoto] = useState<Blob | null>(null);
-  const [ubicacion, setUbicacion] = useState<Ubicacion | null>(null);
+  // `permitirSinGps` no se pasa a <CapturaGPS> aqui a proposito -- esta
+  // pantalla (captura de campo generica) conserva el bloqueo total de
+  // siempre, `'sin_gps'` nunca llega en la practica. El tipo es compartido
+  // con el componente, por eso se declara igual.
+  const [ubicacion, setUbicacion] = useState<ResultadoUbicacion>(null);
   const [tipoApoyoId, setTipoApoyoId] = useState<string>('');
   const [cantidad, setCantidad] = useState<string>('');
   const [observaciones, setObservaciones] = useState('');
@@ -38,7 +42,7 @@ export default function NuevaCaptura() {
   const puedeGuardar = !!foto && !!ubicacion && !guardando;
 
   const guardar = async () => {
-    if (!foto || !ubicacion) return;
+    if (!foto || !ubicacion || ubicacion === 'sin_gps') return;
     setGuardando(true);
     try {
       await encolarCaptura({

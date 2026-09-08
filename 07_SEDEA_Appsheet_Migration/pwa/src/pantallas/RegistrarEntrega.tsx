@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CapturaFoto from '../componentes/CapturaFoto';
-import CapturaGPS, { type Ubicacion } from '../componentes/CapturaGPS';
+import CapturaGPS, { type ResultadoUbicacion } from '../componentes/CapturaGPS';
 import { useEscanerQr } from '../componentes/usoEscanerQr';
 import type { ConceptoEntregaLocal, EventoEntregaLocal } from '../db/indexeddb';
 import {
@@ -65,7 +65,7 @@ export default function RegistrarEntrega() {
   const [resultados, setResultados] = useState<ConceptoEntregaLocal[]>([]);
 
   const [foto, setFoto] = useState<Blob | null>(null);
-  const [ubicacion, setUbicacion] = useState<Ubicacion | null>(null);
+  const [ubicacion, setUbicacion] = useState<ResultadoUbicacion>(null);
   const [observaciones, setObservaciones] = useState('');
   const [guardando, setGuardando] = useState(false);
 
@@ -170,6 +170,7 @@ export default function RegistrarEntrega() {
 
   const guardar = async () => {
     if (!elegido || !foto || !ubicacion) return;
+    const sinGps = ubicacion === 'sin_gps';
     setGuardando(true);
     try {
       await encolarEntrega({
@@ -178,9 +179,10 @@ export default function RegistrarEntrega() {
         beneficiario_nombre: elegido.beneficiario_nombre,
         concepto_nombre: descripcionConcepto(elegido),
         foto,
-        lat: ubicacion.lat,
-        lng: ubicacion.lng,
-        precision_m: ubicacion.precision_m,
+        lat: sinGps ? null : ubicacion.lat,
+        lng: sinGps ? null : ubicacion.lng,
+        precision_m: sinGps ? null : ubicacion.precision_m,
+        sin_gps: sinGps,
         observaciones: observaciones.trim() ? observaciones.trim().slice(0, 500) : null
       });
 
@@ -431,7 +433,7 @@ export default function RegistrarEntrega() {
           </p>
 
           <CapturaFoto onFoto={setFoto} titulo="Foto: beneficiario, apoyo y folio impreso" />
-          <CapturaGPS onUbicacion={setUbicacion} titulo="Ubicación de la entrega" />
+          <CapturaGPS onUbicacion={setUbicacion} titulo="Ubicación de la entrega" permitirSinGps />
 
           <div className="campo">
             <label htmlFor="entrega-observaciones">Observaciones (opcional)</label>
@@ -460,7 +462,10 @@ export default function RegistrarEntrega() {
           </div>
 
           {!puedeGuardar && !guardando && (
-            <p className="dato">Faltan la fotografía y/o las coordenadas para poder confirmar.</p>
+            <p className="dato">
+              Faltan la fotografía y/o las coordenadas para poder confirmar. Si el GPS no
+              responde, marca "Continuar sin ubicación GPS" para seguir de todos modos.
+            </p>
           )}
         </section>
       )}

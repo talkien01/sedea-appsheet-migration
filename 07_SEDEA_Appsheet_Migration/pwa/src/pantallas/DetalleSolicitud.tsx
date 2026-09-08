@@ -40,6 +40,7 @@ export default function DetalleSolicitud() {
   const [error, setError] = useState<string | null>(null);
   const [enlaces, setEnlaces] = useState<Record<number, string>>({});
   const [urlSolicitudPdf, setUrlSolicitudPdf] = useState<string>('');
+  const [urlFolioPdf, setUrlFolioPdf] = useState<string>('');
   const [notaAutorizacion, setNotaAutorizacion] = useState('');
   const [guardandoAutorizacion, setGuardandoAutorizacion] = useState(false);
   const { perfil } = useSesion();
@@ -110,6 +111,30 @@ export default function DetalleSolicitud() {
       vigente = false;
     };
   }, [id]);
+
+  // Folio de Entrega: PDF real (PDFKit, backend), no la vista de pantalla
+  // /solicitudes/:id/folio. Carta vertical, una hoja, con Componente/
+  // Municipio/Localidad/Ejido/Superficie/Costales que esa vista no traía.
+  // Mismo candado que el backend (autorizada_secretario O de facto): solo se
+  // resuelve la URL cuando ya se sabe que se puede, para no generar una
+  // peticion 403 de mas.
+  useEffect(() => {
+    if (!id || !detalle) return;
+    const puede =
+      (detalle.solicitud as Record<string, unknown>).autorizada_secretario === true ||
+      conceptosAutorizadosDeFacto(detalle.conceptos);
+    if (!puede) {
+      setUrlFolioPdf('');
+      return;
+    }
+    let vigente = true;
+    void urlConToken(`/api/solicitudes/${id}/folio-entrega.pdf`).then((url) => {
+      if (vigente) setUrlFolioPdf(url);
+    });
+    return () => {
+      vigente = false;
+    };
+  }, [id, detalle]);
 
   // Autorización del Secretario: captura en el sistema de una firma que ocurre
   // en papel. Solo admin la ve y la toca.
@@ -337,15 +362,20 @@ export default function DetalleSolicitud() {
           {/* El Folio de entrega vive detrás de la Autorización del Secretario
               (o de un concepto autorizado_de_facto, ver puedeImprimirFolio).
               Aquí solo se OCULTA el camino; el candado real lo aplica el
-              backend en GET /api/solicitudes/:id/folio. */}
-          {puedeImprimirFolio ? (
-            <Link
+              backend en GET /api/solicitudes/:id/folio-entrega.pdf.
+              Es el PDF real (PDFKit) -- NO la pantalla /solicitudes/:id/folio,
+              que quedó en horizontal/2 hojas y sin Componente/Municipio/
+              Localidad/Ejido/Superficie/Costales. */}
+          {puedeImprimirFolio && urlFolioPdf ? (
+            <a
               className="boton"
               data-testid="btn-folio-entrega"
-              to={`/solicitudes/${id}/folio`}
+              href={urlFolioPdf}
+              target="_blank"
+              rel="noopener noreferrer"
             >
               📄 Imprimir Folio de Entrega
-            </Link>
+            </a>
           ) : (
             <button
               type="button"

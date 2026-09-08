@@ -85,6 +85,29 @@ export const apiSolicitudes = {
     });
   },
 
+  /** Propuesta A: localidades del catálogo importado, filtradas por Municipio. */
+  localidades(
+    municipioId: number,
+    q: string
+  ): Promise<{ localidades: { id: number; nombre: string; cve_seccion: string | null }[] }> {
+    const parametros = new URLSearchParams({ municipio_id: String(municipioId) });
+    if (q.trim()) parametros.set('q', q.trim());
+    return peticion(`/solicitudes/localidades?${parametros.toString()}`);
+  },
+
+  /**
+   * Propuesta B: coincidencias históricas por CURP en las 3 fuentes (este
+   * sistema, el padrón de CATALOGOS, y el historial de apoyos de PIIPC).
+   * Es solo lectura/sugerencia — ventanilla decide cuál usar, si alguna.
+   */
+  historialCurp(curp: string): Promise<{
+    sistema: Record<string, unknown>[];
+    catalogos: Record<string, unknown>[];
+    piipc: Record<string, unknown>[];
+  }> {
+    return peticion(`/solicitudes/historial-curp/${curp}`);
+  },
+
   /** E42 - alta. El folio lo genera el backend (D41): nunca se envia. */
   crear(cuerpo: Record<string, unknown>): Promise<RespuestaAltaSolicitud> {
     return peticion<RespuestaAltaSolicitud>('/solicitudes', {

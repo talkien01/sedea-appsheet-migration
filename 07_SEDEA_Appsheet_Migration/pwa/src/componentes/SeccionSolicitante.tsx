@@ -13,6 +13,7 @@ import {
 } from '@sedea/shared';
 import { useState, type ReactNode } from 'react';
 import { ESTILO_MAYUSCULAS, aMayusculas } from './campoMayusculas';
+import BuscadorLocalidad from './BuscadorLocalidad';
 import EscanerCurpQr from './EscanerCurpQr';
 import VincularCelular from './VincularCelular';
 
@@ -37,6 +38,15 @@ export interface DatosSolicitante {
   num_integrantes: string;
   dom_municipio_id: string;
   dom_localidad: string;
+  /** Propuesta A: id del catálogo `localidades` (migración 035) cuando el
+   * capturista SÍ la encontró buscando; vacío si escribió a mano o el
+   * catálogo no la tiene. `dom_localidad` (texto) sigue siendo la fuente de
+   * verdad para imprimir/mostrar, este campo es aditivo. */
+  dom_localidad_id: string;
+  /** Autocompletada al elegir una Localidad del catálogo; siempre editable
+   * porque la sección real de una persona puede no coincidir con la de su
+   * localidad. */
+  dom_seccion: string;
   dom_delegacion: string;
   dom_cp: string;
   dom_tipo_asentamiento: string;
@@ -328,7 +338,15 @@ export default function SeccionSolicitante({ valores, municipios, cambiar, aviso
             id="select-dom-municipio"
             data-testid="select-dom-municipio"
             value={valores.dom_municipio_id}
-            onChange={(e) => cambiar('dom_municipio_id', e.target.value)}
+            onChange={(e) => {
+              cambiar('dom_municipio_id', e.target.value);
+              // Una Localidad/Sección elegida pertenece al Municipio anterior:
+              // cambiar de Municipio la invalida, para no dejar una
+              // combinación inconsistente sin que el capturista se de cuenta.
+              cambiar('dom_localidad_id', '');
+              cambiar('dom_localidad', '');
+              cambiar('dom_seccion', '');
+            }}
           >
             <option value="">Selecciona un municipio</option>
             {municipios.map((m) => (
@@ -339,15 +357,30 @@ export default function SeccionSolicitante({ valores, municipios, cambiar, aviso
           </select>
         </div>
 
+        <BuscadorLocalidad
+          municipioId={valores.dom_municipio_id}
+          valorTexto={valores.dom_localidad}
+          valorId={valores.dom_localidad_id}
+          onSeleccionar={(id, nombre, seccion) => {
+            cambiar('dom_localidad_id', id);
+            cambiar('dom_localidad', nombre);
+            cambiar('dom_seccion', seccion);
+          }}
+          onTexto={(texto) => {
+            cambiar('dom_localidad', texto);
+            cambiar('dom_localidad_id', '');
+          }}
+        />
+
         <div className="campo">
-          <label htmlFor="input-dom-localidad">Localidad</label>
+          <label htmlFor="input-dom-seccion">Sección electoral</label>
           <input
-            id="input-dom-localidad"
-            data-testid="input-dom-localidad"
+            id="input-dom-seccion"
+            data-testid="input-dom-seccion"
             type="text"
-            value={valores.dom_localidad}
-            style={ESTILO_MAYUSCULAS}
-            onChange={(e) => cambiar('dom_localidad', aMayusculas(e.target.value))}
+            maxLength={10}
+            value={valores.dom_seccion}
+            onChange={(e) => cambiar('dom_seccion', e.target.value)}
           />
         </div>
 

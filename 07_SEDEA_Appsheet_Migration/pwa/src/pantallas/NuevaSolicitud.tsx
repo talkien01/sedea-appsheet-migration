@@ -44,6 +44,8 @@ const solicitanteInicial: DatosSolicitante = {
   num_integrantes: '',
   dom_municipio_id: '',
   dom_localidad: '',
+  dom_localidad_id: '',
+  dom_seccion: '',
   dom_delegacion: '',
   dom_cp: '',
   dom_tipo_asentamiento: '',
@@ -387,6 +389,129 @@ export default function NuevaSolicitud() {
     setSolicitante((previo) => ({ ...previo, [campo]: valor }));
   }, []);
 
+  // --- Historial por CURP (Propuesta B) ----------------------------------
+  // Mismo disparador que el aviso de arriba (CURP completa, venga de
+  // escaneo o tecleada): busca en las 3 fuentes en paralelo y deja TODAS las
+  // coincidencias en pantalla para que ventanilla decida cual usar, si
+  // alguna -- nunca se aplica sola. Solo llena identidad+domicilio (2.1/2.2);
+  // actividad/apoyo/conceptos SIEMPRE se capturan frescos, sin importar de
+  // donde haya salido el resto.
+  interface CoincidenciaHistorial {
+    fuente: 'sistema' | 'catalogos' | 'piipc';
+    etiqueta: string;
+    nombre_pila: string | null;
+    apellido_paterno: string | null;
+    apellido_materno: string | null;
+    sexo: string | null;
+    fecha_nacimiento: string | null;
+    telefono: string | null;
+    correo: string | null;
+    municipio_id: number | null;
+    localidad_id: number | null;
+    localidad_nombre: string | null;
+    seccion: string | null;
+    colonia: string | null;
+  }
+
+  const [coincidenciasHistorial, setCoincidenciasHistorial] = useState<CoincidenciaHistorial[]>([]);
+
+  useEffect(() => {
+    if (!enLinea || !curpCompleta) {
+      setCoincidenciasHistorial([]);
+      return;
+    }
+    const temporizador = setTimeout(() => {
+      void (async () => {
+        try {
+          const r = await apiSolicitudes.historialCurp(curpNormalizada);
+          const lista: CoincidenciaHistorial[] = [
+            ...r.sistema.map((f: any) => ({
+              fuente: 'sistema' as const,
+              etiqueta: 'Ya en este sistema',
+              nombre_pila: f.nombre_pila ?? null,
+              apellido_paterno: f.apellido_paterno ?? null,
+              apellido_materno: f.apellido_materno ?? null,
+              sexo: f.sexo ?? null,
+              fecha_nacimiento: f.fecha_nacimiento ?? null,
+              telefono: f.telefono ?? null,
+              correo: f.correo ?? null,
+              municipio_id: f.dom_municipio_id ?? null,
+              localidad_id: f.dom_localidad_id ?? null,
+              localidad_nombre: f.localidad_nombre ?? null,
+              seccion: f.seccion ?? null,
+              colonia: f.dom_asentamiento ?? null
+            })),
+            ...r.catalogos.map((f: any) => ({
+              fuente: 'catalogos' as const,
+              etiqueta: 'Histórico (padrón CATALOGOS)',
+              nombre_pila: f.nombre_pila ?? null,
+              apellido_paterno: f.apellido_paterno ?? null,
+              apellido_materno: f.apellido_materno ?? null,
+              sexo: null,
+              fecha_nacimiento: null,
+              telefono: f.telefono ?? null,
+              correo: f.correo ?? null,
+              municipio_id: f.municipio_id ?? null,
+              localidad_id: f.localidad_id ?? null,
+              localidad_nombre: f.localidad_nombre ?? null,
+              seccion: f.seccion ?? null,
+              colonia: f.dom_colonia ?? null
+            })),
+            ...r.piipc.map((f: any) => ({
+              fuente: 'piipc' as const,
+              etiqueta: `Histórico ${f.anio ?? ''} (Impulso Productivo del Campo)`.trim(),
+              nombre_pila: f.nombre_pila ?? null,
+              apellido_paterno: f.apellido_paterno ?? null,
+              apellido_materno: f.apellido_materno ?? null,
+              sexo: f.sexo ?? null,
+              fecha_nacimiento: f.fecha_nacimiento ?? null,
+              telefono: f.telefono ?? null,
+              correo: f.correo ?? null,
+              municipio_id: f.municipio_proyecto_id ?? null,
+              localidad_id: f.localidad_proyecto_id ?? null,
+              localidad_nombre: f.localidad_nombre ?? null,
+              seccion: f.seccion ?? null,
+              colonia: f.dom_colonia ?? null
+            }))
+          ];
+          setCoincidenciasHistorial(lista);
+        } catch {
+          // Sin coincidencias conocidas: no es un bloqueo, solo se deja de
+          // ofrecer el atajo -- la captura manual sigue disponible siempre.
+          setCoincidenciasHistorial([]);
+        }
+      })();
+    }, 300);
+    return () => clearTimeout(temporizador);
+  }, [enLinea, curpCompleta, curpNormalizada]);
+
+  const usarDatosHistoricos = useCallback(
+    (c: CoincidenciaHistorial) => {
+      if (c.nombre_pila) cambiarSolicitante('nombre_pila', c.nombre_pila);
+      if (c.apellido_paterno) cambiarSolicitante('apellido_paterno', c.apellido_paterno);
+      if (c.apellido_materno) cambiarSolicitante('apellido_materno', c.apellido_materno);
+      const combinado = [c.nombre_pila, c.apellido_paterno, c.apellido_materno]
+        .filter((p): p is string => Boolean(p && p.trim()))
+        .join(' ');
+      if (combinado) cambiarSolicitante('nombre_solicitante', combinado);
+      if (c.sexo) cambiarSolicitante('sexo', c.sexo);
+      if (c.fecha_nacimiento) cambiarSolicitante('fecha_nacimiento', c.fecha_nacimiento.slice(0, 10));
+      if (c.telefono) cambiarSolicitante('telefono', c.telefono);
+      if (c.correo) cambiarSolicitante('correo', c.correo);
+      if (c.municipio_id) cambiarSolicitante('dom_municipio_id', String(c.municipio_id));
+      if (c.localidad_id && c.localidad_nombre) {
+        cambiarSolicitante('dom_localidad_id', String(c.localidad_id));
+        cambiarSolicitante('dom_localidad', c.localidad_nombre);
+      }
+      if (c.seccion) cambiarSolicitante('dom_seccion', c.seccion);
+      if (c.colonia) {
+        cambiarSolicitante('dom_tipo_asentamiento', 'colonia');
+        cambiarSolicitante('dom_asentamiento', c.colonia);
+      }
+    },
+    [cambiarSolicitante]
+  );
+
   const cambiarActividad = useCallback(
     (campo: keyof DatosActividad, valor: string | boolean) => {
       setActividad((previo) => ({ ...previo, [campo]: valor }) as DatosActividad);
@@ -503,6 +628,8 @@ export default function NuevaSolicitud() {
         domicilio: {
           municipio_id: solicitante.dom_municipio_id ? Number(solicitante.dom_municipio_id) : null,
           localidad: solicitante.dom_localidad || null,
+          localidad_id: solicitante.dom_localidad_id ? Number(solicitante.dom_localidad_id) : null,
+          seccion: solicitante.dom_seccion || null,
           delegacion: solicitante.dom_delegacion || null,
           cp: solicitante.dom_cp || null,
           tipo_asentamiento: solicitante.dom_tipo_asentamiento || null,
@@ -772,15 +899,47 @@ export default function NuevaSolicitud() {
               esto en la mano, justo debajo del campo CURP (no hasta el fondo
               de la tarjeta, para que sea imposible pasarlo por alto). El
               bloqueo real por fila vive en el Paso 5, TablaConceptos.
+
+              Debajo, las coincidencias del historico (Propuesta B): tarjetas,
+              una por fuente/año, cada una con su propio "Usar estos datos" --
+              el capturista elige, el sistema nunca decide solo.
             */
-            conflictosCurpSinElegir.length > 0 ? (
-              <div className="mensaje aviso" role="status" data-testid="aviso-curp-conceptos-previos">
-                Esta CURP ya tiene solicitud de:{' '}
-                {conflictosCurpSinElegir
-                  .map((c) => `${c.tipo_apoyo ?? 'concepto'} (folio ${c.folio})`)
-                  .join('; ')}
-                . Si el concepto que van a pedir es distinto, puedes continuar sin problema.
-              </div>
+            conflictosCurpSinElegir.length > 0 || coincidenciasHistorial.length > 0 ? (
+              <>
+                {conflictosCurpSinElegir.length > 0 && (
+                  <div className="mensaje aviso" role="status" data-testid="aviso-curp-conceptos-previos">
+                    Esta CURP ya tiene solicitud de:{' '}
+                    {conflictosCurpSinElegir
+                      .map((c) => `${c.tipo_apoyo ?? 'concepto'} (folio ${c.folio})`)
+                      .join('; ')}
+                    . Si el concepto que van a pedir es distinto, puedes continuar sin problema.
+                  </div>
+                )}
+                {coincidenciasHistorial.map((c, indice) => (
+                  <div
+                    key={`${c.fuente}-${indice}`}
+                    className="mensaje aviso"
+                    role="status"
+                    data-testid="coincidencia-historial-curp"
+                  >
+                    <span>
+                      <strong>{c.etiqueta}:</strong>{' '}
+                      {[c.nombre_pila, c.apellido_paterno, c.apellido_materno].filter(Boolean).join(' ') ||
+                        'Sin nombre registrado'}
+                      {c.localidad_nombre ? ` · ${c.localidad_nombre}` : ''}
+                      {c.telefono ? ` · Tel. ${c.telefono}` : ''}
+                    </span>{' '}
+                    <button
+                      type="button"
+                      className="secundario"
+                      data-testid={`btn-usar-historial-${c.fuente}-${indice}`}
+                      onClick={() => usarDatosHistoricos(c)}
+                    >
+                      Usar estos datos
+                    </button>
+                  </div>
+                ))}
+              </>
             ) : undefined
           }
         />

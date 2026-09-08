@@ -91,6 +91,12 @@ export const esquemaDomicilioSolicitud = z
   .object({
     municipio_id: idOpcional,
     localidad: texto(200),
+    // Propuesta A (catalogo de localidades importado, migracion 035):
+    // opcional a proposito -- el catalogo no cubre el 100% de la realidad
+    // rural, `localidad` (texto) sigue siendo la fuente de verdad para
+    // imprimir/mostrar/buscar aunque no se haya encontrado en el catalogo.
+    localidad_id: idOpcional,
+    seccion: texto(10),
     delegacion: texto(200),
     cp: texto(10),
     tipo_asentamiento: z.enum(TIPOS_ASENTAMIENTO).nullable().optional(),

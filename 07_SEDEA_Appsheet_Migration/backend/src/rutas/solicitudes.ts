@@ -316,6 +316,97 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
   });
 
   // -------------------------------------------------------------------------
+  // Localidades buscables (Propuesta A): catalogo importado del sistema
+  // anterior (migracion 035), filtrado por Municipio ya elegido en el
+  // formulario. Consulta de catalogo, sin restriccion de alcance.
+  // -------------------------------------------------------------------------
+  app.get('/api/solicitudes/localidades', protegida, async (peticion, respuesta) => {
+    const query = peticion.query as { municipio_id?: string; q?: string };
+    const municipioId = Number(query.municipio_id);
+    if (!municipioId || !Number.isInteger(municipioId)) {
+      throw error422('municipio_id_invalido', 'Falta el municipio para buscar localidades.');
+    }
+    const texto = (query.q ?? '').trim();
+
+    const filas = await pool.query<{ id: number; nombre: string; cve_seccion: string | null }>(
+      texto
+        ? `SELECT id, nombre, cve_seccion FROM localidades
+            WHERE municipio_id = $1 AND activo AND nombre ILIKE $2
+            ORDER BY nombre LIMIT 50`
+        : `SELECT id, nombre, cve_seccion FROM localidades
+            WHERE municipio_id = $1 AND activo
+            ORDER BY nombre LIMIT 50`,
+      texto ? [municipioId, `%${texto}%`] : [municipioId]
+    );
+
+    return respuesta.status(200).send({ localidades: filas.rows });
+  });
+
+  // -------------------------------------------------------------------------
+  // Historial por CURP (Propuesta B): busca en 3 fuentes en paralelo --
+  // solicitudes YA en este sistema, el padron historico de CATALOGOS (solo
+  // identidad) y el historial de apoyos de PIIPC (con concepto/monto) -- y
+  // regresa TODAS las coincidencias para que ventanilla elija cual usar
+  // (nunca se decide sola cual es "la vigente"). Consulta de existencia,
+  // igual que verificar-curp-concepto: sin restriccion de alcance.
+  // -------------------------------------------------------------------------
+  app.get('/api/solicitudes/historial-curp/:curp', protegida, async (peticion, respuesta) => {
+    const curp = textoMayus((peticion.params as { curp?: string }).curp);
+    if (!curp || !PATRON_CURP.test(curp)) {
+      throw error422('curp_invalida', 'La CURP no tiene el formato correcto.');
+    }
+
+    const [delSistema, historicoCatalogos, historicoPiipc] = await Promise.all([
+      pool.query(
+        `SELECT s.nombre_pila, s.apellido_paterno, s.apellido_materno, s.nombre_solicitante, s.sexo,
+                s.fecha_nacimiento, s.telefono, s.correo, s.dom_municipio_id, s.dom_localidad_id,
+                l.nombre AS localidad_nombre, COALESCE(s.dom_seccion, l.cve_seccion) AS seccion,
+                s.dom_cp, s.dom_tipo_asentamiento, s.dom_asentamiento, s.recibida_en
+           FROM solicitudes s
+           LEFT JOIN localidades l ON l.id = s.dom_localidad_id
+          WHERE s.curp = $1
+          ORDER BY s.recibida_en DESC LIMIT 3`,
+        [curp]
+      ),
+      pool.query(
+        `SELECT b.nombre_pila, b.apellido_paterno, b.apellido_materno, b.nombre_completo, b.telefono,
+                b.correo, b.dom_calle, b.dom_numero, b.dom_colonia, b.dom_cp, b.dom_tipo_asentamiento,
+                b.municipio_id, b.localidad_id, l.nombre AS localidad_nombre, l.cve_seccion AS seccion
+           FROM beneficiarios_historicos b
+           LEFT JOIN localidades l ON l.id = b.localidad_id
+          WHERE b.curp = $1 LIMIT 3`,
+        [curp]
+      ),
+      pool.query(
+        `SELECT hs.id, hs.folio_origen, hs.nombre_pila, hs.apellido_paterno, hs.apellido_materno,
+                hs.sexo, hs.fecha_nacimiento, hs.telefono, hs.correo, hs.anio, hs.programa,
+                hs.dom_municipio_texto, hs.dom_localidad_texto, hs.dom_colonia, hs.dom_calle, hs.dom_cp,
+                hs.municipio_proyecto_id, hs.localidad_proyecto_id,
+                l.nombre AS localidad_nombre, COALESCE(hs.seccion_electoral, l.cve_seccion) AS seccion,
+                COALESCE(
+                  json_agg(json_build_object('concepto', hc.concepto, 'cantidad', hc.cantidad_solicitada,
+                    'unidad_medida', hc.unidad_medida, 'monto_estatal', hc.monto_estatal))
+                  FILTER (WHERE hc.id IS NOT NULL), '[]'
+                ) AS conceptos
+           FROM historial_solicitudes hs
+           LEFT JOIN historial_conceptos hc ON hc.historial_solicitud_id = hs.id
+           LEFT JOIN localidades l ON l.id = hs.localidad_proyecto_id
+          WHERE hs.curp = $1
+          GROUP BY hs.id, l.nombre, l.cve_seccion
+          ORDER BY hs.anio DESC NULLS LAST
+          LIMIT 5`,
+        [curp]
+      )
+    ]);
+
+    return respuesta.status(200).send({
+      sistema: delSistema.rows,
+      catalogos: historicoCatalogos.rows,
+      piipc: historicoPiipc.rows
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // E42 - Alta de la solicitud. Una sola transaccion: folio, solicitud,
   // conceptos, documentos, beneficiarios derivados y bitacora.
   // -------------------------------------------------------------------------
@@ -652,7 +743,8 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
                ben_mujeres_lengua_indigena,
                ubi_municipio_id, ubi_localidad, ubi_ejido, ubi_coordenadas,
                declaracion_aceptada, declaracion_version, observaciones, origen,
-               nombre_pila, apellido_paterno, apellido_materno)
+               nombre_pila, apellido_paterno, apellido_materno,
+               dom_localidad_id, dom_seccion)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,
                      $10,$11,$12,$13::date,$14,$15,$16,
                      $17,$18,
@@ -663,7 +755,8 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
                      $42,$43,$44,$45,$46,$47,$48,
                      $49,$50,$51,$52,
                      TRUE,$53,$54,'solicitud_ventanilla',
-                     $55,$56,$57)
+                     $55,$56,$57,
+                     $58,$59)
              RETURNING id`,
             [
               folio,
@@ -731,7 +824,10 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
 
               nombrePila,
               apellidoPaterno,
-              apellidoMaterno
+              apellidoMaterno,
+
+              (dom as any).localidad_id ?? null,
+              texto((dom as any).seccion)
             ]
           );
           solicitudId = Number(rows[0].id);

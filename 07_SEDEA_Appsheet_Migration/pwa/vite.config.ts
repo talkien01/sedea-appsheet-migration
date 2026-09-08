@@ -8,7 +8,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      // null (no 'auto'): el registro minimo auto-inyectado nunca vuelve a
+      // revisar si hay version nueva ni recarga la pagina cuando la
+      // encuentra. Se registra a mano en src/pwaActualizacion.ts, con
+      // revision periodica + recarga automatica al detectar un SW nuevo.
+      injectRegister: null,
       // Permite probar la PWA tambien con `npm run dev`.
       devOptions: { enabled: true, type: 'module' },
       includeAssets: ['icon-192.png', 'icon-512.png'],

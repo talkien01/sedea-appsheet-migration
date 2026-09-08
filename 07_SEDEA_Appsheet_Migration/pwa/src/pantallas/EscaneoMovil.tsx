@@ -129,14 +129,35 @@ export default function EscaneoMovil() {
         return;
       }
       try {
+        // Misma correccion que usoEscanerQr.ts (escaneo directo): pedir
+        // resolucion alta a proposito (`ideal`, nunca `exact`) y enfoque
+        // continuo. Reportado en produccion: el escaneo directo SI
+        // funcionaba tras ese arreglo, pero esta pantalla (la que corre EN
+        // el celular vinculado) tiene su propio getUserMedia por separado
+        // -- nunca se le aplico el mismo arreglo hasta ahora.
         const s = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' }
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
         });
         if (!vivo) {
           s.getTracks().forEach((t) => t.stop());
           return;
         }
         stream.current = s;
+        const pista = s.getVideoTracks()[0];
+        if (pista) {
+          try {
+            await pista.applyConstraints({
+              advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet]
+            });
+          } catch {
+            // Sin soporte de focusMode en este navegador/dispositivo: se
+            // sigue con el enfoque por default, no es un error real.
+          }
+        }
         if (video.current) {
           video.current.srcObject = s;
           await video.current.play().catch(() => undefined);

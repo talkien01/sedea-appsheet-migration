@@ -56,9 +56,13 @@ export function useEscanerQr({ alTexto, seamPrueba, activo = true }: Opciones): 
     if (!activo) return;
     let vivo = true;
 
+    let temporizadorEnfoque: ReturnType<typeof setInterval> | null = null;
+
     const detener = () => {
       if (animacion.current !== null) cancelAnimationFrame(animacion.current);
       animacion.current = null;
+      if (temporizadorEnfoque !== null) clearInterval(temporizadorEnfoque);
+      temporizadorEnfoque = null;
       stream.current?.getTracks().forEach((t) => t.stop());
       stream.current = null;
     };
@@ -108,23 +112,23 @@ export function useEscanerQr({ alTexto, seamPrueba, activo = true }: Opciones): 
           return;
         }
         stream.current = s;
-        // Enfoque continuo (Android Chrome sobre todo): sin esto, algunos
-        // celulares enfocan una sola vez al abrir la camara y se quedan asi,
-        // borroso si el papel esta cerca del lente. `applyConstraints` es la
-        // unica forma de pedirlo -- no existe como constraint valido dentro de
-        // getUserMedia en todos los navegadores. Best-effort: si el navegador
-        // no soporta `focusMode`, falla en silencio y sigue con el enfoque que
-        // ya trae.
+        // Enfoque: reportado en Samsung/Android que `focusMode: 'continuous'`
+        // se queda "cazando" foco sin asentarse nunca frente a un documento
+        // plano de bajo contraste (papel blanco) -- terminaba peor que sin
+        // tocar nada. 'single-shot' enfoca una vez y se queda quieto; para no
+        // perder foco si el papel se mueve, se vuelve a pedir cada 2s en vez
+        // de dejarlo "cazando" en modo continuo. Best-effort: si el navegador
+        // no soporta `focusMode`, falla en silencio y sigue con el enfoque
+        // que ya trae.
         const pista = s.getVideoTracks()[0];
         if (pista) {
-          try {
-            await pista.applyConstraints({
-              advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet]
-            });
-          } catch {
-            // Sin soporte de focusMode en este navegador/dispositivo: se sigue
-            // con el enfoque por default, no es un error real.
-          }
+          const reenfocar = () => {
+            void pista
+              .applyConstraints({ advanced: [{ focusMode: 'single-shot' } as MediaTrackConstraintSet] })
+              .catch(() => undefined);
+          };
+          reenfocar();
+          temporizadorEnfoque = setInterval(reenfocar, 2000);
         }
         if (video.current) {
           video.current.srcObject = s;

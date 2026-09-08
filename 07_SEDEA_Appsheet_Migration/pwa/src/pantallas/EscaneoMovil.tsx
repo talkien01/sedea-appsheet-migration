@@ -35,6 +35,7 @@ export default function EscaneoMovil() {
   const lienzo = useRef<HTMLCanvasElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const animacion = useRef<number | null>(null);
+  const temporizadorEnfoque = useRef<ReturnType<typeof setInterval> | null>(null);
   // Evita que dos frames seguidos disparen dos envios de la misma sesion.
   const enviando = useRef(false);
 
@@ -46,6 +47,8 @@ export default function EscaneoMovil() {
   const detener = useCallback(() => {
     if (animacion.current !== null) cancelAnimationFrame(animacion.current);
     animacion.current = null;
+    if (temporizadorEnfoque.current !== null) clearInterval(temporizadorEnfoque.current);
+    temporizadorEnfoque.current = null;
     stream.current?.getTracks().forEach((t) => t.stop());
     stream.current = null;
   }, []);
@@ -147,16 +150,18 @@ export default function EscaneoMovil() {
           return;
         }
         stream.current = s;
+        // Mismo ajuste que usoEscanerQr.ts: 'single-shot' repetido cada 2s
+        // en vez de 'continuous' -- reportado que 'continuous' se quedaba
+        // sin asentar el enfoque en Android/Samsung.
         const pista = s.getVideoTracks()[0];
         if (pista) {
-          try {
-            await pista.applyConstraints({
-              advanced: [{ focusMode: 'continuous' } as MediaTrackConstraintSet]
-            });
-          } catch {
-            // Sin soporte de focusMode en este navegador/dispositivo: se
-            // sigue con el enfoque por default, no es un error real.
-          }
+          const reenfocar = () => {
+            void pista
+              .applyConstraints({ advanced: [{ focusMode: 'single-shot' } as MediaTrackConstraintSet] })
+              .catch(() => undefined);
+          };
+          reenfocar();
+          temporizadorEnfoque.current = setInterval(reenfocar, 2000);
         }
         if (video.current) {
           video.current.srcObject = s;

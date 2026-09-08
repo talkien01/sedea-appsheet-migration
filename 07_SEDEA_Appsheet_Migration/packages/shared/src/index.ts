@@ -26,3 +26,6 @@ export * from './presencia.js';
 export * from './nombres.js';
 // Modulo de Reportes (Beta): resumen agrupable de solicitudes vivas.
 export * from './reportes.js';
+// Exenciones operativas al candado de autorizacion del Secretario (compartida
+// backend+frontend, ver comentario en el archivo).
+export * from './autorizacionDeFacto.js';

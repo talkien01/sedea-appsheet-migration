@@ -407,6 +407,8 @@ export interface ConceptoSolicitud {
   monto_productor: number;
   monto_total: number;
   beneficiario_id: number | null;
+  /** Del catalogo (tipos_apoyo), no de la solicitud. Ver conceptosAutorizadosDeFacto. */
+  autorizado_de_facto: boolean | null;
 }
 
 export interface DetalleSolicitudApi {

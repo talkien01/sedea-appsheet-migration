@@ -14,6 +14,7 @@ import {
   DECLARACIONES_ENCABEZADO,
   DECLARACIONES_INCISOS,
   ETIQUETAS_TIPO_PERSONA,
+  conceptosAutorizadosDeFacto,
   type DetalleSolicitudApi,
   type TipoPersona
 } from '@sedea/shared';
@@ -166,8 +167,22 @@ export default function DetalleSolicitud() {
 
   const s = detalle.solicitud as Record<string, any>;
 
-  /** Candado del Folio de entrega (independiente del dictamen). */
+  /**
+   * Registro literal de la firma del Secretario (para la tarjeta de abajo,
+   * que muestra fecha/usuario de ESA captura — no debe confundirse con la
+   * excepción de facto, que nunca pasa por el Secretario).
+   */
   const autorizada: boolean = s.autorizada_secretario === true;
+
+  /**
+   * Candado real del Folio de entrega (independiente del dictamen). Bug real
+   * encontrado en producción: el botón usaba `autorizada` (solo
+   * `autorizada_secretario`), así que un concepto con `autorizado_de_facto=true`
+   * en el catálogo (ej. CFA-AVENA) dejaba el botón deshabilitado aunque el
+   * backend en GET /:id/folio SÍ lo hubiera dejado pasar. Mismo criterio que
+   * ese endpoint, ahora replicado aquí.
+   */
+  const puedeImprimirFolio: boolean = autorizada || conceptosAutorizadosDeFacto(detalle.conceptos);
 
   // B7-E: nombre o razón social para la carátula según tipo de persona.
   const nombreCaratula: string =
@@ -319,10 +334,11 @@ export default function DetalleSolicitud() {
         )}
         {/* B7-E: botón para imprimir la carátula del expediente */}
         <div className="acciones">
-          {/* El Folio de entrega vive detrás de la Autorización del Secretario.
+          {/* El Folio de entrega vive detrás de la Autorización del Secretario
+              (o de un concepto autorizado_de_facto, ver puedeImprimirFolio).
               Aquí solo se OCULTA el camino; el candado real lo aplica el
               backend en GET /api/solicitudes/:id/folio. */}
-          {autorizada ? (
+          {puedeImprimirFolio ? (
             <Link
               className="boton"
               data-testid="btn-folio-entrega"

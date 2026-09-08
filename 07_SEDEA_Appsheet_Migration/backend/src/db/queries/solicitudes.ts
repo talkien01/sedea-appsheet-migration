@@ -343,7 +343,8 @@ export async function conceptosDeSolicitud(solicitudId: number) {
             sc.monto_estatal::float8 AS monto_estatal,
             sc.monto_productor::float8 AS monto_productor,
             sc.monto_total::float8 AS monto_total,
-            sc.beneficiario_id
+            sc.beneficiario_id,
+            ta.autorizado_de_facto
        FROM solicitud_conceptos sc
        LEFT JOIN tipos_apoyo ta ON ta.id = sc.tipo_apoyo_id
       WHERE sc.solicitud_id = $1

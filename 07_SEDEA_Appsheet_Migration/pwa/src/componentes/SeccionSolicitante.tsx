@@ -170,6 +170,20 @@ export default function SeccionSolicitante({ valores, municipios, cambiar, aviso
         )}
 
         <div className="campo">
+          <label htmlFor="input-curp">CURP</label>
+          <input
+            id="input-curp"
+            data-testid="input-curp"
+            type="text"
+            maxLength={18}
+            value={valores.curp}
+            style={ESTILO_MAYUSCULAS}
+            onChange={(e) => cambiar('curp', aMayusculas(e.target.value))}
+          />
+          {avisoCurp}
+        </div>
+
+        <div className="campo">
           <button
             type="button"
             className="secundario"
@@ -311,19 +325,6 @@ export default function SeccionSolicitante({ valores, municipios, cambiar, aviso
           />
         </div>
 
-        <div className="campo">
-          <label htmlFor="input-curp">CURP</label>
-          <input
-            id="input-curp"
-            data-testid="input-curp"
-            type="text"
-            maxLength={18}
-            value={valores.curp}
-            style={ESTILO_MAYUSCULAS}
-            onChange={(e) => cambiar('curp', aMayusculas(e.target.value))}
-          />
-          {avisoCurp}
-        </div>
       </div>
 
       <div data-testid="seccion-domicilio">

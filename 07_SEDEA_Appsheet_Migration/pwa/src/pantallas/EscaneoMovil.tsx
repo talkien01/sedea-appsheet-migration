@@ -233,6 +233,10 @@ export default function EscaneoMovil() {
             computadora, uno tras otro — no hace falta volver a escanear este enlace entre
             personas.
           </p>
+          <p className="dato">
+            Si no lo detecta, inclina un poco el papel — casi siempre es un reflejo de luz
+            sobre el QR, no falta de enfoque.
+          </p>
           {/*
             Alto topado (no solo `width: 100%`): con la camara trasera de un
             celular en vertical, un video sin tope de alto empujaba el aviso

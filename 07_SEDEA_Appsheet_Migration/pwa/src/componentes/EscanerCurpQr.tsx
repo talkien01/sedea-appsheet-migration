@@ -51,6 +51,10 @@ export default function EscanerCurpQr({ onDatos, onCerrar }: Props) {
         <p className="dato">
           Encuadra el código QR de la Constancia CURP dentro del recuadro de la cámara.
         </p>
+        <p className="dato">
+          Si no lo detecta, inclina un poco el papel o la pantalla del celular — casi
+          siempre es un reflejo de luz sobre el QR, no falta de enfoque.
+        </p>
 
         {error && (
           <div className="mensaje error" role="alert" data-testid="error-escaneo-curp">

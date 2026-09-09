@@ -355,23 +355,31 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
   // historico de CATALOGOS (solo identidad) y el historial de apoyos de
   // PIIPC (con concepto/monto) -- y regresa TODAS las coincidencias para que
   // ventanilla elija cual usar (nunca se decide sola cual es "la vigente").
-  // Consulta de existencia, igual que verificar-curp-concepto: sin
-  // restriccion de alcance.
   //
   // Acepta un CURP completo (18) o un PREFIJO de al menos
   // MIN_CARACTERES_CURP_PARCIAL (iniciales + fecha de nacimiento) para que el
   // frontend pueda ofrecer coincidencias ANTES de que termine de escribirse
-  // el CURP completo -- pedido real: "después de 4 letras ya tienes un
-  // approach". Con solo 4 letras (iniciales) la combinacion es demasiado
-  // comun; con iniciales+fecha de nacimiento (10) ya es razonablemente
-  // especifica. Aun asi puede no ser unica, asi que antes de traer datos de
-  // identidad se cuentan los CURP distintos que coinciden: si son demasiados,
-  // se regresa solo el numero (`demasiadas`), nunca nombre/domicilio/telefono
-  // de gente que probablemente no es la persona que se esta capturando. Un
-  // CURP completo (18) siempre se resuelve completo, sin este conteo: ya es,
-  // por diseño, (casi) unico.
+  // el CURP completo. Aun con el prefijo puede no ser unica, asi que antes de
+  // traer datos de identidad se cuentan los CURP distintos que coinciden.
+  //
+  // Seguridad (revision 2026-09-09, corrige un hueco real introducido junto
+  // con la busqueda parcial): a diferencia de la version original (CURP
+  // completo exacto, donde ya tener el CURP en la mano equivale a tener la
+  // identificacion de la persona), un PREFIJO de 10 caracteres es informacion
+  // publica/adivinable (iniciales de nombre + fecha de nacimiento) -- SIN
+  // acotar por Regional, cualquier capturista/ventanilla de CUALQUIER
+  // Regional podia usar esto para buscar a cualquier persona del estado. Dos
+  // correcciones:
+  //  1. Igual que el resto de este archivo, se acota por `regionalForzada`
+  //     (admin sigue viendo todo el estado, como siempre).
+  //  2. Cuando hay demasiadas coincidencias, el conteo exacto (`total`) YA NO
+  //     se manda al cliente -- ese numero funcionaba como oraculo para ir
+  //     acotando caracter por caracter hasta llegar a una sola persona sin
+  //     necesidad de conocer su CURP real. Solo se manda `demasiadas: true`.
   // -------------------------------------------------------------------------
   app.get('/api/solicitudes/historial-curp/:curp', protegida, async (peticion, respuesta) => {
+    const usuario = peticion.usuario!;
+    const regionalUsuario = regionalForzada(usuario);
     const curpEntrada = textoMayus((peticion.params as { curp?: string }).curp);
     if (!curpEntrada || !esPrefijoCurpValido(curpEntrada)) {
       throw error422('curp_invalida', 'La CURP no tiene el formato correcto.');
@@ -379,20 +387,31 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
 
     const esCompleta = curpEntrada.length === 18;
     const patronBusqueda = esCompleta ? curpEntrada : `${curpEntrada}%`;
+    // $1 = patron de busqueda siempre; $2 = Regional forzada, solo si aplica
+    // (mismo orden en las 6 consultas de abajo para poder compartir el mismo
+    // fragmento de filtro).
+    const parametros: unknown[] = regionalUsuario !== null ? [patronBusqueda, regionalUsuario] : [patronBusqueda];
+    const filtroRegionalSolicitudes = regionalUsuario !== null ? ' AND s.regional_id = $2' : '';
+    const filtroRegionalMunicipio = regionalUsuario !== null ? ' AND m.regional_id = $2' : '';
 
     if (!esCompleta) {
       const [c1, c2, c3] = await Promise.all([
         pool.query<{ total: string }>(
-          `SELECT COUNT(DISTINCT curp) AS total FROM solicitudes WHERE curp LIKE $1`,
-          [patronBusqueda]
+          `SELECT COUNT(DISTINCT s.curp) AS total FROM solicitudes s
+            WHERE s.curp LIKE $1${filtroRegionalSolicitudes}`,
+          parametros
         ),
         pool.query<{ total: string }>(
-          `SELECT COUNT(DISTINCT curp) AS total FROM beneficiarios_historicos WHERE curp LIKE $1`,
-          [patronBusqueda]
+          `SELECT COUNT(DISTINCT b.curp) AS total FROM beneficiarios_historicos b
+             LEFT JOIN municipios m ON m.id = b.municipio_id
+            WHERE b.curp LIKE $1${filtroRegionalMunicipio}`,
+          parametros
         ),
         pool.query<{ total: string }>(
-          `SELECT COUNT(DISTINCT curp) AS total FROM historial_solicitudes WHERE curp LIKE $1`,
-          [patronBusqueda]
+          `SELECT COUNT(DISTINCT hs.curp) AS total FROM historial_solicitudes hs
+             LEFT JOIN municipios m ON m.id = hs.municipio_proyecto_id
+            WHERE hs.curp LIKE $1${filtroRegionalMunicipio}`,
+          parametros
         )
       ]);
       // Suma simple de las 3 fuentes: puede contar dos veces a la misma
@@ -404,7 +423,8 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
         return respuesta.status(200).send({ sistema: [], catalogos: [], piipc: [] });
       }
       if (total > MAX_COINCIDENCIAS_CURP_PARCIAL) {
-        return respuesta.status(200).send({ demasiadas: true, total });
+        // Sin `total`: ver nota de seguridad arriba (oraculo de conteo).
+        return respuesta.status(200).send({ demasiadas: true });
       }
     }
 
@@ -416,9 +436,9 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
                 s.dom_cp, s.dom_tipo_asentamiento, s.dom_asentamiento, s.recibida_en
            FROM solicitudes s
            LEFT JOIN localidades l ON l.id = s.dom_localidad_id
-          WHERE s.curp LIKE $1
+          WHERE s.curp LIKE $1${filtroRegionalSolicitudes}
           ORDER BY s.recibida_en DESC LIMIT 3`,
-        [patronBusqueda]
+        parametros
       ),
       pool.query(
         `SELECT b.curp, b.nombre_pila, b.apellido_paterno, b.apellido_materno, b.nombre_completo, b.telefono,
@@ -426,8 +446,9 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
                 b.municipio_id, b.localidad_id, l.nombre AS localidad_nombre, l.cve_seccion AS seccion
            FROM beneficiarios_historicos b
            LEFT JOIN localidades l ON l.id = b.localidad_id
-          WHERE b.curp LIKE $1 LIMIT 3`,
-        [patronBusqueda]
+           LEFT JOIN municipios m ON m.id = b.municipio_id
+          WHERE b.curp LIKE $1${filtroRegionalMunicipio} LIMIT 3`,
+        parametros
       ),
       pool.query(
         `SELECT hs.curp, hs.id, hs.folio_origen, hs.nombre_pila, hs.apellido_paterno, hs.apellido_materno,
@@ -443,11 +464,12 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
            FROM historial_solicitudes hs
            LEFT JOIN historial_conceptos hc ON hc.historial_solicitud_id = hs.id
            LEFT JOIN localidades l ON l.id = hs.localidad_proyecto_id
-          WHERE hs.curp LIKE $1
+           LEFT JOIN municipios m ON m.id = hs.municipio_proyecto_id
+          WHERE hs.curp LIKE $1${filtroRegionalMunicipio}
           GROUP BY hs.id, l.nombre, l.cve_seccion
           ORDER BY hs.anio DESC NULLS LAST
           LIMIT 5`,
-        [patronBusqueda]
+        parametros
       )
     ]);
 

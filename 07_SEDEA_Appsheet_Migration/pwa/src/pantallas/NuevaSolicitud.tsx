@@ -418,8 +418,11 @@ export default function NuevaSolicitud() {
   const [coincidenciasHistorial, setCoincidenciasHistorial] = useState<CoincidenciaHistorial[]>([]);
   // Cuando la busqueda parcial encuentra mas coincidencias de las que el
   // backend esta dispuesto a mostrar con identidad (ver
-  // MAX_COINCIDENCIAS_CURP_PARCIAL): solo el numero, nada de nombres todavia.
-  const [demasiadasCoincidenciasCurp, setDemasiadasCoincidenciasCurp] = useState<number | null>(null);
+  // MAX_COINCIDENCIAS_CURP_PARCIAL): un aviso generico, sin cantidad ni
+  // nombres -- el backend ya no manda el conteo exacto a proposito (hueco de
+  // seguridad corregido 2026-09-09: el numero servia de oraculo para acotar
+  // caracter por caracter hasta llegar a una sola persona).
+  const [demasiadasCoincidenciasCurp, setDemasiadasCoincidenciasCurp] = useState(false);
 
   // Dispara desde MIN_CARACTERES_CURP_PARCIAL (iniciales + fecha de
   // nacimiento), no solo con la CURP completa -- pedido real: dar opciones
@@ -429,7 +432,7 @@ export default function NuevaSolicitud() {
   useEffect(() => {
     if (!enLinea || !curpBuscable) {
       setCoincidenciasHistorial([]);
-      setDemasiadasCoincidenciasCurp(null);
+      setDemasiadasCoincidenciasCurp(false);
       return;
     }
     const temporizador = setTimeout(() => {
@@ -438,10 +441,10 @@ export default function NuevaSolicitud() {
           const r = await apiSolicitudes.historialCurp(curpNormalizada);
           if ('demasiadas' in r) {
             setCoincidenciasHistorial([]);
-            setDemasiadasCoincidenciasCurp(r.total);
+            setDemasiadasCoincidenciasCurp(true);
             return;
           }
-          setDemasiadasCoincidenciasCurp(null);
+          setDemasiadasCoincidenciasCurp(false);
           const lista: CoincidenciaHistorial[] = [
             ...r.sistema.map((f: any) => ({
               fuente: 'sistema' as const,
@@ -502,7 +505,7 @@ export default function NuevaSolicitud() {
           // Sin coincidencias conocidas: no es un bloqueo, solo se deja de
           // ofrecer el atajo -- la captura manual sigue disponible siempre.
           setCoincidenciasHistorial([]);
-          setDemasiadasCoincidenciasCurp(null);
+          setDemasiadasCoincidenciasCurp(false);
         }
       })();
     }, 300);
@@ -934,12 +937,14 @@ export default function NuevaSolicitud() {
               MIN_CARACTERES_CURP_PARCIAL (iniciales+fecha de nacimiento) ya
               se busca, sin esperar a que termine de escribir los 18
               caracteres; si hay demasiadas coincidencias para ese pedazo de
-              CURP, solo se avisa el numero -- nunca nombres de gente que
-              probablemente no es la persona que se esta capturando.
+              CURP, el aviso es generico (sin cantidad) -- el backend ya no
+              manda el conteo exacto a proposito (hueco de seguridad
+              corregido 2026-09-09: el numero servia de oraculo para acotar
+              caracter por caracter hasta llegar a una sola persona).
             */
             conflictosCurpSinElegir.length > 0 ||
             coincidenciasHistorial.length > 0 ||
-            demasiadasCoincidenciasCurp !== null ? (
+            demasiadasCoincidenciasCurp ? (
               <>
                 {conflictosCurpSinElegir.length > 0 && (
                   <div className="mensaje aviso" role="status" data-testid="aviso-curp-conceptos-previos">
@@ -950,10 +955,10 @@ export default function NuevaSolicitud() {
                     . Si el concepto que van a pedir es distinto, puedes continuar sin problema.
                   </div>
                 )}
-                {demasiadasCoincidenciasCurp !== null && (
+                {demasiadasCoincidenciasCurp && (
                   <div className="mensaje aviso" role="status" data-testid="aviso-curp-demasiadas-coincidencias">
-                    {demasiadasCoincidenciasCurp} coincidencias en el histórico con estos caracteres —
-                    sigue escribiendo el resto de la CURP para acotar.
+                    Hay varias coincidencias en el histórico con estos caracteres — sigue escribiendo el
+                    resto de la CURP para acotar.
                   </div>
                 )}
                 {coincidenciasHistorial.map((c, indice) => (

@@ -102,8 +102,10 @@ export const apiSolicitudes = {
    *
    * Acepta CURP completo o un prefijo (`MIN_CARACTERES_CURP_PARCIAL` o más).
    * Con un prefijo, si hay demasiadas coincidencias el backend no manda
-   * identidad — solo `demasiadas`+`total` — para no exponer datos de gente
-   * que probablemente no es la persona que se está capturando.
+   * identidad — solo `demasiadas: true`, SIN el conteo — para no exponer
+   * datos de gente que probablemente no es la persona que se está
+   * capturando, ni un numero que sirva de oraculo para ir acotando caracter
+   * por caracter (hueco de seguridad corregido 2026-09-09).
    */
   historialCurp(curp: string): Promise<
     | {
@@ -111,7 +113,7 @@ export const apiSolicitudes = {
         catalogos: Record<string, unknown>[];
         piipc: Record<string, unknown>[];
       }
-    | { demasiadas: true; total: number }
+    | { demasiadas: true }
   > {
     return peticion(`/solicitudes/historial-curp/${curp}`);
   },

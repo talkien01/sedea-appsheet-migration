@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   cantidadPorEscalon,
   PATRON_CURP,
+  MIN_CARACTERES_CURP_PARCIAL,
   type CatalogosVentanilla,
   type ConflictoCurpConcepto,
   type DocumentoRequeridoCalculado,
@@ -399,6 +400,7 @@ export default function NuevaSolicitud() {
   interface CoincidenciaHistorial {
     fuente: 'sistema' | 'catalogos' | 'piipc';
     etiqueta: string;
+    curp: string | null;
     nombre_pila: string | null;
     apellido_paterno: string | null;
     apellido_materno: string | null;
@@ -414,20 +416,37 @@ export default function NuevaSolicitud() {
   }
 
   const [coincidenciasHistorial, setCoincidenciasHistorial] = useState<CoincidenciaHistorial[]>([]);
+  // Cuando la busqueda parcial encuentra mas coincidencias de las que el
+  // backend esta dispuesto a mostrar con identidad (ver
+  // MAX_COINCIDENCIAS_CURP_PARCIAL): solo el numero, nada de nombres todavia.
+  const [demasiadasCoincidenciasCurp, setDemasiadasCoincidenciasCurp] = useState<number | null>(null);
+
+  // Dispara desde MIN_CARACTERES_CURP_PARCIAL (iniciales + fecha de
+  // nacimiento), no solo con la CURP completa -- pedido real: dar opciones
+  // mientras se sigue escribiendo, no hasta terminar los 18 caracteres.
+  const curpBuscable = curpNormalizada.length >= MIN_CARACTERES_CURP_PARCIAL;
 
   useEffect(() => {
-    if (!enLinea || !curpCompleta) {
+    if (!enLinea || !curpBuscable) {
       setCoincidenciasHistorial([]);
+      setDemasiadasCoincidenciasCurp(null);
       return;
     }
     const temporizador = setTimeout(() => {
       void (async () => {
         try {
           const r = await apiSolicitudes.historialCurp(curpNormalizada);
+          if ('demasiadas' in r) {
+            setCoincidenciasHistorial([]);
+            setDemasiadasCoincidenciasCurp(r.total);
+            return;
+          }
+          setDemasiadasCoincidenciasCurp(null);
           const lista: CoincidenciaHistorial[] = [
             ...r.sistema.map((f: any) => ({
               fuente: 'sistema' as const,
               etiqueta: 'Ya en este sistema',
+              curp: f.curp ?? null,
               nombre_pila: f.nombre_pila ?? null,
               apellido_paterno: f.apellido_paterno ?? null,
               apellido_materno: f.apellido_materno ?? null,
@@ -444,6 +463,7 @@ export default function NuevaSolicitud() {
             ...r.catalogos.map((f: any) => ({
               fuente: 'catalogos' as const,
               etiqueta: 'Histórico (padrón CATALOGOS)',
+              curp: f.curp ?? null,
               nombre_pila: f.nombre_pila ?? null,
               apellido_paterno: f.apellido_paterno ?? null,
               apellido_materno: f.apellido_materno ?? null,
@@ -462,6 +482,7 @@ export default function NuevaSolicitud() {
             ...r.piipc.map((f: any) => ({
               fuente: 'piipc' as const,
               etiqueta: `Histórico ${f.anio ?? ''} (Impulso Productivo del Campo)`.trim(),
+              curp: f.curp ?? null,
               nombre_pila: f.nombre_pila ?? null,
               apellido_paterno: f.apellido_paterno ?? null,
               apellido_materno: f.apellido_materno ?? null,
@@ -481,14 +502,19 @@ export default function NuevaSolicitud() {
           // Sin coincidencias conocidas: no es un bloqueo, solo se deja de
           // ofrecer el atajo -- la captura manual sigue disponible siempre.
           setCoincidenciasHistorial([]);
+          setDemasiadasCoincidenciasCurp(null);
         }
       })();
     }, 300);
     return () => clearTimeout(temporizador);
-  }, [enLinea, curpCompleta, curpNormalizada]);
+  }, [enLinea, curpBuscable, curpNormalizada]);
 
   const usarDatosHistoricos = useCallback(
     (c: CoincidenciaHistorial) => {
+      // Con busqueda parcial (a partir de MIN_CARACTERES_CURP_PARCIAL) el
+      // CURP en pantalla todavia puede estar incompleto -- al elegir una
+      // coincidencia se completa solo con el CURP real de esa persona.
+      if (c.curp) cambiarSolicitante('curp', c.curp);
       if (c.nombre_pila) cambiarSolicitante('nombre_pila', c.nombre_pila);
       if (c.apellido_paterno) cambiarSolicitante('apellido_paterno', c.apellido_paterno);
       if (c.apellido_materno) cambiarSolicitante('apellido_materno', c.apellido_materno);
@@ -904,9 +930,16 @@ export default function NuevaSolicitud() {
 
               Debajo, las coincidencias del historico (Propuesta B): tarjetas,
               una por fuente/año, cada una con su propio "Usar estos datos" --
-              el capturista elige, el sistema nunca decide solo.
+              el capturista elige, el sistema nunca decide solo. Desde
+              MIN_CARACTERES_CURP_PARCIAL (iniciales+fecha de nacimiento) ya
+              se busca, sin esperar a que termine de escribir los 18
+              caracteres; si hay demasiadas coincidencias para ese pedazo de
+              CURP, solo se avisa el numero -- nunca nombres de gente que
+              probablemente no es la persona que se esta capturando.
             */
-            conflictosCurpSinElegir.length > 0 || coincidenciasHistorial.length > 0 ? (
+            conflictosCurpSinElegir.length > 0 ||
+            coincidenciasHistorial.length > 0 ||
+            demasiadasCoincidenciasCurp !== null ? (
               <>
                 {conflictosCurpSinElegir.length > 0 && (
                   <div className="mensaje aviso" role="status" data-testid="aviso-curp-conceptos-previos">
@@ -915,6 +948,12 @@ export default function NuevaSolicitud() {
                       .map((c) => `${c.tipo_apoyo ?? 'concepto'} (folio ${c.folio})`)
                       .join('; ')}
                     . Si el concepto que van a pedir es distinto, puedes continuar sin problema.
+                  </div>
+                )}
+                {demasiadasCoincidenciasCurp !== null && (
+                  <div className="mensaje aviso" role="status" data-testid="aviso-curp-demasiadas-coincidencias">
+                    {demasiadasCoincidenciasCurp} coincidencias en el histórico con estos caracteres —
+                    sigue escribiendo el resto de la CURP para acotar.
                   </div>
                 )}
                 {coincidenciasHistorial.map((c, indice) => (

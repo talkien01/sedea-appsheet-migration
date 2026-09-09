@@ -99,12 +99,20 @@ export const apiSolicitudes = {
    * Propuesta B: coincidencias históricas por CURP en las 3 fuentes (este
    * sistema, el padrón de CATALOGOS, y el historial de apoyos de PIIPC).
    * Es solo lectura/sugerencia — ventanilla decide cuál usar, si alguna.
+   *
+   * Acepta CURP completo o un prefijo (`MIN_CARACTERES_CURP_PARCIAL` o más).
+   * Con un prefijo, si hay demasiadas coincidencias el backend no manda
+   * identidad — solo `demasiadas`+`total` — para no exponer datos de gente
+   * que probablemente no es la persona que se está capturando.
    */
-  historialCurp(curp: string): Promise<{
-    sistema: Record<string, unknown>[];
-    catalogos: Record<string, unknown>[];
-    piipc: Record<string, unknown>[];
-  }> {
+  historialCurp(curp: string): Promise<
+    | {
+        sistema: Record<string, unknown>[];
+        catalogos: Record<string, unknown>[];
+        piipc: Record<string, unknown>[];
+      }
+    | { demasiadas: true; total: number }
+  > {
     return peticion(`/solicitudes/historial-curp/${curp}`);
   },
 

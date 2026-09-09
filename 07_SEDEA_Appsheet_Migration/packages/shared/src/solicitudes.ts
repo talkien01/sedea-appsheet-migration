@@ -49,6 +49,42 @@ export const ROLES_VENTANILLA = ['ventanilla', 'admin'] as const;
 /** Patron oficial de la CURP: 18 caracteres. */
 export const PATRON_CURP = /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/;
 
+/**
+ * Caracteres minimos para buscar coincidencias PARCIALES de CURP en el
+ * historial mientras se teclea (4 iniciales + 6 digitos de fecha de
+ * nacimiento AAMMDD). Con solo las 4 iniciales la combinacion es demasiado
+ * comun (se repite entre muchisimas personas); sumando la fecha de
+ * nacimiento exacta ya es razonablemente especifico.
+ */
+export const MIN_CARACTERES_CURP_PARCIAL = 10;
+
+/** Forma exacta del CURP, grupo por grupo, en el mismo orden que PATRON_CURP. */
+const GRUPOS_CURP: ReadonlyArray<{ patron: RegExp; longitud: number }> = [
+  { patron: /[A-Z]/, longitud: 4 },
+  { patron: /[0-9]/, longitud: 6 },
+  { patron: /[HM]/, longitud: 1 },
+  { patron: /[A-Z]/, longitud: 5 },
+  { patron: /[A-Z0-9]/, longitud: 1 },
+  { patron: /[0-9]/, longitud: 1 }
+];
+
+/**
+ * Valida un CURP completo (18 caracteres) o un PREFIJO valido de al menos
+ * `MIN_CARACTERES_CURP_PARCIAL` -- letra por letra contra la forma exacta del
+ * CURP, nunca solo la longitud: un digito donde va una letra (o viceversa) se
+ * rechaza igual que en `PATRON_CURP`, sin importar en que grupo caiga.
+ */
+export function esPrefijoCurpValido(valor: string): boolean {
+  if (valor.length < MIN_CARACTERES_CURP_PARCIAL || valor.length > 18) return false;
+  let i = 0;
+  for (const grupo of GRUPOS_CURP) {
+    for (let k = 0; k < grupo.longitud && i < valor.length; k++, i++) {
+      if (!grupo.patron.test(valor[i])) return false;
+    }
+  }
+  return i === valor.length;
+}
+
 /** Patron minimo de correo electronico. */
 export const PATRON_CORREO = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 

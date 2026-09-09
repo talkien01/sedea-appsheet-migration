@@ -27,6 +27,7 @@ import {
   esquemaEditarSolicitudAdmin,
   esquemaReemitirFolio,
   esquemaVerificarCurpConcepto,
+  esPrefijoCurpValido,
   normalizarTelefono,
   datosDesdeCurp,
   type EntradaCrearSolicitud,
@@ -87,6 +88,11 @@ const consultar = async <T extends Record<string, unknown>>(sql: string, values?
 const error403 = (codigo: string, mensaje: string) => new ErrorApi(403, codigo, mensaje);
 const error404 = (mensaje: string) => new ErrorApi(404, 'no_encontrado', mensaje);
 const error422 = (codigo: string, mensaje: string) => new ErrorApi(422, codigo, mensaje);
+
+/** Historial por CURP parcial (ver esa ruta): a partir de cuantos CURP
+ * distintos coincidiendo con el prefijo se deja de mostrar identidad y solo
+ * se avisa el numero. */
+const MAX_COINCIDENCIAS_CURP_PARCIAL = 5;
 
 /** Verifica si un usuario tiene un rol dentro de su lista multi-rol (ej. "capturista+ventanilla"). */
 function tieneRol(usuario: { rol: string }, rolBuscado: string): boolean {
@@ -344,42 +350,87 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
   });
 
   // -------------------------------------------------------------------------
-  // Historial por CURP (Propuesta B): busca en 3 fuentes en paralelo --
-  // solicitudes YA en este sistema, el padron historico de CATALOGOS (solo
-  // identidad) y el historial de apoyos de PIIPC (con concepto/monto) -- y
-  // regresa TODAS las coincidencias para que ventanilla elija cual usar
-  // (nunca se decide sola cual es "la vigente"). Consulta de existencia,
-  // igual que verificar-curp-concepto: sin restriccion de alcance.
+  // Historial por CURP (Propuesta B, extendida a busqueda parcial): busca en
+  // 3 fuentes en paralelo -- solicitudes YA en este sistema, el padron
+  // historico de CATALOGOS (solo identidad) y el historial de apoyos de
+  // PIIPC (con concepto/monto) -- y regresa TODAS las coincidencias para que
+  // ventanilla elija cual usar (nunca se decide sola cual es "la vigente").
+  // Consulta de existencia, igual que verificar-curp-concepto: sin
+  // restriccion de alcance.
+  //
+  // Acepta un CURP completo (18) o un PREFIJO de al menos
+  // MIN_CARACTERES_CURP_PARCIAL (iniciales + fecha de nacimiento) para que el
+  // frontend pueda ofrecer coincidencias ANTES de que termine de escribirse
+  // el CURP completo -- pedido real: "después de 4 letras ya tienes un
+  // approach". Con solo 4 letras (iniciales) la combinacion es demasiado
+  // comun; con iniciales+fecha de nacimiento (10) ya es razonablemente
+  // especifica. Aun asi puede no ser unica, asi que antes de traer datos de
+  // identidad se cuentan los CURP distintos que coinciden: si son demasiados,
+  // se regresa solo el numero (`demasiadas`), nunca nombre/domicilio/telefono
+  // de gente que probablemente no es la persona que se esta capturando. Un
+  // CURP completo (18) siempre se resuelve completo, sin este conteo: ya es,
+  // por diseño, (casi) unico.
   // -------------------------------------------------------------------------
   app.get('/api/solicitudes/historial-curp/:curp', protegida, async (peticion, respuesta) => {
-    const curp = textoMayus((peticion.params as { curp?: string }).curp);
-    if (!curp || !PATRON_CURP.test(curp)) {
+    const curpEntrada = textoMayus((peticion.params as { curp?: string }).curp);
+    if (!curpEntrada || !esPrefijoCurpValido(curpEntrada)) {
       throw error422('curp_invalida', 'La CURP no tiene el formato correcto.');
+    }
+
+    const esCompleta = curpEntrada.length === 18;
+    const patronBusqueda = esCompleta ? curpEntrada : `${curpEntrada}%`;
+
+    if (!esCompleta) {
+      const [c1, c2, c3] = await Promise.all([
+        pool.query<{ total: string }>(
+          `SELECT COUNT(DISTINCT curp) AS total FROM solicitudes WHERE curp LIKE $1`,
+          [patronBusqueda]
+        ),
+        pool.query<{ total: string }>(
+          `SELECT COUNT(DISTINCT curp) AS total FROM beneficiarios_historicos WHERE curp LIKE $1`,
+          [patronBusqueda]
+        ),
+        pool.query<{ total: string }>(
+          `SELECT COUNT(DISTINCT curp) AS total FROM historial_solicitudes WHERE curp LIKE $1`,
+          [patronBusqueda]
+        )
+      ]);
+      // Suma simple de las 3 fuentes: puede contar dos veces a la misma
+      // persona si aparece en mas de una (ej. CATALOGOS y PIIPC) -- se
+      // prefiere sobre-contar (mas conservador con la privacidad) a
+      // sub-contar.
+      const total = Number(c1.rows[0].total) + Number(c2.rows[0].total) + Number(c3.rows[0].total);
+      if (total === 0) {
+        return respuesta.status(200).send({ sistema: [], catalogos: [], piipc: [] });
+      }
+      if (total > MAX_COINCIDENCIAS_CURP_PARCIAL) {
+        return respuesta.status(200).send({ demasiadas: true, total });
+      }
     }
 
     const [delSistema, historicoCatalogos, historicoPiipc] = await Promise.all([
       pool.query(
-        `SELECT s.nombre_pila, s.apellido_paterno, s.apellido_materno, s.nombre_solicitante, s.sexo,
+        `SELECT s.curp, s.nombre_pila, s.apellido_paterno, s.apellido_materno, s.nombre_solicitante, s.sexo,
                 s.fecha_nacimiento, s.telefono, s.correo, s.dom_municipio_id, s.dom_localidad_id,
                 l.nombre AS localidad_nombre, COALESCE(s.dom_seccion, l.cve_seccion) AS seccion,
                 s.dom_cp, s.dom_tipo_asentamiento, s.dom_asentamiento, s.recibida_en
            FROM solicitudes s
            LEFT JOIN localidades l ON l.id = s.dom_localidad_id
-          WHERE s.curp = $1
+          WHERE s.curp LIKE $1
           ORDER BY s.recibida_en DESC LIMIT 3`,
-        [curp]
+        [patronBusqueda]
       ),
       pool.query(
-        `SELECT b.nombre_pila, b.apellido_paterno, b.apellido_materno, b.nombre_completo, b.telefono,
+        `SELECT b.curp, b.nombre_pila, b.apellido_paterno, b.apellido_materno, b.nombre_completo, b.telefono,
                 b.correo, b.dom_calle, b.dom_numero, b.dom_colonia, b.dom_cp, b.dom_tipo_asentamiento,
                 b.municipio_id, b.localidad_id, l.nombre AS localidad_nombre, l.cve_seccion AS seccion
            FROM beneficiarios_historicos b
            LEFT JOIN localidades l ON l.id = b.localidad_id
-          WHERE b.curp = $1 LIMIT 3`,
-        [curp]
+          WHERE b.curp LIKE $1 LIMIT 3`,
+        [patronBusqueda]
       ),
       pool.query(
-        `SELECT hs.id, hs.folio_origen, hs.nombre_pila, hs.apellido_paterno, hs.apellido_materno,
+        `SELECT hs.curp, hs.id, hs.folio_origen, hs.nombre_pila, hs.apellido_paterno, hs.apellido_materno,
                 hs.sexo, hs.fecha_nacimiento, hs.telefono, hs.correo, hs.anio, hs.programa,
                 hs.dom_municipio_texto, hs.dom_localidad_texto, hs.dom_colonia, hs.dom_calle, hs.dom_cp,
                 hs.municipio_proyecto_id, hs.localidad_proyecto_id,
@@ -392,27 +443,32 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
            FROM historial_solicitudes hs
            LEFT JOIN historial_conceptos hc ON hc.historial_solicitud_id = hs.id
            LEFT JOIN localidades l ON l.id = hs.localidad_proyecto_id
-          WHERE hs.curp = $1
+          WHERE hs.curp LIKE $1
           GROUP BY hs.id, l.nombre, l.cve_seccion
           ORDER BY hs.anio DESC NULLS LAST
           LIMIT 5`,
-        [curp]
+        [patronBusqueda]
       )
     ]);
 
     // Respaldo: CATALOGOS nunca capturo sexo/fecha_nacimiento por separado
     // (la tabla no tiene esas columnas), y cualquier fuente podria traerlos
     // en blanco por dato faltante. El CURP mismo los trae codificados (ver
-    // datosDesdeCurp) -- se usa solo si la fila no trajo el dato real.
-    const desdeCurp = datosDesdeCurp(curp);
-    const conRespaldoCurp = <T extends { sexo?: string | null; fecha_nacimiento?: unknown }>(
+    // datosDesdeCurp). A diferencia de la busqueda exacta de antes, aqui CADA
+    // fila puede pertenecer a un CURP distinto (busqueda por prefijo) -- el
+    // respaldo se deriva del CURP propio de esa fila (`f.curp`), nunca del
+    // texto que el capturista lleva escrito hasta ahora.
+    const conRespaldoCurp = <T extends { curp: string; sexo?: string | null; fecha_nacimiento?: unknown }>(
       filas: T[]
     ): T[] =>
-      filas.map((f) => ({
-        ...f,
-        sexo: f.sexo ?? desdeCurp.sexo,
-        fecha_nacimiento: f.fecha_nacimiento ?? desdeCurp.fecha_nacimiento
-      }));
+      filas.map((f) => {
+        const desdeCurp = datosDesdeCurp(f.curp);
+        return {
+          ...f,
+          sexo: f.sexo ?? desdeCurp.sexo,
+          fecha_nacimiento: f.fecha_nacimiento ?? desdeCurp.fecha_nacimiento
+        };
+      });
 
     return respuesta.status(200).send({
       sistema: conRespaldoCurp(delSistema.rows),

@@ -6,7 +6,7 @@ import type { ChartData, ChartOptions, ChartType } from 'chart.js';
 import { Chart } from './chartSetup';
 
 interface Props {
-  tipo: 'bar' | 'line' | 'doughnut';
+  tipo: 'bar' | 'line' | 'doughnut' | 'pie';
   datos: ChartData;
   opciones?: ChartOptions;
   testId: string;

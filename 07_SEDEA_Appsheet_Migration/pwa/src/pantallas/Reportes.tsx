@@ -29,16 +29,35 @@ import Grafica from '../componentes/Grafica';
 import { useColoresTema } from '../tema/colores';
 
 type Vista = 'resumen' | 'matriz' | 'padron';
-type MetricaValor = 'monto_autorizado' | 'monto_solicitado' | 'monto_entregado' | 'cantidad' | 'cantidad_entregada';
+/** `solicitudes` es un conteo, no una cantidad fisica -- nunca lleva unidad
+ * ni se convierte a toneladas (ver formatoValor). */
+type MetricaValor =
+  | 'monto_autorizado'
+  | 'monto_solicitado'
+  | 'monto_entregado'
+  | 'cantidad'
+  | 'cantidad_entregada'
+  | 'solicitudes';
+type TipoGrafica = 'bar' | 'line' | 'doughnut' | 'pie';
 
 const ETIQUETAS_METRICA: Record<MetricaValor, string> = {
   monto_autorizado: 'Monto autorizado',
   monto_solicitado: 'Monto solicitado',
   monto_entregado: 'Monto entregado',
   cantidad: 'Cantidad solicitada',
-  cantidad_entregada: 'Cantidad entregada'
+  cantidad_entregada: 'Cantidad entregada',
+  solicitudes: 'Solicitudes'
+};
+const ETIQUETAS_TIPO_GRAFICA: Record<TipoGrafica, string> = {
+  bar: 'Barras',
+  line: 'Línea',
+  doughnut: 'Dona',
+  pie: 'Pastel'
 };
 const METRICAS_MONTO: ReadonlySet<MetricaValor> = new Set(['monto_autorizado', 'monto_solicitado', 'monto_entregado']);
+/** Estas si tienen unidad fisica (kg, pieza...) -- `solicitudes` no entra
+ * aqui, es un conteo de tramites, nunca "150 solicitudes kg". */
+const METRICAS_CANTIDAD: ReadonlySet<MetricaValor> = new Set(['cantidad', 'cantidad_entregada']);
 
 const formatoNumero = new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 });
 const formatoMoneda = new Intl.NumberFormat('es-MX', {
@@ -56,7 +75,7 @@ const formatoMoneda = new Intl.NumberFormat('es-MX', {
  */
 const formatoValor = (metrica: MetricaValor, valor: number, unidad?: string | null, enToneladas = false) => {
   if (METRICAS_MONTO.has(metrica)) return formatoMoneda.format(valor);
-  if (!unidad) return formatoNumero.format(valor);
+  if (!METRICAS_CANTIDAD.has(metrica) || !unidad) return formatoNumero.format(valor);
   if (enToneladas && unidad.toLowerCase() === 'kg') {
     return `${formatoNumero.format(valor / 1000)} t`;
   }
@@ -90,6 +109,13 @@ export default function Reportes() {
   // Resumen: 1 dimension.
   const [agruparPor, setAgruparPor] = useState<DimensionReporte>('regional');
   const [ordenDescendente, setOrdenDescendente] = useState(true);
+  // Que metrica se grafica y con que tipo de grafica -- pedido real: "ver el
+  // desempeño de mis compañeros, cuántas toneladas o solicitudes han
+  // ingresado, en barras, pastel, dona...". El orden de la tabla SIGUE
+  // gobernado por monto_autorizado (ordenDescendente arriba) a proposito:
+  // cambiar que se grafica no deberia reordenar la tabla por sorpresa.
+  const [metricaResumen, setMetricaResumen] = useState<MetricaValor>('monto_autorizado');
+  const [tipoGraficaResumen, setTipoGraficaResumen] = useState<TipoGrafica>('bar');
   const [filasResumen, setFilasResumen] = useState<FilaReporte[] | null>(null);
   const [cargandoResumen, setCargandoResumen] = useState(false);
   const [exportandoResumen, setExportandoResumen] = useState(false);
@@ -245,27 +271,35 @@ export default function Reportes() {
     }
   );
 
-  const datosGraficaResumen = useMemo(
-    () => ({
-      labels: (filasResumenOrdenadas ?? []).map((f) => f.etiqueta),
-      datasets: [
-        {
-          label: 'Monto autorizado',
-          data: (filasResumenOrdenadas ?? []).map((f) => f.monto_autorizado),
-          backgroundColor: colores.acento,
-          borderColor: colores.acento,
-          tension: 0.2
-        }
-      ]
-    }),
-    [filasResumenOrdenadas, colores]
-  );
-
-  // --- Matriz: pivoteo + datos de la grafica -------------------------------
+  // Paleta compartida por la dona/pastel de Resumen y las series de la
+  // Matriz -- un color por categoria, ciclico si hay mas categorias que
+  // colores en la paleta.
   const paletaSerie = useMemo(
     () => [colores.acento, colores.info, colores.exito, colores.aviso, colores.tenue],
     [colores]
   );
+
+  const datosGraficaResumen = useMemo(() => {
+    const filas = filasResumenOrdenadas ?? [];
+    const valores = filas.map((f) => (metricaResumen === 'solicitudes' ? f.solicitudes : f[metricaResumen]));
+    // Barras/linea: un solo color de acento (es una sola serie). Dona/pastel:
+    // un color distinto por rebanada, si no todas saldrian iguales.
+    const esCircular = tipoGraficaResumen === 'doughnut' || tipoGraficaResumen === 'pie';
+    return {
+      labels: filas.map((f) => f.etiqueta),
+      datasets: [
+        {
+          label: ETIQUETAS_METRICA[metricaResumen],
+          data: valores,
+          backgroundColor: esCircular ? filas.map((_, i) => paletaSerie[i % paletaSerie.length]) : colores.acento,
+          borderColor: esCircular ? undefined : colores.acento,
+          tension: 0.2
+        }
+      ]
+    };
+  }, [filasResumenOrdenadas, metricaResumen, tipoGraficaResumen, colores, paletaSerie]);
+
+  // --- Matriz: pivoteo + datos de la grafica -------------------------------
 
   const matrizPivoteada = useMemo(() => {
     if (!filasMatriz) return null;
@@ -482,6 +516,36 @@ export default function Reportes() {
                 <option value="nombre">Nombre</option>
               </select>
             </div>
+            <div className="campo">
+              <label htmlFor="select-metrica-resumen">Graficar</label>
+              <select
+                id="select-metrica-resumen"
+                data-testid="select-metrica-resumen"
+                value={metricaResumen}
+                onChange={(e) => setMetricaResumen(e.target.value as MetricaValor)}
+              >
+                {(Object.keys(ETIQUETAS_METRICA) as MetricaValor[]).map((m) => (
+                  <option key={m} value={m}>
+                    {ETIQUETAS_METRICA[m]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="campo">
+              <label htmlFor="select-tipo-grafica-resumen">Tipo de gráfica</label>
+              <select
+                id="select-tipo-grafica-resumen"
+                data-testid="select-tipo-grafica-resumen"
+                value={tipoGraficaResumen}
+                onChange={(e) => setTipoGraficaResumen(e.target.value as TipoGrafica)}
+              >
+                {(Object.keys(ETIQUETAS_TIPO_GRAFICA) as TipoGrafica[]).map((t) => (
+                  <option key={t} value={t}>
+                    {ETIQUETAS_TIPO_GRAFICA[t]}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="acciones">
               <button
                 type="button"
@@ -599,11 +663,7 @@ export default function Reportes() {
       {vista === 'resumen' && filasResumenOrdenadas && (
         <>
           <div className="tarjeta">
-            <Grafica
-              tipo={agruparPor === 'anio' ? 'line' : 'bar'}
-              datos={datosGraficaResumen}
-              testId="grafica-resumen-reportes"
-            />
+            <Grafica tipo={tipoGraficaResumen} datos={datosGraficaResumen} testId="grafica-resumen-reportes" />
           </div>
           <div className="tarjeta" data-testid="tabla-reporte">
             <div style={{ overflowX: 'auto' }}>

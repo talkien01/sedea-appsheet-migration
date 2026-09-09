@@ -13,6 +13,7 @@ import {
   LineController,
   LineElement,
   LinearScale,
+  PieController,
   PointElement,
   Title,
   Tooltip
@@ -25,6 +26,7 @@ Chart.register(
   LineElement,
   PointElement,
   DoughnutController,
+  PieController,
   ArcElement,
   CategoryScale,
   LinearScale,

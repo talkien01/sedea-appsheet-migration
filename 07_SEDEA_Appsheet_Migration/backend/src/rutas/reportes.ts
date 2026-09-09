@@ -1,25 +1,37 @@
-// Modulo de Reportes (Beta) -- ver alcance completo en
-// packages/shared/src/reportes.ts. Tres endpoints: catalogos para los
-// filtros, el reporte en JSON (pantalla) y el mismo reporte en .xlsx
-// (exportar). Las dos ultimas comparten exactamente los mismos filtros/query
-// para que la pantalla y el Excel descargado siempre digan lo mismo.
+// Modulo de Reportes -- ver alcance completo en packages/shared/src/reportes.ts.
+// Endpoints: catalogos para los filtros, el resumen/matriz en JSON y en
+// .xlsx, y el padron con monto exacto por beneficiario en JSON y en .xlsx.
+// Cada par pantalla/Excel comparte exactamente los mismos filtros/query para
+// que lo que se ve en pantalla y lo que se descarga siempre digan lo mismo.
 import type { FastifyInstance } from 'fastify';
 import ExcelJS from 'exceljs';
-import { esquemaFiltrosReporte, ETIQUETAS_DIMENSION, puedeVerReportes } from '@sedea/shared';
+import {
+  esquemaFiltrosComunes,
+  esquemaFiltrosReporte,
+  ETIQUETAS_DIMENSION,
+  puedeVerReportes,
+  type FiltrosComunesReporte,
+  type FiltrosReporte
+} from '@sedea/shared';
 import { ErrorApi, errorNoAutorizado } from '../plugins/errores.js';
 import { regionalForzada } from '../plugins/rbac.js';
-import { catalogosReporte, generarReporteSolicitudes } from '../db/queries/reportes.js';
+import {
+  catalogosReporte,
+  generarPadronExcel,
+  generarPadronPantalla,
+  generarReporteSolicitudes
+} from '../db/queries/reportes.js';
 
-function leerFiltros(peticion: any) {
-  const parseado = esquemaFiltrosReporte.safeParse(peticion.query ?? {});
+function leerConEsquema<T>(peticion: any, esquema: { safeParse: (v: unknown) => any }): T {
+  const parseado = esquema.safeParse(peticion.query ?? {});
   if (!parseado.success) {
     throw new ErrorApi(
       422,
       'parametro_invalido',
-      parseado.error.issues.map((i) => i.message).join('; ')
+      parseado.error.issues.map((i: { message: string }) => i.message).join('; ')
     );
   }
-  return parseado.data;
+  return parseado.data as T;
 }
 
 export default async function rutasReportes(app: FastifyInstance): Promise<void> {
@@ -43,21 +55,25 @@ export default async function rutasReportes(app: FastifyInstance): Promise<void>
   app.get('/api/reportes/solicitudes', soloReportes, async (peticion, respuesta) => {
     const usuario = peticion.usuario;
     if (!usuario) throw errorNoAutorizado();
-    const filtros = leerFiltros(peticion);
+    const filtros = leerConEsquema<FiltrosReporte>(peticion, esquemaFiltrosReporte);
     const filas = await generarReporteSolicitudes(
       filtros.agrupar_por,
+      filtros.agrupar_por_2,
       filtros,
       regionalForzada(usuario)
     );
-    return respuesta.status(200).send({ dimension: filtros.agrupar_por, filas });
+    return respuesta
+      .status(200)
+      .send({ dimension: filtros.agrupar_por, dimension2: filtros.agrupar_por_2, filas });
   });
 
   app.get('/api/reportes/solicitudes/export.xlsx', soloReportes, async (peticion, respuesta) => {
     const usuario = peticion.usuario;
     if (!usuario) throw errorNoAutorizado();
-    const filtros = leerFiltros(peticion);
+    const filtros = leerConEsquema<FiltrosReporte>(peticion, esquemaFiltrosReporte);
     const filas = await generarReporteSolicitudes(
       filtros.agrupar_por,
+      filtros.agrupar_por_2,
       filtros,
       regionalForzada(usuario)
     );
@@ -68,12 +84,19 @@ export default async function rutasReportes(app: FastifyInstance): Promise<void>
     const hoja = libro.addWorksheet('Reporte');
 
     const etiquetaDimension = ETIQUETAS_DIMENSION[filtros.agrupar_por];
-    hoja.columns = [
-      { header: etiquetaDimension, key: 'etiqueta', width: 32 },
-      { header: 'Solicitudes', key: 'solicitudes', width: 16 },
-      { header: 'Cantidad', key: 'cantidad', width: 18 },
-      { header: 'Monto autorizado', key: 'monto_autorizado', width: 20 }
+    const columnas = [
+      { header: etiquetaDimension, key: 'etiqueta', width: 28 },
+      ...(filtros.agrupar_por_2
+        ? [{ header: ETIQUETAS_DIMENSION[filtros.agrupar_por_2], key: 'etiqueta2', width: 24 }]
+        : []),
+      { header: 'Solicitudes', key: 'solicitudes', width: 14 },
+      { header: 'Cantidad solicitada', key: 'cantidad', width: 18 },
+      { header: 'Cantidad entregada', key: 'cantidad_entregada', width: 18 },
+      { header: 'Monto solicitado', key: 'monto_solicitado', width: 18 },
+      { header: 'Monto autorizado', key: 'monto_autorizado', width: 18 },
+      { header: 'Monto entregado', key: 'monto_entregado', width: 18 }
     ];
+    hoja.columns = columnas;
 
     const filaEncabezado = hoja.getRow(1);
     filaEncabezado.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -83,34 +106,127 @@ export default async function rutasReportes(app: FastifyInstance): Promise<void>
     filas.forEach((f) => {
       hoja.addRow({
         etiqueta: f.etiqueta,
+        etiqueta2: f.etiqueta2 ?? '',
         solicitudes: f.solicitudes,
         cantidad: f.cantidad,
-        monto_autorizado: f.monto_autorizado
+        cantidad_entregada: f.cantidad_entregada,
+        monto_solicitado: f.monto_solicitado,
+        monto_autorizado: f.monto_autorizado,
+        monto_entregado: f.monto_entregado
+      });
+    });
+
+    const colLetra = (indice: number) => String.fromCharCode('A'.charCodeAt(0) + indice);
+    const primeraFilaDatos = 2;
+    const ultimaFilaDatos = 1 + filas.length;
+    const colSolicitudes = colLetra(columnas.findIndex((c) => c.key === 'solicitudes'));
+    const colCantidad = colLetra(columnas.findIndex((c) => c.key === 'cantidad'));
+    const colCantidadEntregada = colLetra(columnas.findIndex((c) => c.key === 'cantidad_entregada'));
+    const colMontoSolicitado = colLetra(columnas.findIndex((c) => c.key === 'monto_solicitado'));
+    const colMontoAutorizado = colLetra(columnas.findIndex((c) => c.key === 'monto_autorizado'));
+    const colMontoEntregado = colLetra(columnas.findIndex((c) => c.key === 'monto_entregado'));
+    const filaTotal = hoja.addRow({
+      etiqueta: 'Total',
+      solicitudes: { formula: `SUM(${colSolicitudes}${primeraFilaDatos}:${colSolicitudes}${ultimaFilaDatos})` },
+      cantidad: { formula: `SUM(${colCantidad}${primeraFilaDatos}:${colCantidad}${ultimaFilaDatos})` },
+      cantidad_entregada: {
+        formula: `SUM(${colCantidadEntregada}${primeraFilaDatos}:${colCantidadEntregada}${ultimaFilaDatos})`
+      },
+      monto_solicitado: {
+        formula: `SUM(${colMontoSolicitado}${primeraFilaDatos}:${colMontoSolicitado}${ultimaFilaDatos})`
+      },
+      monto_autorizado: {
+        formula: `SUM(${colMontoAutorizado}${primeraFilaDatos}:${colMontoAutorizado}${ultimaFilaDatos})`
+      },
+      monto_entregado: {
+        formula: `SUM(${colMontoEntregado}${primeraFilaDatos}:${colMontoEntregado}${ultimaFilaDatos})`
+      }
+    });
+    filaTotal.font = { bold: true };
+    filaTotal.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF4DED2' } };
+
+    hoja.getColumn('cantidad').numFmt = '#,##0.00';
+    hoja.getColumn('cantidad_entregada').numFmt = '#,##0.00';
+    hoja.getColumn('monto_solicitado').numFmt = '"$"#,##0.00';
+    hoja.getColumn('monto_autorizado').numFmt = '"$"#,##0.00';
+    hoja.getColumn('monto_entregado').numFmt = '"$"#,##0.00';
+
+    const buffer = await libro.xlsx.writeBuffer();
+    const nombreArchivo = `reporte_${filtros.agrupar_por}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+    return respuesta
+      .header('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+      .header('content-disposition', `attachment; filename="${nombreArchivo}"`)
+      .send(buffer);
+  });
+
+  app.get('/api/reportes/padron', soloReportes, async (peticion, respuesta) => {
+    const usuario = peticion.usuario;
+    if (!usuario) throw errorNoAutorizado();
+    const filtros = leerConEsquema<FiltrosComunesReporte>(peticion, esquemaFiltrosComunes);
+    const { filas, truncado } = await generarPadronPantalla(filtros, regionalForzada(usuario));
+    return respuesta.status(200).send({ filas, truncado });
+  });
+
+  app.get('/api/reportes/padron/export.xlsx', soloReportes, async (peticion, respuesta) => {
+    const usuario = peticion.usuario;
+    if (!usuario) throw errorNoAutorizado();
+    const filtros = leerConEsquema<FiltrosComunesReporte>(peticion, esquemaFiltrosComunes);
+    const filas = await generarPadronExcel(filtros, regionalForzada(usuario));
+
+    const libro = new ExcelJS.Workbook();
+    libro.creator = 'SISPACQ';
+    libro.created = new Date();
+    const hoja = libro.addWorksheet('Padrón');
+
+    hoja.columns = [
+      { header: 'Beneficiario', key: 'beneficiario', width: 32 },
+      { header: 'CURP', key: 'curp', width: 20 },
+      { header: 'Dirección Regional', key: 'regional', width: 18 },
+      { header: 'Municipio', key: 'municipio', width: 20 },
+      { header: 'Concepto de apoyo', key: 'concepto', width: 26 },
+      { header: 'Cantidad', key: 'cantidad', width: 14 },
+      { header: 'Unidad', key: 'unidad_medida', width: 10 },
+      { header: 'Monto', key: 'monto_estatal', width: 16 },
+      { header: 'Entregado', key: 'entregado', width: 12 }
+    ];
+
+    const filaEncabezado = hoja.getRow(1);
+    filaEncabezado.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    filaEncabezado.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A2332' } };
+    filaEncabezado.alignment = { vertical: 'middle' };
+
+    filas.forEach((f) => {
+      hoja.addRow({
+        beneficiario: f.beneficiario,
+        curp: f.curp ?? '',
+        regional: f.regional,
+        municipio: f.municipio,
+        concepto: f.concepto,
+        cantidad: f.cantidad,
+        unidad_medida: f.unidad_medida ?? '',
+        monto_estatal: f.monto_estatal,
+        entregado: f.entregado ? 'Sí' : 'No'
       });
     });
 
     const primeraFilaDatos = 2;
     const ultimaFilaDatos = 1 + filas.length;
     const filaTotal = hoja.addRow({
-      etiqueta: 'Total',
-      solicitudes: { formula: `SUM(B${primeraFilaDatos}:B${ultimaFilaDatos})` },
-      cantidad: { formula: `SUM(C${primeraFilaDatos}:C${ultimaFilaDatos})` },
-      monto_autorizado: { formula: `SUM(D${primeraFilaDatos}:D${ultimaFilaDatos})` }
+      beneficiario: 'Total',
+      monto_estatal: { formula: `SUM(H${primeraFilaDatos}:H${ultimaFilaDatos})` }
     });
     filaTotal.font = { bold: true };
     filaTotal.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF4DED2' } };
 
     hoja.getColumn('cantidad').numFmt = '#,##0.00';
-    hoja.getColumn('monto_autorizado').numFmt = '"$"#,##0.00';
+    hoja.getColumn('monto_estatal').numFmt = '"$"#,##0.00';
 
     const buffer = await libro.xlsx.writeBuffer();
-    const nombreArchivo = `reporte_${filtros.agrupar_por}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const nombreArchivo = `padron_reportes_${new Date().toISOString().slice(0, 10)}.xlsx`;
 
     return respuesta
-      .header(
-        'content-type',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      )
+      .header('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
       .header('content-disposition', `attachment; filename="${nombreArchivo}"`)
       .send(buffer);
   });

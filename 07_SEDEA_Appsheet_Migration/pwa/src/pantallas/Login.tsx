@@ -8,6 +8,7 @@ import { contarBeneficiarios, sesionVigente } from '../db/repositorios';
 import type { PerfilUsuario } from '@sedea/shared';
 import { useEstadoRed } from '../sync/estadoRed';
 import ToggleTema from '../componentes/ToggleTema';
+import CampoPassword from '../componentes/CampoPassword';
 
 /**
  * Destino tras iniciar sesion segun el rol: cada perfil aterriza en su propia
@@ -153,10 +154,9 @@ export default function Login() {
 
           <div className="campo">
             <label htmlFor="password">Contraseña</label>
-            <input
+            <CampoPassword
               id="password"
               name="password"
-              type="password"
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

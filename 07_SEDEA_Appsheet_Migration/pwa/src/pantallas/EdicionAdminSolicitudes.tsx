@@ -21,6 +21,7 @@ import { TIPOS_PERSONA, ETIQUETAS_TIPO_PERSONA } from '@sedea/shared';
 import { api, ErrorPeticion } from '../api/cliente';
 import { apiSolicitudes } from '../api/solicitudes';
 import { useEstadoRed } from '../sync/estadoRed';
+import CampoPassword from '../componentes/CampoPassword';
 
 interface CamposEditables {
   nombre_solicitante: string;
@@ -527,9 +528,9 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
             <div className="mensaje aviso">
               <label className="campo">
                 <span>Confirma tu contraseña para guardar</span>
-                <input
-                  type="password"
-                  data-testid="campo-password-edicion-admin"
+                <CampoPassword
+                  testId="campo-password-edicion-admin"
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />

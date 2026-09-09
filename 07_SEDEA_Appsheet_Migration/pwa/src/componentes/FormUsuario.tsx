@@ -3,6 +3,7 @@
 // se lee el historial de capturas y auditoria, por eso es inmutable (D21).
 import { useState, type FormEvent } from 'react';
 import BloqueAlcance, { type ValoresAlcance } from './BloqueAlcance';
+import CampoPassword from './CampoPassword';
 import {
   AYUDA_PASSWORD_MANUAL,
   ETIQUETAS_ROL,
@@ -388,10 +389,9 @@ export default function FormUsuario({
             {modoPassword === 'manual' && (
               <>
                 <label htmlFor="input-password-manual">Contraseña para el usuario</label>
-                <input
+                <CampoPassword
                   id="input-password-manual"
-                  data-testid="input-password-manual"
-                  type="password"
+                  testId="input-password-manual"
                   autoComplete="new-password"
                   value={passwordManual}
                   onChange={(e) => setPasswordManual(e.target.value)}

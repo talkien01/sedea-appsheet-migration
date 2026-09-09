@@ -12,6 +12,7 @@ import type { PerfilUsuario } from '@sedea/shared';
 import { useSesion } from '../App';
 import { api } from '../api/cliente';
 import { contarBeneficiarios } from '../db/repositorios';
+import CampoPassword from '../componentes/CampoPassword';
 
 /** Destino tras el cambio, segun el rol (mismo criterio que el login). */
 async function destinoPorRol(perfil: PerfilUsuario | null): Promise<string> {
@@ -103,10 +104,9 @@ export default function CambiarPassword() {
         {!obligatorio && (
           <div className="campo">
             <label htmlFor="input-password-actual">Contraseña actual</label>
-            <input
+            <CampoPassword
               id="input-password-actual"
-              data-testid="input-password-actual"
-              type="password"
+              testId="input-password-actual"
               autoComplete="current-password"
               value={actual}
               onChange={(e) => setActual(e.target.value)}
@@ -116,10 +116,9 @@ export default function CambiarPassword() {
 
         <div className="campo">
           <label htmlFor="input-password-nueva">Nueva contraseña</label>
-          <input
+          <CampoPassword
             id="input-password-nueva"
-            data-testid="input-password-nueva"
-            type="password"
+            testId="input-password-nueva"
             autoComplete="new-password"
             value={nueva}
             onChange={(e) => setNueva(e.target.value)}
@@ -129,10 +128,9 @@ export default function CambiarPassword() {
 
         <div className="campo">
           <label htmlFor="input-password-confirmar">Confirmar nueva contraseña</label>
-          <input
+          <CampoPassword
             id="input-password-confirmar"
-            data-testid="input-password-confirmar"
-            type="password"
+            testId="input-password-confirmar"
             autoComplete="new-password"
             value={confirmar}
             onChange={(e) => setConfirmar(e.target.value)}

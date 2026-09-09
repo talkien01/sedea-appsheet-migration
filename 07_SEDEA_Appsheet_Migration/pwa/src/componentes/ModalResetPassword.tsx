@@ -9,6 +9,7 @@ import {
   type ModoPassword,
   type UsuarioAdmin
 } from '@sedea/shared';
+import CampoPassword from './CampoPassword';
 
 interface Props {
   usuario: UsuarioAdmin;
@@ -87,10 +88,9 @@ export default function ModalResetPassword({
           {modo === 'manual' && (
             <>
               <label htmlFor="input-password-manual-reset">Contraseña para el usuario</label>
-              <input
+              <CampoPassword
                 id="input-password-manual-reset"
-                data-testid="input-password-manual-reset"
-                type="password"
+                testId="input-password-manual-reset"
                 autoComplete="new-password"
                 value={passwordManual}
                 onChange={(e) => setPasswordManual(e.target.value)}

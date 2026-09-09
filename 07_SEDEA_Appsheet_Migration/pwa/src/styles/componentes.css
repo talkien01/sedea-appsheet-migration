@@ -100,6 +100,38 @@ textarea:disabled {
   cursor: not-allowed;
 }
 
+/* Campo de contrasena con el boton de "mostrar/ocultar" superpuesto -- ver
+   componentes/CampoPassword.tsx. El input reserva espacio a la derecha para
+   que el texto largo no quede debajo del boton. */
+.campo-password {
+  position: relative;
+}
+
+.campo-password input {
+  padding-right: 40px;
+}
+
+.boton-mostrar-password {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.boton-mostrar-password:hover {
+  color: var(--fg);
+}
+
 .campo {
   margin-bottom: 14px;
 }

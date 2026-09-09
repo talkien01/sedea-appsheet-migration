@@ -546,6 +546,7 @@ export default function Reportes() {
                   <tr>
                     <th>{ETIQUETAS_DIMENSION[agruparPor]}</th>
                     <th>Solicitudes</th>
+                    <th>Cantidad</th>
                     <th>Solicitado</th>
                     <th>Autorizado</th>
                     <th>Entregado</th>
@@ -556,7 +557,7 @@ export default function Reportes() {
                 <tbody>
                   {filasResumenOrdenadas.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="vacio">
+                      <td colSpan={8} className="vacio">
                         Sin resultados para estos filtros.
                       </td>
                     </tr>
@@ -571,6 +572,7 @@ export default function Reportes() {
                       <tr key={f.etiqueta}>
                         <td>{f.etiqueta}</td>
                         <td>{formatoNumero.format(f.solicitudes)}</td>
+                        <td>{formatoNumero.format(f.cantidad)}</td>
                         <td>{formatoMoneda.format(f.monto_solicitado)}</td>
                         <td>{formatoMoneda.format(f.monto_autorizado)}</td>
                         <td>{formatoMoneda.format(f.monto_entregado)}</td>
@@ -588,6 +590,9 @@ export default function Reportes() {
                       </td>
                       <td>
                         <strong>{formatoNumero.format(totalesResumen.solicitudes)}</strong>
+                      </td>
+                      <td>
+                        <strong>{formatoNumero.format(totalesResumen.cantidad)}</strong>
                       </td>
                       <td>
                         <strong>{formatoMoneda.format(totalesResumen.monto_solicitado)}</strong>

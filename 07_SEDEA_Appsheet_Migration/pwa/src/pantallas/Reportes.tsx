@@ -46,8 +46,28 @@ const formatoMoneda = new Intl.NumberFormat('es-MX', {
   currency: 'MXN',
   maximumFractionDigits: 2
 });
-const formatoValor = (metrica: MetricaValor, valor: number) =>
-  METRICAS_MONTO.has(metrica) ? formatoMoneda.format(valor) : formatoNumero.format(valor);
+/**
+ * `unidad` solo se aplica a metricas de cantidad (kg, pieza, obra...) y solo
+ * si viene informada -- cuando la fila mezcla unidades distintas el backend
+ * manda `null` a proposito (ver FilaReporte.unidad_medida) y aqui no se
+ * inventa ninguna. `enToneladas` (mismo patron que BloqueSolicitudesRegional
+ * del Dashboard) solo convierte cuando la unidad es kg -- las demas (pieza,
+ * obra, ha...) se muestran tal cual, sin division.
+ */
+const formatoValor = (metrica: MetricaValor, valor: number, unidad?: string | null, enToneladas = false) => {
+  if (METRICAS_MONTO.has(metrica)) return formatoMoneda.format(valor);
+  if (!unidad) return formatoNumero.format(valor);
+  if (enToneladas && unidad.toLowerCase() === 'kg') {
+    return `${formatoNumero.format(valor / 1000)} t`;
+  }
+  return `${formatoNumero.format(valor)} ${unidad}`;
+};
+
+/** Unidad comun a un grupo de filas, solo si TODAS coinciden (ver arriba). */
+function unidadComun(filas: Array<{ unidad_medida: string | null }>): string | null {
+  const unicas = new Set(filas.map((f) => f.unidad_medida).filter((u): u is string => u !== null));
+  return unicas.size === 1 ? [...unicas][0] : null;
+}
 
 export default function Reportes() {
   const colores = useColoresTema();
@@ -62,6 +82,10 @@ export default function Reportes() {
   const [municipioId, setMunicipioId] = useState('');
   const [programaId, setProgramaId] = useState('');
   const [conceptoId, setConceptoId] = useState('');
+  const [capturistaId, setCapturistaId] = useState('');
+  // Toggle kg/toneladas (mismo patron que BloqueSolicitudesRegional.tsx del
+  // Dashboard) -- pedido real: "cuántas toneladas he subido al sistema".
+  const [enToneladas, setEnToneladas] = useState(false);
 
   // Resumen: 1 dimension.
   const [agruparPor, setAgruparPor] = useState<DimensionReporte>('regional');
@@ -98,9 +122,10 @@ export default function Reportes() {
       regional_id: regionalId ? Number(regionalId) : undefined,
       municipio_id: municipioId ? Number(municipioId) : undefined,
       programa_id: programaId ? Number(programaId) : undefined,
-      tipo_apoyo_id: conceptoId ? Number(conceptoId) : undefined
+      tipo_apoyo_id: conceptoId ? Number(conceptoId) : undefined,
+      capturista_id: capturistaId ? Number(capturistaId) : undefined
     }),
-    [anio, regionalId, municipioId, programaId, conceptoId]
+    [anio, regionalId, municipioId, programaId, conceptoId, capturistaId]
   );
 
   const generarResumen = async () => {
@@ -251,7 +276,10 @@ export default function Reportes() {
       const f = mapa.get(`${fila} ${columna}`);
       return f ? (f[metricaMatriz] as number) : 0;
     };
-    return { filasUnicas, columnasUnicas, valor };
+    // Solo aporta algo en las metricas de cantidad -- ver formatoValor.
+    const unidad = (fila: string, columna: string): string | null =>
+      mapa.get(`${fila} ${columna}`)?.unidad_medida ?? null;
+    return { filasUnicas, columnasUnicas, valor, unidad };
   }, [filasMatriz, metricaMatriz]);
 
   const datosGraficaMatriz = useMemo(() => {
@@ -304,6 +332,27 @@ export default function Reportes() {
             </button>
           ))}
         </div>
+
+        {(vista === 'resumen' || vista === 'matriz') && (
+          <div role="group" aria-label="Unidad de despliegue" className="acciones" data-testid="toggle-toneladas">
+            <button
+              type="button"
+              className={enToneladas ? 'secundario' : ''}
+              data-testid="btn-unidad-kg"
+              onClick={() => setEnToneladas(false)}
+            >
+              kg
+            </button>
+            <button
+              type="button"
+              className={enToneladas ? '' : 'secundario'}
+              data-testid="btn-unidad-toneladas"
+              onClick={() => setEnToneladas(true)}
+            >
+              toneladas
+            </button>
+          </div>
+        )}
 
         <div className="campo">
           <label htmlFor="select-anio">Año</label>
@@ -382,6 +431,23 @@ export default function Reportes() {
             {(catalogos?.conceptos ?? []).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nombre}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="campo">
+          <label htmlFor="select-capturista-reporte">Capturista</label>
+          <select
+            id="select-capturista-reporte"
+            data-testid="select-capturista-reporte"
+            value={capturistaId}
+            onChange={(e) => setCapturistaId(e.target.value)}
+          >
+            <option value="">Todos</option>
+            {(catalogos?.capturistas ?? []).map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.nombre}
               </option>
             ))}
           </select>
@@ -572,7 +638,7 @@ export default function Reportes() {
                       <tr key={f.etiqueta}>
                         <td>{f.etiqueta}</td>
                         <td>{formatoNumero.format(f.solicitudes)}</td>
-                        <td>{formatoNumero.format(f.cantidad)}</td>
+                        <td>{formatoValor('cantidad', f.cantidad, f.unidad_medida, enToneladas)}</td>
                         <td>{formatoMoneda.format(f.monto_solicitado)}</td>
                         <td>{formatoMoneda.format(f.monto_autorizado)}</td>
                         <td>{formatoMoneda.format(f.monto_entregado)}</td>
@@ -592,7 +658,14 @@ export default function Reportes() {
                         <strong>{formatoNumero.format(totalesResumen.solicitudes)}</strong>
                       </td>
                       <td>
-                        <strong>{formatoNumero.format(totalesResumen.cantidad)}</strong>
+                        <strong>
+                          {formatoValor(
+                            'cantidad',
+                            totalesResumen.cantidad,
+                            unidadComun(filasResumenOrdenadas),
+                            enToneladas
+                          )}
+                        </strong>
                       </td>
                       <td>
                         <strong>{formatoMoneda.format(totalesResumen.monto_solicitado)}</strong>
@@ -641,14 +714,22 @@ export default function Reportes() {
                   {matrizPivoteada.filasUnicas.map((fila) => {
                     const valores = matrizPivoteada.columnasUnicas.map((c) => matrizPivoteada.valor(fila, c));
                     const total = valores.reduce((a, b) => a + b, 0);
+                    // La unidad del total de la fila solo se muestra si TODAS
+                    // sus columnas coinciden -- mismo criterio que cada celda.
+                    const unidadFila = unidadComun((filasMatriz ?? []).filter((f) => f.etiqueta === fila));
                     return (
                       <tr key={fila}>
                         <td>{fila}</td>
-                        {valores.map((v, i) => (
-                          <td key={matrizPivoteada.columnasUnicas[i]}>{formatoValor(metricaMatriz, v)}</td>
-                        ))}
+                        {valores.map((v, i) => {
+                          const columna = matrizPivoteada.columnasUnicas[i];
+                          return (
+                            <td key={columna}>
+                              {formatoValor(metricaMatriz, v, matrizPivoteada.unidad(fila, columna), enToneladas)}
+                            </td>
+                          );
+                        })}
                         <td>
-                          <strong>{formatoValor(metricaMatriz, total)}</strong>
+                          <strong>{formatoValor(metricaMatriz, total, unidadFila, enToneladas)}</strong>
                         </td>
                       </tr>
                     );

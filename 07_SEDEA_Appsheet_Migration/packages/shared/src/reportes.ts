@@ -37,7 +37,14 @@ export function puedeVerReportes(rol: string | null | undefined): boolean {
   return (ROLES_REPORTES as readonly string[]).some((r) => rolesUsuario.includes(r));
 }
 
-export const DIMENSIONES_REPORTE = ['regional', 'municipio', 'programa', 'concepto', 'anio'] as const;
+export const DIMENSIONES_REPORTE = [
+  'regional',
+  'municipio',
+  'programa',
+  'concepto',
+  'anio',
+  'capturista'
+] as const;
 export type DimensionReporte = (typeof DIMENSIONES_REPORTE)[number];
 
 export const ETIQUETAS_DIMENSION: Record<DimensionReporte, string> = {
@@ -45,7 +52,8 @@ export const ETIQUETAS_DIMENSION: Record<DimensionReporte, string> = {
   municipio: 'Municipio',
   programa: 'Programa',
   concepto: 'Concepto de apoyo',
-  anio: 'Año'
+  anio: 'Año',
+  capturista: 'Capturista'
 };
 
 /** Filtros comunes a las 3 consultas (resumen/matriz, padron). */
@@ -73,6 +81,13 @@ const camposFiltrosComunes = {
     .pipe(z.number().int().positive())
     .optional(),
   tipo_apoyo_id: z
+    .union([z.number(), z.string()])
+    .transform((v) => Number(v))
+    .pipe(z.number().int().positive())
+    .optional(),
+  /** Quien capturo la solicitud (`solicitudes.capturado_por`) -- pedido real:
+   * "cuántas toneladas he subido con los beneficiarios que cargué". */
+  capturista_id: z
     .union([z.number(), z.string()])
     .transform((v) => Number(v))
     .pipe(z.number().int().positive())
@@ -109,6 +124,12 @@ export interface FilaReporte {
   /** Igual que `cantidad`, pero solo de los conceptos con entrega registrada
    * (`entregas_apoyo`). */
   cantidad_entregada: number;
+  /** Unidad de `cantidad`/`cantidad_entregada` (kg, pieza, obra, ha...) --
+   * SOLO si todos los conceptos que entraron a esta fila comparten la misma
+   * unidad. Si la fila mezcla unidades distintas (ej. agrupado por Municipio
+   * sin filtrar Concepto), viaja `null`: mostrar una unidad ahi seria
+   * inventarsela. */
+  unidad_medida: string | null;
   /** Suma de `monto_estatal` de TODO lo solicitado, autorizado o no. */
   monto_solicitado: number;
   /** Mismo criterio de autorizacion que el resto del sistema (Secretario O

@@ -16,6 +16,7 @@ export interface CatalogosReporte {
   municipios: Array<{ id: number; nombre: string; regional_id: number | null }>;
   programas: Array<{ id: number; nombre: string }>;
   conceptos: Array<{ id: number; nombre: string; unidad_medida: string | null }>;
+  capturistas: Array<{ id: number; nombre: string }>;
 }
 
 export async function catalogosReporte(): Promise<CatalogosReporte> {
@@ -35,6 +36,7 @@ export function armarQueryReporte(
   if (filtros.municipio_id) parametros.set('municipio_id', String(filtros.municipio_id));
   if (filtros.programa_id) parametros.set('programa_id', String(filtros.programa_id));
   if (filtros.tipo_apoyo_id) parametros.set('tipo_apoyo_id', String(filtros.tipo_apoyo_id));
+  if (filtros.capturista_id) parametros.set('capturista_id', String(filtros.capturista_id));
   return parametros.toString();
 }
 
@@ -53,6 +55,7 @@ export function armarQueryPadron(filtros: Partial<FiltrosComunesReporte>): strin
   if (filtros.municipio_id) parametros.set('municipio_id', String(filtros.municipio_id));
   if (filtros.programa_id) parametros.set('programa_id', String(filtros.programa_id));
   if (filtros.tipo_apoyo_id) parametros.set('tipo_apoyo_id', String(filtros.tipo_apoyo_id));
+  if (filtros.capturista_id) parametros.set('capturista_id', String(filtros.capturista_id));
   return parametros.toString();
 }
 

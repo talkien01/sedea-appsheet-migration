@@ -92,6 +92,9 @@ export default async function rutasReportes(app: FastifyInstance): Promise<void>
       { header: 'Solicitudes', key: 'solicitudes', width: 14 },
       { header: 'Cantidad solicitada', key: 'cantidad', width: 18 },
       { header: 'Cantidad entregada', key: 'cantidad_entregada', width: 18 },
+      // Vacia cuando la fila mezcla unidades distintas (ej. agrupado por
+      // Municipio sin filtrar Concepto) -- ver comentario en FilaReporte.
+      { header: 'Unidad', key: 'unidad_medida', width: 10 },
       { header: 'Monto solicitado', key: 'monto_solicitado', width: 18 },
       { header: 'Monto autorizado', key: 'monto_autorizado', width: 18 },
       { header: 'Monto entregado', key: 'monto_entregado', width: 18 }
@@ -110,6 +113,7 @@ export default async function rutasReportes(app: FastifyInstance): Promise<void>
         solicitudes: f.solicitudes,
         cantidad: f.cantidad,
         cantidad_entregada: f.cantidad_entregada,
+        unidad_medida: f.unidad_medida ?? '',
         monto_solicitado: f.monto_solicitado,
         monto_autorizado: f.monto_autorizado,
         monto_entregado: f.monto_entregado
@@ -125,6 +129,11 @@ export default async function rutasReportes(app: FastifyInstance): Promise<void>
     const colMontoSolicitado = colLetra(columnas.findIndex((c) => c.key === 'monto_solicitado'));
     const colMontoAutorizado = colLetra(columnas.findIndex((c) => c.key === 'monto_autorizado'));
     const colMontoEntregado = colLetra(columnas.findIndex((c) => c.key === 'monto_entregado'));
+    // La unidad del total solo se muestra si TODAS las filas comparten la
+    // misma (mismo criterio que cada fila individual) -- nunca se inventa.
+    const unidadesEnFilas = new Set(filas.map((f) => f.unidad_medida).filter((u): u is string => u !== null));
+    const unidadTotal = unidadesEnFilas.size === 1 ? [...unidadesEnFilas][0] : '';
+
     const filaTotal = hoja.addRow({
       etiqueta: 'Total',
       solicitudes: { formula: `SUM(${colSolicitudes}${primeraFilaDatos}:${colSolicitudes}${ultimaFilaDatos})` },
@@ -132,6 +141,7 @@ export default async function rutasReportes(app: FastifyInstance): Promise<void>
       cantidad_entregada: {
         formula: `SUM(${colCantidadEntregada}${primeraFilaDatos}:${colCantidadEntregada}${ultimaFilaDatos})`
       },
+      unidad_medida: unidadTotal,
       monto_solicitado: {
         formula: `SUM(${colMontoSolicitado}${primeraFilaDatos}:${colMontoSolicitado}${ultimaFilaDatos})`
       },

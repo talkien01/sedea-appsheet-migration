@@ -23,7 +23,8 @@ const DIMENSION_SQL: Record<DimensionReporte, { select: string; groupBy: string 
   anio: {
     select: "EXTRACT(YEAR FROM s.recibida_en)::text",
     groupBy: 'EXTRACT(YEAR FROM s.recibida_en)'
-  }
+  },
+  capturista: { select: 'u.nombre_completo', groupBy: 'u.id, u.nombre_completo' }
 };
 
 /** Filtros comunes a resumen/matriz y padron -- misma logica, distintos alias
@@ -31,7 +32,14 @@ const DIMENSION_SQL: Record<DimensionReporte, { select: string; groupBy: string 
 function condicionesComunes(
   filtros: FiltrosComunesReporte,
   regionalForzadaId: number | null,
-  alias: { regional: string; municipio: string; programa: string; tipoApoyo: string; anio: string }
+  alias: {
+    regional: string;
+    municipio: string;
+    programa: string;
+    tipoApoyo: string;
+    anio: string;
+    capturista: string;
+  }
 ): { condiciones: string[]; parametros: unknown[] } {
   const parametros: unknown[] = [];
   const condiciones: string[] = [];
@@ -53,6 +61,7 @@ function condicionesComunes(
   agregarFiltro(filtros.programa_id, `${alias.programa} =`);
   agregarFiltro(filtros.tipo_apoyo_id, `${alias.tipoApoyo} =`);
   agregarFiltro(filtros.anio, `${alias.anio} =`);
+  agregarFiltro(filtros.capturista_id, `${alias.capturista} =`);
 
   return { condiciones, parametros };
 }
@@ -71,7 +80,8 @@ export async function generarReporteSolicitudes(
     municipio: 'm.id',
     programa: 'p.id',
     tipoApoyo: 't.id',
-    anio: 'EXTRACT(YEAR FROM s.recibida_en)'
+    anio: 'EXTRACT(YEAR FROM s.recibida_en)',
+    capturista: 's.capturado_por'
   });
   condiciones.unshift('t.unidad_medida IS NOT NULL');
 
@@ -84,12 +94,20 @@ export async function generarReporteSolicitudes(
   // "Entregado": EXISTS por fila de solicitud_conceptos contra
   // entregas_apoyo (liga 1:1, ver migracion de evidencia de campo) -- la v1
   // de Reportes nunca sumaba esto, solo lo tenia el Dashboard por concepto.
+  //
+  // `unidad_medida`: la fila puede sumar conceptos con unidades distintas
+  // (kg + obra + pieza...) cuando la dimension no es "concepto" y no hay
+  // filtro de concepto -- ahi mostrar una unidad seria inventarsela. Solo se
+  // manda cuando TODOS los conceptos que entraron a esa fila comparten la
+  // misma unidad (COUNT DISTINCT = 1); si no, viaja NULL y el frontend no
+  // muestra ninguna.
   const filas = await consultar<{
     etiqueta: string;
     etiqueta2: string | null;
     solicitudes: string;
     cantidad: string;
     cantidad_entregada: string;
+    unidad_medida: string | null;
     monto_solicitado: string;
     monto_autorizado: string;
     monto_entregado: string;
@@ -101,6 +119,7 @@ export async function generarReporteSolicitudes(
        COALESCE(SUM(sc.cantidad) FILTER (
          WHERE EXISTS (SELECT 1 FROM entregas_apoyo ea WHERE ea.solicitud_concepto_id = sc.id)
        ), 0)::float8 AS cantidad_entregada,
+       CASE WHEN count(DISTINCT t.unidad_medida) = 1 THEN min(t.unidad_medida) END AS unidad_medida,
        COALESCE(SUM(sc.monto_estatal), 0)::float8 AS monto_solicitado,
        COALESCE(SUM(sc.monto_estatal) FILTER (
          WHERE s.autorizada_secretario = TRUE OR t.autorizado_de_facto = TRUE
@@ -112,6 +131,7 @@ export async function generarReporteSolicitudes(
      JOIN municipios m ON m.id = s.ubi_municipio_id
      LEFT JOIN direcciones_regionales r ON r.id = m.regional_id
      JOIN programas p ON p.id = s.programa_id
+     JOIN usuarios u ON u.id = s.capturado_por
      JOIN solicitud_conceptos sc ON sc.solicitud_id = s.id
      JOIN tipos_apoyo t ON t.id = sc.tipo_apoyo_id
      WHERE ${condiciones.join(' AND ')}
@@ -126,6 +146,7 @@ export async function generarReporteSolicitudes(
     solicitudes: Number(f.solicitudes),
     cantidad: Number(f.cantidad),
     cantidad_entregada: Number(f.cantidad_entregada),
+    unidad_medida: f.unidad_medida,
     monto_solicitado: Number(f.monto_solicitado),
     monto_autorizado: Number(f.monto_autorizado),
     monto_entregado: Number(f.monto_entregado)
@@ -150,7 +171,8 @@ async function padronSolicitudes(
     municipio: 'b.municipio_id',
     programa: 'p.id',
     tipoApoyo: 't.id',
-    anio: 'EXTRACT(YEAR FROM s.recibida_en)'
+    anio: 'EXTRACT(YEAR FROM s.recibida_en)',
+    capturista: 's.capturado_por'
   });
   condiciones.unshift('t.unidad_medida IS NOT NULL');
   parametros.push(limite);
@@ -230,6 +252,7 @@ export interface CatalogosReporte {
   municipios: Array<{ id: number; nombre: string; regional_id: number | null }>;
   programas: Array<{ id: number; nombre: string }>;
   conceptos: Array<{ id: number; nombre: string; unidad_medida: string | null }>;
+  capturistas: Array<{ id: number; nombre: string }>;
 }
 
 /** Listas para los filtros de la pantalla, acotadas a la Regional forzada. */
@@ -238,7 +261,7 @@ export async function catalogosReporte(regionalForzadaId: number | null): Promis
   const filtroRegional = regionalForzadaId !== null ? 'WHERE regional_id = $1' : '';
   if (regionalForzadaId !== null) parametrosMunicipio.push(regionalForzadaId);
 
-  const [regionales, municipios, programas, conceptos] = await Promise.all([
+  const [regionales, municipios, programas, conceptos, capturistas] = await Promise.all([
     consultar<{ id: number; nombre: string }>(
       regionalForzadaId !== null
         ? 'SELECT id, nombre FROM direcciones_regionales WHERE id = $1 ORDER BY nombre'
@@ -252,8 +275,20 @@ export async function catalogosReporte(regionalForzadaId: number | null): Promis
     consultar<{ id: number; nombre: string }>('SELECT id, nombre FROM programas ORDER BY nombre'),
     consultar<{ id: number; nombre: string; unidad_medida: string | null }>(
       "SELECT id, nombre, unidad_medida FROM tipos_apoyo WHERE unidad_medida IS NOT NULL ORDER BY nombre"
+    ),
+    // Solo quienes de verdad han capturado algo (no el padron completo de
+    // Usuarios, que trae decenas de cuentas de prueba) -- acotado a la misma
+    // Regional forzada.
+    consultar<{ id: number; nombre: string }>(
+      `SELECT DISTINCT u.id, u.nombre_completo AS nombre
+         FROM usuarios u
+         JOIN solicitudes s ON s.capturado_por = u.id
+         JOIN municipios m ON m.id = s.ubi_municipio_id
+        ${regionalForzadaId !== null ? 'WHERE m.regional_id = $1' : ''}
+        ORDER BY nombre`,
+      regionalForzadaId !== null ? [regionalForzadaId] : []
     )
   ]);
 
-  return { regionales, municipios, programas, conceptos };
+  return { regionales, municipios, programas, conceptos, capturistas };
 }

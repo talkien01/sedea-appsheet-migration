@@ -6,13 +6,22 @@
 //
 // Todo ocurre en el cliente: los frames del <video> se vuelcan a un <canvas>
 // oculto y jsQR los decodifica. No se sube nada al servidor.
+//
+// La apertura de camara (resolucion, enfoque) vive en `camaraQr.ts`,
+// compartida con `pantallas/EscaneoMovil.tsx` (celular vinculado, que tiene
+// su propio ciclo de lectura porque su comportamiento difiere a proposito).
+// Si tocas como se abre la camara, revisa tambien ese archivo.
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import jsQR from 'jsqr';
+import {
+  abrirCamaraQr,
+  iniciarReenfoquePeriodico,
+  ErrorCamaraNoDisponible,
+  MENSAJE_SIN_CAMARA,
+  MENSAJE_PERMISO
+} from './camaraQr';
 
-export const MENSAJE_SIN_CAMARA =
-  'No hay cámara disponible en este dispositivo o navegador.';
-export const MENSAJE_PERMISO =
-  'No se pudo usar la cámara (permiso denegado o en uso por otra app).';
+export { MENSAJE_SIN_CAMARA, MENSAJE_PERMISO };
 
 interface Opciones {
   /**
@@ -56,13 +65,13 @@ export function useEscanerQr({ alTexto, seamPrueba, activo = true }: Opciones): 
     if (!activo) return;
     let vivo = true;
 
-    let temporizadorEnfoque: ReturnType<typeof setInterval> | null = null;
+    let detenerReenfoque: (() => void) | null = null;
 
     const detener = () => {
       if (animacion.current !== null) cancelAnimationFrame(animacion.current);
       animacion.current = null;
-      if (temporizadorEnfoque !== null) clearInterval(temporizadorEnfoque);
-      temporizadorEnfoque = null;
+      detenerReenfoque?.();
+      detenerReenfoque = null;
       stream.current?.getTracks().forEach((t) => t.stop());
       stream.current = null;
     };
@@ -89,54 +98,21 @@ export function useEscanerQr({ alTexto, seamPrueba, activo = true }: Opciones): 
     };
 
     const abrir = async () => {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setErrorCamara(MENSAJE_SIN_CAMARA);
-        return;
-      }
       try {
-        // Resolucion alta a proposito (`ideal`, nunca `exact`: si el celular no
-        // la soporta, cae a lo maximo que tenga en vez de fallar): el QR de la
-        // Constancia CURP impresa es chico y denso, y muchos celulares por
-        // default abren la camara a 640x480 -- suficiente para video normal,
-        // insuficiente para que jsQR lo decodifique de cerca. Caso real
-        // reportado: la camara abre bien pero nunca detecta el codigo.
-        const s = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'environment',
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          }
-        });
+        const s = await abrirCamaraQr();
         if (!vivo) {
           s.getTracks().forEach((t) => t.stop());
           return;
         }
         stream.current = s;
-        // Enfoque: reportado en Samsung/Android que `focusMode: 'continuous'`
-        // se queda "cazando" foco sin asentarse nunca frente a un documento
-        // plano de bajo contraste (papel blanco) -- terminaba peor que sin
-        // tocar nada. 'single-shot' enfoca una vez y se queda quieto; para no
-        // perder foco si el papel se mueve, se vuelve a pedir cada 2s en vez
-        // de dejarlo "cazando" en modo continuo. Best-effort: si el navegador
-        // no soporta `focusMode`, falla en silencio y sigue con el enfoque
-        // que ya trae.
-        const pista = s.getVideoTracks()[0];
-        if (pista) {
-          const reenfocar = () => {
-            void pista
-              .applyConstraints({ advanced: [{ focusMode: 'single-shot' } as MediaTrackConstraintSet] })
-              .catch(() => undefined);
-          };
-          reenfocar();
-          temporizadorEnfoque = setInterval(reenfocar, 2000);
-        }
+        detenerReenfoque = iniciarReenfoquePeriodico(s);
         if (video.current) {
           video.current.srcObject = s;
           await video.current.play().catch(() => undefined);
         }
         animacion.current = requestAnimationFrame(leerFrame);
-      } catch {
-        setErrorCamara(MENSAJE_PERMISO);
+      } catch (e) {
+        setErrorCamara(e instanceof ErrorCamaraNoDisponible ? MENSAJE_SIN_CAMARA : MENSAJE_PERMISO);
       }
     };
 

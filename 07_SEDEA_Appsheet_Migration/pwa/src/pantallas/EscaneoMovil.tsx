@@ -19,13 +19,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import jsQR from 'jsqr';
 import { api, ErrorPeticion } from '../api/cliente';
+import {
+  abrirCamaraQr,
+  iniciarReenfoquePeriodico,
+  ErrorCamaraNoDisponible,
+  MENSAJE_SIN_CAMARA,
+  MENSAJE_PERMISO
+} from '../componentes/camaraQr';
 
 type Estado = 'escaneando' | 'enviando' | 'enviado' | 'cerrado' | 'error';
 
-const MENSAJE_SIN_CAMARA =
-  'No hay cámara disponible en este dispositivo o navegador.';
-const MENSAJE_PERMISO =
-  'No se pudo usar la cámara (permiso denegado o en uso por otra app).';
 /** Cuanto se muestra "Enviado" antes de volver solo a escanear. */
 const MS_CONFIRMACION = 1200;
 
@@ -35,7 +38,7 @@ export default function EscaneoMovil() {
   const lienzo = useRef<HTMLCanvasElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const animacion = useRef<number | null>(null);
-  const temporizadorEnfoque = useRef<ReturnType<typeof setInterval> | null>(null);
+  const detenerReenfoque = useRef<(() => void) | null>(null);
   // Evita que dos frames seguidos disparen dos envios de la misma sesion.
   const enviando = useRef(false);
 
@@ -47,8 +50,8 @@ export default function EscaneoMovil() {
   const detener = useCallback(() => {
     if (animacion.current !== null) cancelAnimationFrame(animacion.current);
     animacion.current = null;
-    if (temporizadorEnfoque.current !== null) clearInterval(temporizadorEnfoque.current);
-    temporizadorEnfoque.current = null;
+    detenerReenfoque.current?.();
+    detenerReenfoque.current = null;
     stream.current?.getTracks().forEach((t) => t.stop());
     stream.current = null;
   }, []);
@@ -126,50 +129,24 @@ export default function EscaneoMovil() {
     };
 
     const abrir = async () => {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setError(MENSAJE_SIN_CAMARA);
-        setEstado('error');
-        return;
-      }
       try {
-        // Misma correccion que usoEscanerQr.ts (escaneo directo): pedir
-        // resolucion alta a proposito (`ideal`, nunca `exact`) y enfoque
-        // continuo. Reportado en produccion: el escaneo directo SI
-        // funcionaba tras ese arreglo, pero esta pantalla (la que corre EN
-        // el celular vinculado) tiene su propio getUserMedia por separado
-        // -- nunca se le aplico el mismo arreglo hasta ahora.
-        const s = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'environment',
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
-          }
-        });
+        // Apertura de camara (resolucion, enfoque) compartida con
+        // usoEscanerQr.ts via camaraQr.ts -- si tocas como se abre la
+        // camara, revisa tambien ese archivo.
+        const s = await abrirCamaraQr();
         if (!vivo) {
           s.getTracks().forEach((t) => t.stop());
           return;
         }
         stream.current = s;
-        // Mismo ajuste que usoEscanerQr.ts: 'single-shot' repetido cada 2s
-        // en vez de 'continuous' -- reportado que 'continuous' se quedaba
-        // sin asentar el enfoque en Android/Samsung.
-        const pista = s.getVideoTracks()[0];
-        if (pista) {
-          const reenfocar = () => {
-            void pista
-              .applyConstraints({ advanced: [{ focusMode: 'single-shot' } as MediaTrackConstraintSet] })
-              .catch(() => undefined);
-          };
-          reenfocar();
-          temporizadorEnfoque.current = setInterval(reenfocar, 2000);
-        }
+        detenerReenfoque.current = iniciarReenfoquePeriodico(s);
         if (video.current) {
           video.current.srcObject = s;
           await video.current.play().catch(() => undefined);
         }
         animacion.current = requestAnimationFrame(leerFrame);
-      } catch {
-        setError(MENSAJE_PERMISO);
+      } catch (e) {
+        setError(e instanceof ErrorCamaraNoDisponible ? MENSAJE_SIN_CAMARA : MENSAJE_PERMISO);
         setEstado('error');
       }
     };

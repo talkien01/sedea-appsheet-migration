@@ -119,3 +119,83 @@ export interface PaqueteEventoEntrega {
   total: number;
   conceptos: ConceptoPorEntregar[];
 }
+
+// ---------------------------------------------------------------------------
+// Visor de "Evidencia de entregas": lo que hasta ahora NO existia -- las fotos
+// de entrega (`entregas_apoyo`) se subian y guardaban pero ninguna pantalla
+// las mostraba (a diferencia del Expediente de la Parte 1). Listado filtrable
+// + panel de detalle + exportacion, acotado por Regional.
+// ---------------------------------------------------------------------------
+
+/** Quien puede VER la evidencia de entregas (revision/supervision, no captura
+ * de campo). admin/director SIEMPRE; auditor como rol de supervision; el resto
+ * combinando "+reportes" a su rol. Siempre acotado a la Regional del usuario. */
+export const ROLES_VER_EVIDENCIA_ENTREGAS = ['admin', 'director', 'auditor', 'reportes'] as const;
+
+export function puedeVerEvidenciaEntregas(rol: string | null | undefined): boolean {
+  const roles = String(rol ?? '')
+    .split('+')
+    .filter(Boolean);
+  return (ROLES_VER_EVIDENCIA_ENTREGAS as readonly string[]).some((r) => roles.includes(r));
+}
+
+/** Cuantas filas trae una pagina del visor. El Excel exporta TODO el filtro,
+ * sin este tope (igual que el padron de Reportes). */
+export const LIMITE_EVIDENCIA_PANTALLA = 60;
+
+const idOpcionalDesdeTexto = z
+  .union([z.number(), z.string()])
+  .transform((v) => Number(v))
+  .pipe(z.number().int().positive())
+  .optional();
+
+export const esquemaFiltrosEvidencia = z.object({
+  regional_id: idOpcionalDesdeTexto,
+  tipo_apoyo_id: idOpcionalDesdeTexto,
+  entregado_por: idOpcionalDesdeTexto,
+  /** Rango de fechas de entrega (ISO date, ambos inclusivos). */
+  desde: z.string().optional(),
+  hasta: z.string().optional(),
+  /** Paginacion de la pantalla; el Excel la ignora. */
+  offset: z
+    .union([z.number(), z.string()])
+    .transform((v) => Number(v))
+    .pipe(z.number().int().min(0))
+    .optional()
+});
+export type FiltrosEvidencia = z.infer<typeof esquemaFiltrosEvidencia>;
+
+export interface FilaEvidencia {
+  uuid: string;
+  foto_url: string;
+  folio: string;
+  beneficiario: string;
+  curp: string | null;
+  regional: string;
+  municipio: string | null;
+  concepto: string;
+  cantidad: number;
+  unidad_medida: string | null;
+  entregado_en: string;
+  entregado_por: string;
+  lat: number | null;
+  lng: number | null;
+  precision_m: number | null;
+  sin_gps: boolean;
+  observaciones: string | null;
+}
+
+export interface RespuestaEvidencia {
+  filas: FilaEvidencia[];
+  /** Total del filtro completo (para "142 entregas con evidencia"). */
+  total: number;
+  con_gps: number;
+  sin_gps: number;
+  ultimas_24h: number;
+}
+
+export interface CatalogosEvidencia {
+  regionales: Array<{ id: number; nombre: string }>;
+  conceptos: Array<{ id: number; nombre: string }>;
+  entregadores: Array<{ id: number; nombre: string }>;
+}

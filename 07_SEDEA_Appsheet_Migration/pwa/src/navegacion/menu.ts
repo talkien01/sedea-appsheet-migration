@@ -102,6 +102,17 @@ export const DESTINOS: Destino[] = [
     grupo: 'Gestión',
     Icono: IconoDocumento
   },
+  // Visor de "Evidencia de entregas": fotos de la Parte 2. Rol de supervision
+  // (auditor) + admin/director + "+reportes". Backend acota por Regional.
+  {
+    id: 'evidencia-entregas',
+    ruta: '/entregas/evidencia',
+    etiqueta: 'Evidencia de entregas',
+    testId: 'nav-evidencia-entregas',
+    roles: ['admin', 'director', 'auditor', 'reportes'],
+    grupo: 'Gestión',
+    Icono: IconoCamara
+  },
   {
     id: 'beneficiarios-online',
     ruta: '/gestion/beneficiarios',

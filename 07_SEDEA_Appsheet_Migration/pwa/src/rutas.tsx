@@ -44,6 +44,7 @@ import RegistrarEntrega from './pantallas/RegistrarEntregaMonitorizada';
 import Monitor from './pantallas/Monitor';
 import EdicionAdminSolicitudes from './pantallas/EdicionAdminSolicitudes';
 import Reportes from './pantallas/Reportes';
+import EvidenciaEntregas from './pantallas/EvidenciaEntregas';
 
 const CAMPO = ['capturista', 'admin'];
 const AUDITORIA = ['auditor', 'admin'];
@@ -64,6 +65,11 @@ const EDICION_ADMIN = ['admin'];
 // ventanilla, editor_datos...) lo obtiene combinando "+reportes" a su rol,
 // persona por persona -- ver ROLES_REPORTES en packages/shared/src/reportes.ts.
 const REPORTES = ['admin', 'director', 'reportes'];
+// Visor de "Evidencia de entregas": vista de revision de las fotos de la
+// Parte 2. Rol de supervision (auditor) + admin/director + "+reportes"; el
+// backend aplica el mismo candado en /api/entregas/evidencia/* y acota por
+// Regional -- ver ROLES_VER_EVIDENCIA_ENTREGAS en shared.
+const EVIDENCIA_ENTREGAS = ['admin', 'director', 'auditor', 'reportes'];
 // Modulo de ventanilla: rol nuevo `ventanilla` y admin (D34).
 const VENTANILLA = ['ventanilla', 'capturista', 'admin'];
 // Build 13: pre-dictaminacion con IA. El rol `dictaminador` NO hereda
@@ -267,6 +273,20 @@ export default function Rutas() {
           element={
             <RutaProtegida roles={REPORTES}>
               <Reportes />
+            </RutaProtegida>
+          }
+        />
+
+        {/*
+          Visor de "Evidencia de entregas": listado filtrable de las fotos de
+          entrega fisica del apoyo (entregas_apoyo), que hasta ahora no tenian
+          ninguna pantalla. Rol de supervision; el backend acota por Regional.
+        */}
+        <Route
+          path="/entregas/evidencia"
+          element={
+            <RutaProtegida roles={EVIDENCIA_ENTREGAS}>
+              <EvidenciaEntregas />
             </RutaProtegida>
           }
         />

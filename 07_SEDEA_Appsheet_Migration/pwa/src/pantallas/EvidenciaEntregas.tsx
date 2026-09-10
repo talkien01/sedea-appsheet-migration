@@ -8,7 +8,12 @@
 // ROLES_VER_EVIDENCIA_ENTREGAS) y acotada a la Regional del usuario por el
 // backend, igual que Reportes.
 import { useCallback, useEffect, useState } from 'react';
-import { LIMITE_EVIDENCIA_PANTALLA, type CatalogosEvidencia, type FilaEvidencia } from '@sedea/shared';
+import {
+  LIMITE_EVIDENCIA_PANTALLA,
+  OPCIONES_POR_PAGINA_EVIDENCIA,
+  type CatalogosEvidencia,
+  type FilaEvidencia
+} from '@sedea/shared';
 import { urlConToken } from '../api/cliente';
 import { obtenerSesion } from '../db/repositorios';
 import { armarQueryEvidencia, catalogosEvidencia, listarEvidencia } from '../api/evidenciaEntregas';
@@ -47,7 +52,8 @@ export default function EvidenciaEntregas() {
     sin_gps: number;
     ultimas_24h: number;
   } | null>(null);
-  const [offset, setOffset] = useState(0);
+  const [porPagina, setPorPagina] = useState<number>(LIMITE_EVIDENCIA_PANTALLA);
+  const [pagina, setPagina] = useState(1);
   const [cargando, setCargando] = useState(false);
   const [exportando, setExportando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,15 +81,17 @@ export default function EvidenciaEntregas() {
     [regionalId, conceptoId, entregadorId, desde, hasta]
   );
 
+  // `pag` es 1-indexado; `tamano` se pasa explicito para no depender del
+  // setState asincrono al cambiar "Mostrar por página".
   const generar = useCallback(
-    async (mas = false) => {
+    async (pag: number, tamano: number) => {
       setCargando(true);
       setError(null);
       try {
-        const inicio = mas ? offset : 0;
         const respuesta = await listarEvidencia({
           ...filtrosActuales(),
-          offset: inicio || undefined
+          limite: tamano,
+          offset: (pag - 1) * tamano || undefined
         });
         setResumen({
           total: respuesta.total,
@@ -91,17 +99,18 @@ export default function EvidenciaEntregas() {
           sin_gps: respuesta.sin_gps,
           ultimas_24h: respuesta.ultimas_24h
         });
-        setFilas(mas ? [...(filas ?? []), ...respuesta.filas] : respuesta.filas);
-        setOffset(inicio + respuesta.filas.length);
-        if (!mas) setSeleccion(null);
+        setFilas(respuesta.filas);
+        setPagina(pag);
+        setPorPagina(tamano);
+        setSeleccion(null);
       } catch {
         setError('No se pudo cargar la evidencia. Intenta de nuevo.');
-        if (!mas) setFilas(null);
+        setFilas(null);
       } finally {
         setCargando(false);
       }
     },
-    [filtrosActuales, offset, filas]
+    [filtrosActuales]
   );
 
   const exportar = async () => {
@@ -115,8 +124,18 @@ export default function EvidenciaEntregas() {
     }
   };
 
+  // Cerrar el pop-up de la foto con Escape.
+  useEffect(() => {
+    if (!seleccion) return;
+    const alTecla = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSeleccion(null);
+    };
+    window.addEventListener('keydown', alTecla);
+    return () => window.removeEventListener('keydown', alTecla);
+  }, [seleccion]);
+
   const fotoSrc = (u: string) => (token ? `${u}?token=${encodeURIComponent(token)}` : u);
-  const hayMas = resumen !== null && filas !== null && filas.length < resumen.total;
+  const totalPaginas = resumen ? Math.max(1, Math.ceil(resumen.total / porPagina)) : 1;
 
   return (
     <div data-testid="pantalla-evidencia-entregas">
@@ -215,7 +234,7 @@ export default function EvidenciaEntregas() {
           <button
             type="button"
             data-testid="btn-generar-evidencia"
-            onClick={() => void generar(false)}
+            onClick={() => void generar(1, porPagina)}
             disabled={cargando}
           >
             {cargando ? 'Cargando…' : 'Ver evidencia'}
@@ -254,81 +273,103 @@ export default function EvidenciaEntregas() {
       )}
 
       {seleccion && (
-        <div className="tarjeta" data-testid="detalle-evidencia">
-          <img
-            src={fotoSrc(seleccion.foto_url)}
-            alt={`Evidencia de la entrega a ${seleccion.beneficiario}`}
-            style={{ width: '100%', maxHeight: '55vh', objectFit: 'contain', borderRadius: 12, background: 'var(--bg-elev-2)' }}
-          />
-          <table style={{ width: '100%', marginTop: 12 }}>
-            <tbody>
-              <tr>
-                <td className="dato">Beneficiario</td>
-                <td>{seleccion.beneficiario}</td>
-              </tr>
-              <tr>
-                <td className="dato">Folio</td>
-                <td>{seleccion.folio}</td>
-              </tr>
-              <tr>
-                <td className="dato">Concepto</td>
-                <td>
-                  {seleccion.concepto} · {cantidad(seleccion)}
-                </td>
-              </tr>
-              <tr>
-                <td className="dato">Regional / Municipio</td>
-                <td>
-                  {seleccion.regional}
-                  {seleccion.municipio ? ` · ${seleccion.municipio}` : ''}
-                </td>
-              </tr>
-              <tr>
-                <td className="dato">Entregado</td>
-                <td>{formatoFecha(seleccion.entregado_en)}</td>
-              </tr>
-              <tr>
-                <td className="dato">Registró</td>
-                <td>{seleccion.entregado_por}</td>
-              </tr>
-              <tr>
-                <td className="dato">Ubicación</td>
-                <td>
-                  {seleccion.sin_gps || seleccion.lat === null || seleccion.lng === null ? (
-                    'Sin GPS (marcado en campo)'
-                  ) : (
-                    <a
-                      href={`https://www.openstreetmap.org/?mlat=${seleccion.lat}&mlon=${seleccion.lng}#map=17/${seleccion.lat}/${seleccion.lng}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {seleccion.lat.toFixed(5)}, {seleccion.lng.toFixed(5)}
-                      {seleccion.precision_m !== null ? ` · ±${Math.round(seleccion.precision_m)} m` : ''}
-                    </a>
-                  )}
-                </td>
-              </tr>
-              {seleccion.observaciones && (
+        <div
+          className="modal-fondo"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Evidencia de la entrega a ${seleccion.beneficiario}`}
+          data-testid="modal-evidencia"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSeleccion(null);
+          }}
+        >
+          <div className="modal tarjeta" style={{ width: 'min(760px, 100%)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <h2 style={{ margin: 0 }}>{seleccion.beneficiario}</h2>
+              <button
+                type="button"
+                className="secundario"
+                data-testid="btn-cerrar-modal-evidencia"
+                onClick={() => setSeleccion(null)}
+              >
+                Cerrar
+              </button>
+            </div>
+            <img
+              src={fotoSrc(seleccion.foto_url)}
+              alt={`Evidencia de la entrega a ${seleccion.beneficiario}`}
+              style={{
+                width: '100%',
+                maxHeight: '62dvh',
+                objectFit: 'contain',
+                borderRadius: 12,
+                background: 'var(--bg-elev-2)',
+                marginTop: 12
+              }}
+            />
+            <table style={{ width: '100%', marginTop: 12 }}>
+              <tbody>
                 <tr>
-                  <td className="dato">Observaciones</td>
-                  <td>{seleccion.observaciones}</td>
+                  <td className="dato">Folio</td>
+                  <td>{seleccion.folio}</td>
                 </tr>
-              )}
-            </tbody>
-          </table>
-          <div className="acciones">
-            <a
-              className="boton secundario"
-              href={fotoSrc(seleccion.foto_url)}
-              target="_blank"
-              rel="noopener noreferrer"
-              data-testid="btn-abrir-foto-evidencia"
-            >
-              Abrir foto en tamaño real
-            </a>
-            <button type="button" className="secundario" onClick={() => setSeleccion(null)}>
-              Cerrar
-            </button>
+                <tr>
+                  <td className="dato">Concepto</td>
+                  <td>
+                    {seleccion.concepto} · {cantidad(seleccion)}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="dato">Regional / Municipio</td>
+                  <td>
+                    {seleccion.regional}
+                    {seleccion.municipio ? ` · ${seleccion.municipio}` : ''}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="dato">Entregado</td>
+                  <td>{formatoFecha(seleccion.entregado_en)}</td>
+                </tr>
+                <tr>
+                  <td className="dato">Registró</td>
+                  <td>{seleccion.entregado_por}</td>
+                </tr>
+                <tr>
+                  <td className="dato">Ubicación</td>
+                  <td>
+                    {seleccion.sin_gps || seleccion.lat === null || seleccion.lng === null ? (
+                      'Sin GPS (marcado en campo)'
+                    ) : (
+                      <a
+                        href={`https://www.openstreetmap.org/?mlat=${seleccion.lat}&mlon=${seleccion.lng}#map=17/${seleccion.lat}/${seleccion.lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {seleccion.lat.toFixed(5)}, {seleccion.lng.toFixed(5)}
+                        {seleccion.precision_m !== null ? ` · ±${Math.round(seleccion.precision_m)} m` : ''}
+                      </a>
+                    )}
+                  </td>
+                </tr>
+                {seleccion.observaciones && (
+                  <tr>
+                    <td className="dato">Observaciones</td>
+                    <td>{seleccion.observaciones}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            <div className="acciones">
+              <a
+                className="boton secundario"
+                href={fotoSrc(seleccion.foto_url)}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="btn-abrir-foto-evidencia"
+              >
+                Abrir foto original
+              </a>
+            </div>
           </div>
         </div>
       )}
@@ -339,11 +380,45 @@ export default function EvidenciaEntregas() {
             <p className="vacio">Sin entregas con evidencia para estos filtros.</p>
           ) : (
             <>
-              <p className="dato">
-                {formatoNumero.format(filas.length)} de {formatoNumero.format(resumen?.total ?? filas.length)}{' '}
-                entregas con evidencia
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+              <div className="campo" style={{ maxWidth: 200 }}>
+                <label htmlFor="select-por-pagina-evidencia">Mostrar por página</label>
+                <select
+                  id="select-por-pagina-evidencia"
+                  data-testid="select-por-pagina-evidencia"
+                  value={porPagina}
+                  onChange={(e) => void generar(1, Number(e.target.value))}
+                >
+                  {OPCIONES_POR_PAGINA_EVIDENCIA.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="acciones" style={{ marginBottom: 12 }}>
+                <button
+                  type="button"
+                  className="secundario"
+                  data-testid="btn-pagina-anterior-evidencia"
+                  disabled={pagina <= 1 || cargando}
+                  onClick={() => void generar(pagina - 1, porPagina)}
+                >
+                  ‹ Anterior
+                </button>
+                <span className="dato" data-testid="pagina-actual-evidencia">
+                  Página {pagina} de {totalPaginas} · {formatoNumero.format(resumen?.total ?? filas.length)} entregas
+                </span>
+                <button
+                  type="button"
+                  className="secundario"
+                  data-testid="btn-pagina-siguiente-evidencia"
+                  disabled={pagina >= totalPaginas || cargando}
+                  onClick={() => void generar(pagina + 1, porPagina)}
+                >
+                  Siguiente ›
+                </button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
                 {filas.map((f) => (
                   <button
                     key={f.uuid}
@@ -351,6 +426,8 @@ export default function EvidenciaEntregas() {
                     data-testid={`evidencia-tarjeta-${f.uuid}`}
                     onClick={() => setSeleccion(f)}
                     style={{
+                      display: 'flex',
+                      flexDirection: 'column',
                       textAlign: 'left',
                       padding: 0,
                       border: '1px solid var(--border)',
@@ -364,17 +441,14 @@ export default function EvidenciaEntregas() {
                       src={fotoSrc(f.foto_url)}
                       alt={`Evidencia de ${f.beneficiario}`}
                       loading="lazy"
-                      style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'cover', display: 'block' }}
+                      style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', display: 'block' }}
                     />
-                    <div style={{ padding: '8px 10px 10px' }}>
-                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>{f.beneficiario}</p>
-                      <p className="dato" style={{ margin: '2px 0 0', fontSize: 11 }}>
-                        {f.folio}
-                      </p>
-                      <p className="dato" style={{ margin: '2px 0 0', fontSize: 11 }}>
+                    <div style={{ padding: '10px 12px 12px' }}>
+                      <p style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{f.beneficiario}</p>
+                      <p className="dato" style={{ margin: '4px 0 0', fontSize: 12 }}>
                         {f.concepto} · {cantidad(f)}
                       </p>
-                      <p className="dato" style={{ margin: '2px 0 6px', fontSize: 11 }}>
+                      <p className="dato" style={{ margin: '3px 0 8px', fontSize: 12 }}>
                         {f.municipio ?? f.regional} · {formatoFecha(f.entregado_en)}
                       </p>
                       <span
@@ -387,19 +461,6 @@ export default function EvidenciaEntregas() {
                   </button>
                 ))}
               </div>
-              {hayMas && (
-                <div className="acciones">
-                  <button
-                    type="button"
-                    className="secundario"
-                    data-testid="btn-cargar-mas-evidencia"
-                    onClick={() => void generar(true)}
-                    disabled={cargando}
-                  >
-                    {cargando ? 'Cargando…' : `Cargar más (${LIMITE_EVIDENCIA_PANTALLA})`}
-                  </button>
-                </div>
-              )}
             </>
           )}
         </div>

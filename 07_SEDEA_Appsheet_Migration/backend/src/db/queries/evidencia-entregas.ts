@@ -73,7 +73,9 @@ export async function listarEvidenciaEntregas(
     parametros
   );
 
-  const limite = paraExcel ? LIMITE_EVIDENCIA_EXCEL : LIMITE_EVIDENCIA_PANTALLA;
+  // El tamaño de pagina lo elige el usuario (25/50/100/200); el esquema Zod
+  // ya lo topa a 200, aqui solo se aplica el default si no viene.
+  const limite = paraExcel ? LIMITE_EVIDENCIA_EXCEL : filtros.limite ?? LIMITE_EVIDENCIA_PANTALLA;
   const offset = paraExcel ? 0 : filtros.offset ?? 0;
   const parametrosPagina = [...parametros, limite, offset];
 

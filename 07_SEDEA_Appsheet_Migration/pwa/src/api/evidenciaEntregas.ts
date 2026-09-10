@@ -11,6 +11,7 @@ export function armarQueryEvidencia(filtros: Partial<FiltrosEvidencia>): string 
   if (filtros.desde) p.set('desde', filtros.desde);
   if (filtros.hasta) p.set('hasta', filtros.hasta);
   if (filtros.offset) p.set('offset', String(filtros.offset));
+  if (filtros.limite) p.set('limite', String(filtros.limite));
   return p.toString();
 }
 

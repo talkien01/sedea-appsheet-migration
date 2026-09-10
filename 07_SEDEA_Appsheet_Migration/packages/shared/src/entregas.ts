@@ -139,9 +139,12 @@ export function puedeVerEvidenciaEntregas(rol: string | null | undefined): boole
   return (ROLES_VER_EVIDENCIA_ENTREGAS as readonly string[]).some((r) => roles.includes(r));
 }
 
-/** Cuantas filas trae una pagina del visor. El Excel exporta TODO el filtro,
- * sin este tope (igual que el padron de Reportes). */
-export const LIMITE_EVIDENCIA_PANTALLA = 60;
+/** Opciones del selector "Mostrar por página" del visor. */
+export const OPCIONES_POR_PAGINA_EVIDENCIA = [25, 50, 100, 200] as const;
+/** Por defecto y tope duro del tamaño de pagina. El Excel exporta TODO el
+ * filtro, sin este tope (igual que el padron de Reportes). */
+export const LIMITE_EVIDENCIA_PANTALLA = 50;
+const LIMITE_EVIDENCIA_MAXIMO = 200;
 
 const idOpcionalDesdeTexto = z
   .union([z.number(), z.string()])
@@ -161,6 +164,13 @@ export const esquemaFiltrosEvidencia = z.object({
     .union([z.number(), z.string()])
     .transform((v) => Number(v))
     .pipe(z.number().int().min(0))
+    .optional(),
+  /** Tamaño de pagina de la pantalla (25/50/100/200). Se topa a
+   * LIMITE_EVIDENCIA_MAXIMO en el backend; el Excel lo ignora. */
+  limite: z
+    .union([z.number(), z.string()])
+    .transform((v) => Number(v))
+    .pipe(z.number().int().min(1).max(LIMITE_EVIDENCIA_MAXIMO))
     .optional()
 });
 export type FiltrosEvidencia = z.infer<typeof esquemaFiltrosEvidencia>;

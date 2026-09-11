@@ -5,6 +5,7 @@ import type { PoolClient } from 'pg';
 import {
   REGISTRO_ENTIDADES,
   normalizarClave,
+  TIPOS_PERSONA,
   type NombreEntidad,
   type DefinicionCatalogo
 } from '@sedea/shared';
@@ -21,7 +22,7 @@ const error409 = (codigo: string, mensaje: string) => new ErrorApi(409, codigo, 
 const error422 = (codigo: string, mensaje: string) => new ErrorApi(422, codigo, mensaje);
 
 /** Tipos de persona aceptados en documentos_requeridos (F-13, criterio 479). */
-const TIPOS_PERSONA_VALIDOS = ['fisica', 'moral', 'grupo'];
+const TIPOS_PERSONA_VALIDOS: readonly string[] = TIPOS_PERSONA;
 
 // =============================================================================
 // REGISTRO DE ENTIDADES (unica fuente de verdad)

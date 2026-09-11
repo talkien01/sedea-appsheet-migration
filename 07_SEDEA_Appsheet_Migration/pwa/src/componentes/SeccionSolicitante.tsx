@@ -73,6 +73,10 @@ export default function SeccionSolicitante({ valores, municipios, cambiar, aviso
   // Persona moral y grupo de productores comparten los campos de razon social
   // y numero de integrantes; la persona fisica ni siquiera los renderiza.
   const esColectiva = valores.tipo_persona === 'moral' || valores.tipo_persona === 'grupo';
+  // Municipio (Build 9, proyecto PEM) tambien captura "razon social" (el
+  // nombre del ayuntamiento solicitante), pero no numero de integrantes: no
+  // aplica a un municipio.
+  const esMunicipio = valores.tipo_persona === 'municipio';
 
   // Escaneo del QR de la Constancia CURP: solo autocompleta los cuatro campos
   // que trae el QR; todo lo demas sigue siendo captura manual.
@@ -142,10 +146,12 @@ export default function SeccionSolicitante({ valores, municipios, cambiar, aviso
           </select>
         </div>
 
-        {esColectiva && (
+        {(esColectiva || esMunicipio) && (
           <>
             <div className="campo">
-              <label htmlFor="input-razon-social">Razón social / nombre del grupo</label>
+              <label htmlFor="input-razon-social">
+                {esMunicipio ? 'Municipio / ayuntamiento solicitante' : 'Razón social / nombre del grupo'}
+              </label>
               <input
                 id="input-razon-social"
                 data-testid="input-razon-social"
@@ -155,17 +161,19 @@ export default function SeccionSolicitante({ valores, municipios, cambiar, aviso
                 onChange={(e) => cambiar('razon_social', aMayusculas(e.target.value))}
               />
             </div>
-            <div className="campo">
-              <label htmlFor="input-num-integrantes">Número de integrantes</label>
-              <input
-                id="input-num-integrantes"
-                data-testid="input-num-integrantes"
-                type="number"
-                min={1}
-                value={valores.num_integrantes}
-                onChange={(e) => cambiar('num_integrantes', e.target.value)}
-              />
-            </div>
+            {esColectiva && (
+              <div className="campo">
+                <label htmlFor="input-num-integrantes">Número de integrantes</label>
+                <input
+                  id="input-num-integrantes"
+                  data-testid="input-num-integrantes"
+                  type="number"
+                  min={1}
+                  value={valores.num_integrantes}
+                  onChange={(e) => cambiar('num_integrantes', e.target.value)}
+                />
+              </div>
+            )}
           </>
         )}
 

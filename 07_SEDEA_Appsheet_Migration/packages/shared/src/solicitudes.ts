@@ -7,21 +7,27 @@
 // backend (D41).
 import { z } from 'zod';
 
-/** Los 3 tipos de persona del formulario oficial. */
-export const TIPOS_PERSONA = ['fisica', 'moral', 'grupo'] as const;
+/**
+ * Los tipos de persona del formulario oficial. `municipio` (Build 9) se
+ * agrega para el proyecto PEM: ahi el solicitante es el propio ayuntamiento,
+ * no una persona fisica, moral o un grupo de productores.
+ */
+export const TIPOS_PERSONA = ['fisica', 'moral', 'grupo', 'municipio'] as const;
 export type TipoPersona = (typeof TIPOS_PERSONA)[number];
 
 export const ETIQUETAS_TIPO_PERSONA: Record<TipoPersona, string> = {
   fisica: 'Persona física',
   moral: 'Persona moral sin fines de lucro',
-  grupo: 'Grupo de productores'
+  grupo: 'Grupo de productores',
+  municipio: 'Municipio (ayuntamiento)'
 };
 
 /** Etiqueta del campo "nombre" segun el tipo de persona (12.8.2, paso 2). */
 export const ETIQUETAS_NOMBRE_SOLICITANTE: Record<TipoPersona, string> = {
   fisica: 'Nombre del solicitante',
   moral: 'Nombre del representante legal',
-  grupo: 'Nombre del representante del grupo'
+  grupo: 'Nombre del representante del grupo',
+  municipio: 'Nombre del representante del municipio'
 };
 
 export const TIPOS_ASENTAMIENTO = [
@@ -321,6 +327,13 @@ export interface ProyectoVentanilla extends OpcionCatalogoVentanilla {
   prefijo_folio: string;
   componente_id: number | null;
   modalidad_id: number | null;
+  /**
+   * Tope en pesos de la suma de `monto_total` de todos los conceptos de una
+   * misma solicitud (migracion 037). `null` = sin tope. El bloqueo real
+   * (422 `monto_total_excede_tope`) lo impone el backend; la PWA solo lo usa
+   * para el aviso de ayuda en el Paso 5.
+   */
+  tope_monto_solicitud: number | null;
 }
 
 export interface VentanillaOpcion extends OpcionCatalogoVentanilla {
@@ -591,15 +604,14 @@ export function cantidadPorEscalon(
 }
 
 /**
- * Tope de monto total por solicitud (suma de monto_total de TODOS sus
- * conceptos), exclusivo del proyecto PEO (Casas Ejidales) por ahora. Bloqueo
- * duro (422 `monto_total_excede_tope`) igual que el resto de los topes de
- * cantidad — "sin regla = sin restriccion" para los demas proyectos.
+ * Clave del proyecto PEO, para las reglas de Casas Ejidales que solo aplican
+ * ahi (la descripcion de concepto capturada a mano en TablaConceptos). El
+ * tope de monto por solicitud DEJO de ser exclusivo de PEO (Build 9,
+ * migracion 037): ahora vive en `proyectos.tope_monto_solicitud` y aplica a
+ * cualquier proyecto que lo tenga poblado (PEO, PEP, PEM hoy), "sin regla =
+ * sin restriccion" para los demas — ver `ProyectoVentanilla.tope_monto_solicitud`.
  */
-export const CLAVE_PROYECTO_TOPE_MONTO = 'PEO';
-export const TOPE_MONTO_PROYECTO_PEO = 150000;
-/** Mismo proyecto (PEO), nombre mas claro para el resto de reglas de Casas Ejidales. */
-export const CLAVE_PROYECTO_CASAS_EJIDALES = CLAVE_PROYECTO_TOPE_MONTO;
+export const CLAVE_PROYECTO_CASAS_EJIDALES = 'PEO';
 
 // ============================================================================
 // Edicion administrativa de solicitudes (solo admin, D44 sigue vigente para

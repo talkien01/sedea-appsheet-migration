@@ -19,8 +19,6 @@ import {
   PATRON_CURP,
   TIPOS_PERSONA,
   CAMPOS_EDITABLES_ADMIN_SOLICITUD,
-  CLAVE_PROYECTO_TOPE_MONTO,
-  TOPE_MONTO_PROYECTO_PEO,
   esquemaActualizarDocumento,
   esquemaCrearSolicitud,
   esquemaDocumentosRequeridos,
@@ -530,6 +528,11 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
           'Para persona moral o grupo debes capturar la razón social y el número de integrantes.'
         );
       }
+    } else if (tipoPersona === 'municipio' && !razonSocial) {
+      throw error422(
+        'datos_municipio_requeridos',
+        'Para municipio debes capturar el nombre del municipio o ayuntamiento solicitante.'
+      );
     }
 
     if (!Array.isArray(datos.conceptos) || datos.conceptos.length === 0) {
@@ -701,14 +704,19 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       sumaMontosSolicitud += total;
     }
 
-    // --- Tope de monto por solicitud, exclusivo de Casas Ejidales (PEO) ----
-    // La suma de TODOS los conceptos de la solicitud no puede pasar de
-    // $150,000. Sin regla = sin restriccion para cualquier otro proyecto.
-    if (proyecto.clave === CLAVE_PROYECTO_TOPE_MONTO && sumaMontosSolicitud > TOPE_MONTO_PROYECTO_PEO) {
+    // --- Tope de monto por solicitud (migracion 037) ------------------------
+    // La suma de TODOS los conceptos de la solicitud no puede pasar del tope
+    // del proyecto (`proyectos.tope_monto_solicitud`). Sin tope poblado =
+    // sin restriccion, igual que el resto de las reglas de este catalogo.
+    const topeProyecto =
+      proyecto.tope_monto_solicitud === null || proyecto.tope_monto_solicitud === undefined
+        ? null
+        : Number(proyecto.tope_monto_solicitud);
+    if (topeProyecto !== null && sumaMontosSolicitud > topeProyecto) {
       throw error422(
         'monto_total_excede_tope',
         `La suma de los conceptos ($${sumaMontosSolicitud.toLocaleString('es-MX')}) excede el tope de ` +
-          `$${TOPE_MONTO_PROYECTO_PEO.toLocaleString('es-MX')} para este proyecto.`
+          `$${topeProyecto.toLocaleString('es-MX')} para este proyecto.`
       );
     }
 
@@ -1529,18 +1537,22 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
         }
       }
 
-      // Mismo tope de $150,000 que el alta (E42), exclusivo de Casas Ejidales
-      // (PEO): la correccion no puede dejar la solicitud por encima.
-      if (previa.proyecto === CLAVE_PROYECTO_TOPE_MONTO) {
+      // Mismo tope del catalogo que el alta (E42, migracion 037): la
+      // correccion no puede dejar la solicitud por encima.
+      const topePrevio =
+        previa.tope_monto_solicitud === null || previa.tope_monto_solicitud === undefined
+          ? null
+          : Number(previa.tope_monto_solicitud);
+      if (topePrevio !== null) {
         const sumaFinal = conceptosPrevios.reduce((suma, c) => {
           const editado = entrada.conceptos.find((e) => e.id === Number(c.id));
           return suma + (editado ? editado.monto_total : Number(c.monto_total));
         }, 0);
-        if (sumaFinal > TOPE_MONTO_PROYECTO_PEO) {
+        if (sumaFinal > topePrevio) {
           throw error422(
             'monto_total_excede_tope',
             `La suma de los conceptos ($${sumaFinal.toLocaleString('es-MX')}) excede el tope de ` +
-              `$${TOPE_MONTO_PROYECTO_PEO.toLocaleString('es-MX')} para este proyecto.`
+              `$${topePrevio.toLocaleString('es-MX')} para este proyecto.`
           );
         }
       }

@@ -211,7 +211,8 @@ export default function DetalleSolicitud() {
 
   // B7-E: nombre o razón social para la carátula según tipo de persona.
   const nombreCaratula: string =
-    (s.tipo_persona === 'moral' || s.tipo_persona === 'grupo') && s.razon_social
+    (s.tipo_persona === 'moral' || s.tipo_persona === 'grupo' || s.tipo_persona === 'municipio') &&
+    s.razon_social
       ? (s.razon_social as string)
       : (s.nombre_solicitante as string);
 

@@ -614,6 +614,13 @@ export default function NuevaSolicitud() {
 
   // --- Habilitacion del boton de guardar (12.8.2, paso 6) ------------------
   const esColectiva = solicitante.tipo_persona === 'moral' || solicitante.tipo_persona === 'grupo';
+  // Municipio (Build 9) tambien requiere razon social (el nombre del
+  // ayuntamiento), pero no numero de integrantes: no aplica a un municipio.
+  const razonSocialOk = (() => {
+    if (solicitante.tipo_persona === 'municipio') return solicitante.razon_social.trim() !== '';
+    if (!esColectiva) return true;
+    return solicitante.razon_social.trim() !== '' && Number(solicitante.num_integrantes) >= 1;
+  })();
   const conceptosValidos =
     conceptos.length > 0 &&
     conceptos.every((c) => c.tipo_apoyo_id !== '' && Number(c.cantidad) > 0);
@@ -630,8 +637,7 @@ export default function NuevaSolicitud() {
     solicitante.nombre_solicitante.trim() !== '' &&
     ubiMunicipioId !== '' &&
     conceptosValidos &&
-    (!esColectiva ||
-      (solicitante.razon_social.trim() !== '' && Number(solicitante.num_integrantes) >= 1));
+    razonSocialOk;
 
   const guardar = async () => {
     setGuardando(true);
@@ -1155,6 +1161,9 @@ export default function NuevaSolicitud() {
           proyectoId={proyectoId ? Number(proyectoId) : null}
           proyectoClave={
             catalogos?.proyectos.find((p) => String(p.id) === proyectoId)?.clave ?? null
+          }
+          proyectoTope={
+            catalogos?.proyectos.find((p) => String(p.id) === proyectoId)?.tope_monto_solicitud ?? null
           }
           cambiar={cambiarConcepto}
           agregar={agregarConcepto}

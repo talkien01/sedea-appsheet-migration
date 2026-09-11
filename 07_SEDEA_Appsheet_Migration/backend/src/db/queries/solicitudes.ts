@@ -27,7 +27,9 @@ export async function catalogosVentanilla() {
         'SELECT id, clave, nombre, componente_id FROM modalidades WHERE activo ORDER BY nombre'
       ),
       consultar<any>(
-        'SELECT id, clave, nombre, prefijo_folio, componente_id, modalidad_id FROM proyectos WHERE activo ORDER BY nombre'
+        `SELECT id, clave, nombre, prefijo_folio, componente_id, modalidad_id,
+                tope_monto_solicitud::float8 AS tope_monto_solicitud
+           FROM proyectos WHERE activo ORDER BY nombre`
       ),
       consultar<FilaVentanilla>(
         'SELECT id, clave, nombre, regional_id, clave_folio, es_central FROM ventanillas WHERE activo ORDER BY clave'
@@ -85,7 +87,9 @@ export async function catalogosDelAlta(datos: {
       datos.componente_id
     ]),
     consultarUna<any>(
-      'SELECT id, clave, nombre, prefijo_folio, modalidad_id FROM proyectos WHERE id = $1 AND activo',
+      `SELECT id, clave, nombre, prefijo_folio, modalidad_id,
+              tope_monto_solicitud::float8 AS tope_monto_solicitud
+         FROM proyectos WHERE id = $1 AND activo`,
       [datos.proyecto_id]
     ),
     consultarUna<FilaVentanilla>(
@@ -310,6 +314,7 @@ export async function obtenerSolicitud(id: number) {
   return consultarUna<any>(
     `SELECT s.*, c.clave AS componente, c.nombre AS componente_nombre,
             p.clave AS proyecto, p.nombre AS proyecto_nombre,
+            p.tope_monto_solicitud::float8 AS tope_monto_solicitud,
             v.clave AS ventanilla, v.nombre AS ventanilla_nombre,
             pr.nombre AS programa_nombre, sp.nombre AS subprograma_nombre,
             mu.nombre AS ubi_municipio, md.nombre AS dom_municipio,

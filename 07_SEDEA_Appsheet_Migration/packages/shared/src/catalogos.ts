@@ -92,7 +92,12 @@ export const esquemaProyectoAlta = z.object({
   nombre: z.string().trim().min(3).max(300),
   prefijo_folio: z.string().trim().toUpperCase().regex(/^[A-Z]{2,5}$/),
   componente_id: z.number().int().positive().nullable().optional(),
-  modalidad_id: z.number().int().positive().nullable().optional()
+  modalidad_id: z.number().int().positive().nullable().optional(),
+  /**
+   * Tope en pesos de la suma de monto_total de TODOS los conceptos de una
+   * misma solicitud (migracion 037). `null`/ausente = sin tope.
+   */
+  tope_monto_solicitud: z.number().nonnegative().nullable().optional()
 }).strict();
 
 export const esquemaProyectoEdicion = z.object({
@@ -100,7 +105,8 @@ export const esquemaProyectoEdicion = z.object({
   nombre: z.string().trim().min(3).max(300).optional(),
   prefijo_folio: z.string().trim().toUpperCase().regex(/^[A-Z]{2,5}$/).optional(),
   componente_id: z.number().int().positive().nullable().optional(),
-  modalidad_id: z.number().int().positive().nullable().optional()
+  modalidad_id: z.number().int().positive().nullable().optional(),
+  tope_monto_solicitud: z.number().nonnegative().nullable().optional()
 }).strict();
 
 export interface Proyecto {
@@ -110,6 +116,7 @@ export interface Proyecto {
   prefijo_folio: string;
   componente_id: number | null;
   modalidad_id: number | null;
+  tope_monto_solicitud: number | null;
   activo: boolean;
 }
 
@@ -273,7 +280,7 @@ export const REGISTRO_ENTIDADES: Record<NombreEntidad, DefinicionCatalogo> = {
     etiqueta: 'Proyectos',
     campoClave: 'clave',
     camposTexto: ['nombre', 'prefijo_folio'],
-    camposEnteros: ['componente_id', 'modalidad_id'],
+    camposEnteros: ['componente_id', 'modalidad_id', 'tope_monto_solicitud'],
     camposArreglo: [],
     padres: [
       { campo: 'componente_id', tabla: 'componentes', obligatorio: false },

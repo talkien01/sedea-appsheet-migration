@@ -6,6 +6,7 @@ import {
   REGISTRO_ENTIDADES,
   normalizarClave,
   TIPOS_PERSONA,
+  ETIQUETAS_TIPO_PERSONA,
   type NombreEntidad,
   type DefinicionCatalogo
 } from '@sedea/shared';
@@ -625,7 +626,11 @@ export async function obtenerReferencias() {
     consultar<any>('SELECT id, clave, nombre, activo FROM programas ORDER BY nombre'),
     consultar<any>('SELECT id, clave, nombre, activo FROM componentes ORDER BY nombre'),
     consultar<any>('SELECT id, clave, nombre, componente_id, activo FROM modalidades ORDER BY nombre'),
-    consultar<any>('SELECT id, clave, nombre, prefijo_folio, componente_id, modalidad_id, activo FROM proyectos ORDER BY nombre'),
+    consultar<any>(
+      `SELECT id, clave, nombre, prefijo_folio, componente_id, modalidad_id,
+              tope_monto_solicitud::float8 AS tope_monto_solicitud, activo
+         FROM proyectos ORDER BY nombre`
+    ),
     consultar<any>('SELECT id, clave, nombre, unidad_medida, activo FROM tipos_apoyo ORDER BY nombre')
   ]);
 
@@ -635,11 +640,7 @@ export async function obtenerReferencias() {
     modalidades,
     proyectos,
     tipos_apoyo: tiposApoyo,
-    tipos_persona: [
-      { clave: 'fisica', nombre: 'Persona física' },
-      { clave: 'moral', nombre: 'Persona moral sin fines de lucro' },
-      { clave: 'grupo', nombre: 'Grupo de productores' }
-    ]
+    tipos_persona: TIPOS_PERSONA.map((clave) => ({ clave, nombre: ETIQUETAS_TIPO_PERSONA[clave] }))
   };
 }
 
@@ -655,7 +656,11 @@ export async function obtenerArbol(incluirInactivos = false) {
     consultar<any>(`SELECT id, programa_id, clave, nombre, activo FROM subprogramas ${condicionActivo} ORDER BY nombre`),
     consultar<any>(`SELECT id, clave, nombre, activo FROM componentes ${condicionActivo} ORDER BY nombre`),
     consultar<any>(`SELECT id, clave, nombre, componente_id, activo FROM modalidades ${condicionActivo} ORDER BY nombre`),
-    consultar<any>(`SELECT id, clave, nombre, prefijo_folio, componente_id, modalidad_id, activo FROM proyectos ${condicionActivo} ORDER BY nombre`),
+    consultar<any>(
+      `SELECT id, clave, nombre, prefijo_folio, componente_id, modalidad_id,
+              tope_monto_solicitud::float8 AS tope_monto_solicitud, activo
+         FROM proyectos ${condicionActivo} ORDER BY nombre`
+    ),
     consultar<any>(`SELECT count(*)::text AS n FROM tipos_apoyo ${condicionActivo}`),
     consultar<any>(`SELECT count(*)::text AS n FROM documentos_requeridos ${condicionActivo}`)
   ]);

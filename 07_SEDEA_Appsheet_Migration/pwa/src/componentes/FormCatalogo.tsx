@@ -69,6 +69,8 @@ export default function FormCatalogo({
       const modalidadId = formData.get('modalidad_id') ? Number(formData.get('modalidad_id')) : null;
       datos.componente_id = componenteId;
       datos.modalidad_id = modalidadId;
+      const topeCrudo = (formData.get('tope_monto_solicitud') as string)?.trim();
+      datos.tope_monto_solicitud = topeCrudo ? Number(topeCrudo) : null;
       if (modo === 'alta') {
         datos.prefijo_folio = (formData.get('prefijo_folio') as string)?.trim().toUpperCase();
       }
@@ -220,6 +222,24 @@ export default function FormCatalogo({
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="campo">
+              <label htmlFor="input-tope-monto">Tope de monto por solicitud (pesos)</label>
+              <input
+                type="number"
+                id="input-tope-monto"
+                name="tope_monto_solicitud"
+                data-testid="input-tope-monto"
+                defaultValue={registro?.tope_monto_solicitud ?? ''}
+                min={0}
+                step="0.01"
+                placeholder="Sin tope"
+              />
+              <span className="dato">
+                La suma de TODOS los conceptos de una misma solicitud no puede pasar de este
+                monto. Déjalo en blanco para que el proyecto no tenga tope.
+              </span>
             </div>
           </>
         )}

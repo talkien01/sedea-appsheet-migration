@@ -181,6 +181,7 @@ export async function conceptosDuplicadosPorCurp(curp: string, tiposApoyoIds: nu
        JOIN solicitudes s ON s.id = sc.solicitud_id
        LEFT JOIN tipos_apoyo ta ON ta.id = sc.tipo_apoyo_id
       WHERE upper(btrim(coalesce(s.curp, ''))) = $1
+        AND s.anulada_en IS NULL
         ${filtroConcepto}
       ORDER BY sc.tipo_apoyo_id, s.recibida_en, s.id`,
     filtroConcepto ? [curp, tiposApoyoIds] : [curp]
@@ -274,7 +275,8 @@ export async function listarSolicitudes(params: {
             (SELECT count(*) FROM solicitud_documentos sd
               WHERE sd.solicitud_id = s.id AND sd.recibido)::int AS docs_recibidos,
             (SELECT count(*) FROM solicitud_documentos sd
-              WHERE sd.solicitud_id = s.id)::int AS docs_total
+              WHERE sd.solicitud_id = s.id)::int AS docs_total,
+            (s.anulada_en IS NOT NULL) AS anulada
        FROM solicitudes s
        JOIN componentes c  ON c.id = s.componente_id
        JOIN proyectos p    ON p.id = s.proyecto_id
@@ -303,7 +305,8 @@ export async function listarSolicitudes(params: {
       regional: f.regional,
       conceptos: f.conceptos,
       monto_total: f.monto_total,
-      documentos_recibidos: `${f.docs_recibidos}/${f.docs_total}`
+      documentos_recibidos: `${f.docs_recibidos}/${f.docs_total}`,
+      anulada: f.anulada === true
     })),
     total: Number(total?.n ?? 0)
   };

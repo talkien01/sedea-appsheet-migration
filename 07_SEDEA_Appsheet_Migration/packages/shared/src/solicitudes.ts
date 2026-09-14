@@ -424,6 +424,8 @@ export interface FilaSolicitud {
   conceptos: number;
   monto_total: number;
   documentos_recibidos: string;
+  /** true si la solicitud fue anulada (migracion 038) -- ver `esquemaAnularSolicitud`. */
+  anulada: boolean;
 }
 
 export interface PaginaSolicitudes {
@@ -667,3 +669,18 @@ export const esquemaReemitirFolio = z.object({
   password: z.string().min(1, 'Ingresa tu contraseña.')
 });
 export type ReemitirFolioInput = z.infer<typeof esquemaReemitirFolio>;
+
+/**
+ * Anular una solicitud (solo admin, migracion 038): reemplaza el patron de
+ * "borrar por SQL directo desde la terminal" que se venia usando para
+ * corregir folios capturados con el concepto equivocado (ej. avena en vez
+ * de garbanzo) -- NO borra el registro (queda de historial, con quien y
+ * por que se anulo), solo lo marca. Mismo candado que reemitir folio:
+ * motivo + contraseña propia, y bloqueado si ya tiene entrega fisica o
+ * conciliacion registrada (`folio_con_entrega`).
+ */
+export const esquemaAnularSolicitud = z.object({
+  motivo: z.string().trim().min(5, 'El motivo debe tener al menos 5 caracteres.').max(500),
+  password: z.string().min(1, 'Ingresa tu contraseña.')
+});
+export type AnularSolicitudInput = z.infer<typeof esquemaAnularSolicitud>;

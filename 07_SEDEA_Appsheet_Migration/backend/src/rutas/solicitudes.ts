@@ -24,6 +24,7 @@ import {
   esquemaDocumentosRequeridos,
   esquemaEditarSolicitudAdmin,
   esquemaReemitirFolio,
+  esquemaAnularSolicitud,
   esquemaVerificarCurpConcepto,
   esPrefijoCurpValido,
   normalizarTelefono,
@@ -1504,6 +1505,9 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
 
       const previa = await obtenerSolicitud(id);
       if (!previa) throw error404('La solicitud no existe.');
+      if (previa.anulada_en) {
+        throw new ErrorApi(409, 'solicitud_anulada', 'Esta solicitud está anulada: ya no se puede editar.');
+      }
 
       const campos = { ...entrada.campos } as Record<string, unknown>;
       if (campos.ubi_municipio_id !== undefined) {
@@ -1732,6 +1736,9 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
 
       const previa = await obtenerSolicitud(id);
       if (!previa) throw error404('La solicitud no existe.');
+      if (previa.anulada_en) {
+        throw new ErrorApi(409, 'solicitud_anulada', 'Esta solicitud está anulada: ya no se puede reemitir su folio.');
+      }
 
       const yaEntregado = await consultarUna<{ uuid: string }>(
         `SELECT ea.uuid
@@ -1819,6 +1826,92 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
         ok: true,
         folio_anterior: folioAnterior,
         folio_nuevo: folioNuevo,
+        solicitud: await obtenerSolicitud(id)
+      });
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // Anulacion de solicitud (solo admin). Reemplaza el patron de "borrar por
+  // SQL directo desde la terminal" que se venia usando para corregir folios
+  // capturados con el concepto equivocado (ej. avena en vez de garbanzo,
+  // 2026-09): en vez de DELETE, se marca `anulada_en` -- el folio deja de
+  // ofrecerse en "Entregar apoyos" y de contarse en Reportes, pero el
+  // registro sigue existiendo como historial (quien, cuando, por que).
+  //
+  // Mismo candado que reemitir folio: motivo + contraseña propia, y
+  // bloqueado (409 `folio_con_entrega`) si el concepto ya tiene entrega
+  // fisica o conciliacion registrada -- ahi ya hay algo real en manos de
+  // alguien, anular en ese punto seria borrar un hecho que ya paso.
+  // ---------------------------------------------------------------------------
+  app.post<{ Params: { id: string } }>(
+    '/api/admin/solicitudes/:id/anular',
+    protegida,
+    async (peticion, respuesta) => {
+      const usuario = peticion.usuario!;
+      if (!tieneRol(usuario, 'admin')) {
+        throw error403('rol_no_autorizado', 'Solo un administrador puede anular una solicitud.');
+      }
+
+      const id = Number(peticion.params.id);
+      if (!Number.isInteger(id) || id <= 0) throw error404('La solicitud no existe.');
+
+      const analisis = esquemaAnularSolicitud.safeParse(peticion.body ?? {});
+      if (!analisis.success) throw traducirFalloZod(analisis.error);
+      const entrada = analisis.data;
+
+      const hash = await obtenerHash(usuario.id);
+      if (!hash || !verificarPassword(entrada.password, hash)) {
+        throw new ErrorApi(401, 'password_incorrecta', 'Tu contraseña no es correcta.');
+      }
+
+      const previa = await obtenerSolicitud(id);
+      if (!previa) throw error404('La solicitud no existe.');
+      if (previa.anulada_en) {
+        throw new ErrorApi(409, 'ya_anulada', 'Esta solicitud ya está anulada.');
+      }
+
+      const yaEntregado = await consultarUna<{ uuid: string }>(
+        `SELECT ea.uuid
+           FROM entregas_apoyo ea
+           JOIN solicitud_conceptos sc ON sc.id = ea.solicitud_concepto_id
+          WHERE sc.solicitud_id = $1
+          LIMIT 1`,
+        [id]
+      );
+      const yaConciliado = await consultarUna<{ id: number }>(
+        `SELECT id FROM conciliacion_recibos WHERE solicitud_id = $1 LIMIT 1`,
+        [id]
+      );
+      if (yaEntregado || yaConciliado) {
+        throw new ErrorApi(
+          409,
+          'folio_con_entrega',
+          'Esta solicitud ya tiene una entrega física registrada con este folio: no se puede anular. Anota la discrepancia por otra vía.'
+        );
+      }
+
+      await enTransaccion(async (cliente) => {
+        await cliente.query('SELECT id FROM solicitudes WHERE id = $1 FOR UPDATE', [id]);
+        await cliente.query(
+          `UPDATE solicitudes
+              SET anulada_en = now(), anulada_por = $1, motivo_anulacion = $2
+            WHERE id = $3`,
+          [usuario.id, entrada.motivo, id]
+        );
+        await bitacoraEnTransaccion(cliente, {
+          usuarioId: usuario.id,
+          accion: 'solicitud_anulada',
+          entidad: 'solicitud',
+          entidadId: id,
+          detalle: { folio: previa.folio, motivo: entrada.motivo },
+          ip: peticion.ip,
+          userAgent: (peticion.headers['user-agent'] as string | undefined)?.slice(0, 300) ?? null
+        });
+      });
+
+      return respuesta.status(200).send({
+        ok: true,
         solicitud: await obtenerSolicitud(id)
       });
     }

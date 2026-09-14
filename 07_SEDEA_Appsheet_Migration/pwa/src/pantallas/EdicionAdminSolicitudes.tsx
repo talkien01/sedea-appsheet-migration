@@ -185,7 +185,14 @@ export default function EdicionAdminSolicitudes() {
               <tbody>
                 {filas.map((f) => (
                   <tr key={f.id} data-testid="fila-edicion-admin">
-                    <td className="mono">{f.folio}</td>
+                    <td className="mono">
+                      {f.folio}
+                      {f.anulada && (
+                        <span className="badge alerta-alta" data-testid="badge-anulada" style={{ marginLeft: 6 }}>
+                          Anulada
+                        </span>
+                      )}
+                    </td>
                     <td>{f.nombre_solicitante}</td>
                     <td>{f.capturado_por_nombre ?? '—'}</td>
                     <td>{f.regional ?? '—'}</td>
@@ -243,6 +250,9 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
   const [confirmandoFolio, setConfirmandoFolio] = useState(false);
   const [reemitiendoFolio, setReemitiendoFolio] = useState(false);
   const [folioReemitidoDe, setFolioReemitidoDe] = useState<string | null>(null);
+  const [anulada, setAnulada] = useState<{ en: string; motivo: string | null } | null>(null);
+  const [confirmandoAnular, setConfirmandoAnular] = useState(false);
+  const [anulando, setAnulando] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -259,6 +269,9 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
           ubi_localidad: s.ubi_localidad ?? ''
         });
         setConceptos(detalle.conceptos);
+        if (s.anulada_en) {
+          setAnulada({ en: s.anulada_en, motivo: s.motivo_anulacion ?? null });
+        }
       } catch {
         setError('No se pudo cargar la solicitud.');
       } finally {
@@ -341,6 +354,29 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
     }
   };
 
+  const anular = async () => {
+    if (motivo.trim().length < 5) {
+      setError('Escribe el motivo (mínimo 5 caracteres) antes de anular.');
+      return;
+    }
+    if (!password) {
+      setError('Ingresa tu contraseña para confirmar.');
+      return;
+    }
+    setAnulando(true);
+    setError(null);
+    try {
+      await apiSolicitudes.anular(id, { motivo: motivo.trim(), password });
+      setAnulada({ en: new Date().toISOString(), motivo: motivo.trim() });
+      setConfirmandoAnular(false);
+      onGuardado();
+    } catch (fallo) {
+      setError(fallo instanceof ErrorPeticion ? fallo.message : 'No se pudo anular la solicitud.');
+    } finally {
+      setAnulando(false);
+    }
+  };
+
   return (
     <div className="modal-fondo" role="dialog" aria-modal="true" data-testid="modal-edicion-admin">
       <div className="modal tarjeta">
@@ -355,7 +391,16 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
               <span className="pill">🔒 no editable</span>
             </p>
 
-            {folioReemitidoDe && (
+            {anulada && (
+              <div className="mensaje error" role="alert" data-testid="aviso-solicitud-anulada">
+                <strong>Esta solicitud está ANULADA</strong>
+                {' '}({new Date(anulada.en).toLocaleString('es-MX')}).
+                {anulada.motivo && <> Motivo: {anulada.motivo}.</>} Queda como historial, sin
+                poder editarse ni entregarse.
+              </div>
+            )}
+
+            {!anulada && folioReemitidoDe && (
               <div className="mensaje exito" data-testid="aviso-folio-reemitido">
                 <span>
                   Folio reemplazado. El anterior (<span className="mono">{folioReemitidoDe}</span>)
@@ -365,7 +410,7 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
               </div>
             )}
 
-            {!confirmandoFolio ? (
+            {!anulada && !confirmandoFolio ? (
               <button
                 type="button"
                 className="secundario"
@@ -374,7 +419,7 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
               >
                 Generar folio nuevo
               </button>
-            ) : (
+            ) : !anulada ? (
               <div className="mensaje aviso" data-testid="confirmar-reemitir-folio">
                 <span>
                   Esto reemplaza el folio actual por uno calculado con los datos YA guardados de
@@ -402,6 +447,48 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
                   </button>
                 </span>
               </div>
+            ) : null}
+
+            {!anulada && (
+              <>
+                {!confirmandoAnular ? (
+                  <button
+                    type="button"
+                    className="secundario"
+                    data-testid="btn-abrir-anular-solicitud"
+                    onClick={() => setConfirmandoAnular(true)}
+                  >
+                    Anular solicitud
+                  </button>
+                ) : (
+                  <div className="mensaje error" data-testid="confirmar-anular-solicitud">
+                    <span>
+                      Esto ANULA el expediente por completo (no se puede editar ni recibir
+                      entregas después). El registro no se borra: queda como historial, con tu
+                      usuario, fecha y el motivo de abajo. Úsalo cuando el folio se capturó con el
+                      concepto equivocado y hay que volver a capturarlo desde cero.
+                      <br />
+                      <button
+                        type="button"
+                        className="secundario"
+                        data-testid="btn-cancelar-anular-solicitud"
+                        onClick={() => setConfirmandoAnular(false)}
+                        disabled={anulando}
+                      >
+                        Cancelar
+                      </button>{' '}
+                      <button
+                        type="button"
+                        data-testid="btn-confirmar-anular-solicitud"
+                        onClick={() => void anular()}
+                        disabled={anulando}
+                      >
+                        {anulando ? 'Anulando…' : 'Sí, anular esta solicitud'}
+                      </button>
+                    </span>
+                  </div>
+                )}
+              </>
             )}
 
             <div className="rejilla">
@@ -549,7 +636,7 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
           <button type="button" className="secundario" onClick={onCerrar} disabled={guardando}>
             Cancelar
           </button>
-          {!cargando && campos && (
+          {!cargando && campos && !anulada && (
             <button
               type="button"
               className="boton"

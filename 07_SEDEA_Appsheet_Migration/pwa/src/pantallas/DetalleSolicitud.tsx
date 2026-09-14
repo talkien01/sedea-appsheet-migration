@@ -207,7 +207,8 @@ export default function DetalleSolicitud() {
    * backend en GET /:id/folio SÍ lo hubiera dejado pasar. Mismo criterio que
    * ese endpoint, ahora replicado aquí.
    */
-  const puedeImprimirFolio: boolean = autorizada || conceptosAutorizadosDeFacto(detalle.conceptos);
+  const puedeImprimirFolio: boolean =
+    !s.anulada_en && (autorizada || conceptosAutorizadosDeFacto(detalle.conceptos));
 
   // B7-E: nombre o razón social para la carátula según tipo de persona.
   const nombreCaratula: string =
@@ -338,6 +339,13 @@ export default function DetalleSolicitud() {
         <p className="folio-grande" data-testid="detalle-folio">
           {s.folio}
         </p>
+        {s.anulada_en && (
+          <div className="mensaje error" role="alert" data-testid="aviso-detalle-anulada">
+            <strong>Solicitud ANULADA</strong> el {new Date(s.anulada_en).toLocaleString('es-MX')}.
+            {s.motivo_anulacion && <> Motivo: {s.motivo_anulacion}.</>} Queda como historial; no se
+            puede editar, reemitir su folio ni registrar entregas.
+          </div>
+        )}
         <p className="dato">
           Recibida el {new Date(s.recibida_en).toLocaleString('es-MX')} en {s.ventanilla_nombre} ·
           Componente {s.componente} · Proyecto {s.proyecto}

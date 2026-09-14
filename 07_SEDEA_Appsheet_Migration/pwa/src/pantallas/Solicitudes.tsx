@@ -264,7 +264,14 @@ export default function Solicitudes() {
               <tbody>
                 {filas.map((f) => (
                   <tr key={f.id} data-testid="fila-solicitud">
-                    <td data-etiqueta="Folio" className="mono">{f.folio}</td>
+                    <td data-etiqueta="Folio" className="mono">
+                      {f.folio}
+                      {f.anulada && (
+                        <span className="badge alerta-alta" data-testid="badge-anulada" style={{ marginLeft: 6 }}>
+                          Anulada
+                        </span>
+                      )}
+                    </td>
                     <td data-etiqueta="Fecha">{new Date(f.recibida_en).toLocaleDateString('es-MX')}</td>
                     <td data-etiqueta="Solicitante">{f.nombre_solicitante}</td>
                     <td data-etiqueta="Tipo de persona">{f.tipo_persona}</td>

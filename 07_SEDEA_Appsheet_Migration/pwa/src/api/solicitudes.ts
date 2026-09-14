@@ -239,5 +239,21 @@ export const apiSolicitudes = {
       method: 'POST',
       body: JSON.stringify(cuerpo)
     });
+  },
+
+  /**
+   * Anula una solicitud (solo admin). Reemplaza el patron de borrar por SQL
+   * directo: NO elimina el registro, solo lo marca. Mismo candado que
+   * reemitir folio (motivo + contraseña); bloqueada (409 `folio_con_entrega`)
+   * si ya tiene entrega física o conciliación registrada.
+   */
+  anular(
+    id: number,
+    cuerpo: { motivo: string; password: string }
+  ): Promise<{ ok: true; solicitud: Record<string, unknown> }> {
+    return peticion(`/admin/solicitudes/${id}/anular`, {
+      method: 'POST',
+      body: JSON.stringify(cuerpo)
+    });
   }
 };

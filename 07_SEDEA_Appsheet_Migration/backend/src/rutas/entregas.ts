@@ -38,6 +38,7 @@ interface ConceptoConSolicitud {
   regional_id: number;
   autorizada_secretario: boolean;
   autorizado_de_facto: boolean;
+  anulada_en: string | null;
 }
 
 export default async function rutasEntregas(app: FastifyInstance): Promise<void> {
@@ -142,7 +143,7 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
       const concepto = await consultarUna<ConceptoConSolicitud>(
         `SELECT sc.id, sc.solicitud_id, sc.tipo_apoyo_id,
                 s.folio, s.regional_id, s.autorizada_secretario,
-                t.autorizado_de_facto
+                t.autorizado_de_facto, s.anulada_en
            FROM solicitud_conceptos sc
            JOIN solicitudes s ON s.id = sc.solicitud_id
            JOIN tipos_apoyo t ON t.id = sc.tipo_apoyo_id
@@ -154,6 +155,13 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
       const forzada = regionalForzada(usuario);
       if (forzada !== null && Number(concepto.regional_id) !== forzada) {
         throw errorProhibido('La solicitud pertenece a otra Direccion Regional.');
+      }
+
+      // 4-bis) Una solicitud anulada (migracion 038) no se entrega -- si su
+      // folio se descargo a un paquete ANTES de anularse, este candado evita
+      // que igual se registre la entrega.
+      if (concepto.anulada_en) {
+        throw errorProhibido('Esta solicitud fue anulada: no se puede registrar una entrega.');
       }
 
       // 5) Candado de autorización. Los conceptos marcados autorizado_de_facto
@@ -267,7 +275,7 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
   // exige autorización del Secretario; para el resto sí -- ahora evaluado
   // POR RENGLON en el SQL, porque un mismo paquete puede traer varios
   // conceptos con reglas distintas. En todos los casos se excluyen conceptos
-  // ya entregados.
+  // ya entregados y solicitudes anuladas (migracion 038).
   // -------------------------------------------------------------------------
   app.get(
     '/api/entregas/preparar-evento',
@@ -337,6 +345,7 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
            LEFT JOIN entregas_apoyo ea     ON ea.solicitud_concepto_id = sc.id
           WHERE (ta.autorizado_de_facto = TRUE OR s.autorizada_secretario = TRUE)
             AND ea.uuid IS NULL
+            AND s.anulada_en IS NULL
             ${filtroRegional}
             ${filtroMunicipio}
           ORDER BY s.folio, sc.orden`,

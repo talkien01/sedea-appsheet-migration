@@ -85,13 +85,22 @@ const ESCALAS_FOTO_QR = [3200, 2000, 1300, 900];
  * mismo pipeline en vez de duplicarlo.
  */
 export async function decodificarQrDeImagen(archivo: File): Promise<string | null> {
+  // El bitmap se crea SIEMPRE primero (antes se le pasaba el File/Blob
+  // crudo al detector nativo -- bug real, Samsung Galaxy S24+: `detect()`
+  // con un Blob puede fallar donde el mismo detector con un <video> SI
+  // funciona, y el video en vivo por eso leia bien mientras la foto de
+  // respaldo se quedaba muda). Un ImageBitmap es una fuente sin ambiguedad
+  // para `detect()`, y de todos modos hace falta para el canvas de jsQR si
+  // el detector nativo no esta disponible -- se aprovecha el mismo bitmap
+  // para los dos caminos.
+  const bitmap = await createImageBitmap(archivo, { imageOrientation: 'from-image' });
+
   // Detector nativo primero (Chrome/Android): mismo motor que la camara
   // nativa del sistema, mas tolerante a angulo/ruido que jsQR. `undefined` =
-  // el navegador no lo trae (Safari/iPhone), se sigue con jsQR como siempre.
-  const nativo = await leerQrNativo(archivo);
+  // no disponible o fallo la deteccion -- se sigue con jsQR como siempre.
+  const nativo = await leerQrNativo(bitmap);
   if (nativo !== undefined) return nativo;
 
-  const bitmap = await createImageBitmap(archivo, { imageOrientation: 'from-image' });
   const ladoOriginal = Math.max(bitmap.width, bitmap.height);
 
   const lienzo = document.createElement('canvas');

@@ -52,9 +52,18 @@ function obtenerDetector(): BarcodeDetector | null {
 
 /**
  * Intenta leer un QR con el detector nativo del sistema.
- * - `undefined`: el navegador no lo soporta (o no se pudo crear) -- quien
- *   llama debe recurrir a jsQR.
- * - `null`: SI se intentó, pero no se encontró ningún QR en la imagen.
+ * - `undefined`: el navegador no lo soporta, no se pudo crear, O la
+ *   deteccion tiro un error real -- quien llama debe recurrir a jsQR.
+ *   IMPORTANTE: un error de `detect()` NUNCA debe tratarse como "0
+ *   codigos encontrados" -- bug real (2026-09, Samsung Galaxy S24+): pasarle
+ *   un `File`/`Blob` crudo a `detect()` puede fallar (no todas las
+ *   implementaciones aceptan ese tipo de fuente igual que un <video> o un
+ *   ImageBitmap) y el catch original devolvia `null` ("si se intento, no
+ *   hay QR") en vez de `undefined` -- la foto de respaldo nunca caia a
+ *   jsQR y se quedaba muda, mientras el video en vivo (que SI le pasa un
+ *   <video>, fuente sin ambiguedad) funcionaba bien.
+ * - `null`: SI se intentó Y la promesa resolvió sin error, pero no se
+ *   encontró ningún QR en la imagen.
  * - `string`: el texto crudo decodificado.
  */
 export async function leerQrNativo(fuente: ImageBitmapSource): Promise<string | null | undefined> {
@@ -64,8 +73,6 @@ export async function leerQrNativo(fuente: ImageBitmapSource): Promise<string | 
     const codigos = await d.detect(fuente);
     return codigos[0]?.rawValue ?? null;
   } catch {
-    // Un frame de video a medio pintar puede tirar un error momentaneo;
-    // se trata igual que "no encontro nada" para no interrumpir el loop.
-    return null;
+    return undefined;
   }
 }

@@ -248,14 +248,26 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
   );
 
   // -------------------------------------------------------------------------
-  // GET /api/entregas/preparar-evento?tipo_apoyo_id=&regional_id=
+  // GET /api/entregas/preparar-evento?regional_id=&municipio_id=
   //
   // Paquete de trabajo del evento de entrega: lo que la Parte 2 guarda en
   // IndexedDB para operar sin senal. Devuelve UN RENGLON POR CONCEPTO
   // pendiente, no por solicitud.
   //
-  // Para Avena/Garbanzo no se exige autorización del Secretario. Para el resto
-  // sí se conserva. En todos los casos se excluyen conceptos ya entregados.
+  // Ya NO se filtra por concepto (2026-09, feedback real de campo: cambiar
+  // de "paquete de avena" a "paquete de garbanzo" y de vuelta, cuando ambos
+  // se entregan el mismo evento, obligaba a re-descargar cada vez porque
+  // guardarPaqueteEntrega() reemplaza el paquete local por completo -- el
+  // folio ya trae su concepto amarrado, no hace falta elegir de antemano).
+  // Regional sigue forzada por el alcance del usuario; Municipio es un
+  // filtro opcional adicional (un evento puede cubrir varios municipios de
+  // la misma Regional el mismo dia).
+  //
+  // Para Avena/Garbanzo (y cualquier concepto con autorizado_de_facto) no se
+  // exige autorización del Secretario; para el resto sí -- ahora evaluado
+  // POR RENGLON en el SQL, porque un mismo paquete puede traer varios
+  // conceptos con reglas distintas. En todos los casos se excluyen conceptos
+  // ya entregados.
   // -------------------------------------------------------------------------
   app.get(
     '/api/entregas/preparar-evento',
@@ -271,16 +283,6 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
       if (!usuario) throw errorNoAutorizado();
 
       const q = peticion.query as Record<string, string>;
-      const tipoApoyoId = Number(q.tipo_apoyo_id);
-      if (!tipoApoyoId || Number.isNaN(tipoApoyoId)) {
-        throw errorValidacion('tipo_apoyo_id es obligatorio para preparar el evento.');
-      }
-
-      const tipoApoyo = await consultarUna<{ id: number; nombre: string; autorizado_de_facto: boolean }>(
-        'SELECT id, nombre, autorizado_de_facto FROM tipos_apoyo WHERE id = $1',
-        [tipoApoyoId]
-      );
-      if (!tipoApoyo) throw errorNoEncontrado('El tipo de apoyo no existe.');
 
       // El alcance regional del usuario manda sobre el filtro pedido.
       const forzada = regionalForzada(usuario);
@@ -288,16 +290,29 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
       if (regionalId !== null && Number.isNaN(regionalId)) regionalId = null;
       if (forzada !== null) regionalId = forzada;
 
-      const parametros: unknown[] = [tipoApoyoId];
+      let municipioId: number | null = q.municipio_id ? Number(q.municipio_id) : null;
+      if (municipioId !== null && Number.isNaN(municipioId)) municipioId = null;
+      let municipioNombre: string | null = null;
+      if (municipioId !== null) {
+        const municipio = await consultarUna<{ nombre: string }>(
+          'SELECT nombre FROM municipios WHERE id = $1 AND activo',
+          [municipioId]
+        );
+        if (!municipio) throw errorNoEncontrado('El municipio seleccionado no existe.');
+        municipioNombre = municipio.nombre;
+      }
+
+      const parametros: unknown[] = [];
       let filtroRegional = '';
       if (regionalId !== null) {
         parametros.push(regionalId);
         filtroRegional = `AND s.regional_id = $${parametros.length}`;
       }
-
-      const filtroAutorizacion = esAutorizadoDeFacto(tipoApoyo)
-        ? ''
-        : 'AND s.autorizada_secretario = TRUE';
+      let filtroMunicipio = '';
+      if (municipioId !== null) {
+        parametros.push(municipioId);
+        filtroMunicipio = `AND s.dom_municipio_id = $${parametros.length}`;
+      }
 
       const filas = await consultar<Record<string, unknown>>(
         `SELECT sc.id                       AS solicitud_concepto_id,
@@ -320,10 +335,10 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
            LEFT JOIN direcciones_regionales dr ON dr.id = s.regional_id
            LEFT JOIN municipios mun        ON mun.id = s.dom_municipio_id
            LEFT JOIN entregas_apoyo ea     ON ea.solicitud_concepto_id = sc.id
-          WHERE sc.tipo_apoyo_id = $1
-            ${filtroAutorizacion}
+          WHERE (ta.autorizado_de_facto = TRUE OR s.autorizada_secretario = TRUE)
             AND ea.uuid IS NULL
             ${filtroRegional}
+            ${filtroMunicipio}
           ORDER BY s.folio, sc.orden`,
         parametros
       );
@@ -345,11 +360,22 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
         unidad_medida: (f.unidad_medida as string | null) ?? null
       }));
 
+      // Desglose por concepto: el paquete ya no trae un solo tipo de apoyo,
+      // asi que la pantalla de descarga y la cabecera de "Entregar apoyos"
+      // usan esto para seguir diciendo algo util ("210 avena, 132 garbanzo").
+      const porConceptoMapa = new Map<number, { tipo_apoyo_nombre: string; total: number }>();
+      for (const c of conceptos) {
+        const entrada = porConceptoMapa.get(c.tipo_apoyo_id);
+        if (entrada) entrada.total += 1;
+        else porConceptoMapa.set(c.tipo_apoyo_id, { tipo_apoyo_nombre: c.tipo_apoyo_nombre, total: 1 });
+      }
+      const porConcepto = [...porConceptoMapa.entries()]
+        .map(([tipo_apoyo_id, v]) => ({ tipo_apoyo_id, ...v }))
+        .sort((a, b) => b.total - a.total);
+
       const paquete: PaqueteEventoEntrega = {
         generado_en: new Date().toISOString(),
         filtro: {
-          tipo_apoyo_id: tipoApoyoId,
-          tipo_apoyo_nombre: tipoApoyo.nombre,
           regional_id: regionalId,
           regional_nombre:
             regionalId === null
@@ -359,9 +385,12 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
                     'SELECT nombre FROM direcciones_regionales WHERE id = $1',
                     [regionalId]
                   )
-                )?.nombre ?? null)
+                )?.nombre ?? null),
+          municipio_id: municipioId,
+          municipio_nombre: municipioNombre
         },
         total: conceptos.length,
+        por_concepto: porConcepto,
         conceptos
       };
 

@@ -21,10 +21,10 @@ import { formatearFecha } from './Sync';
 export default function PrepararEntrega() {
   const enLinea = useEstadoRed();
 
-  const [tiposApoyo, setTiposApoyo] = useState<EntradaCatalogoLocal[]>([]);
   const [regionales, setRegionales] = useState<EntradaCatalogoLocal[]>([]);
-  const [tipoApoyoId, setTipoApoyoId] = useState('');
+  const [municipios, setMunicipios] = useState<EntradaCatalogoLocal[]>([]);
   const [regionalId, setRegionalId] = useState('');
+  const [municipioId, setMunicipioId] = useState('');
 
   const [evento, setEvento] = useState<EventoEntregaLocal | null>(null);
   const [enDispositivo, setEnDispositivo] = useState(0);
@@ -57,26 +57,35 @@ export default function PrepararEntrega() {
 
   useEffect(() => {
     void (async () => {
-      setTiposApoyo(await catalogosPorGrupo('tipo_apoyo'));
       setRegionales(await catalogosPorGrupo('regional'));
+      setMunicipios(await catalogosPorGrupo('municipio'));
       await refrescar();
     })();
   }, [refrescar]);
 
+  // Municipio pertenece a una Regional (misma relacion que ya usa el resto
+  // de la app, ej. BuscadorLocalidad): sin Regional elegida se ofrecen
+  // todos; con una elegida, solo los suyos. Cambiar de Regional invalida un
+  // Municipio que ya no encaja, para no dejar una combinacion inconsistente.
+  const municipiosFiltrados = regionalId
+    ? municipios.filter((m) => String(m.datos?.regional_id) === regionalId)
+    : municipios;
+
   const descargar = async () => {
-    if (!tipoApoyoId) return;
     setError(null);
     setMensaje(null);
     setTrabajando(true);
     try {
       const paquete = await api.prepararEventoEntrega(
-        Number(tipoApoyoId),
-        regionalId ? Number(regionalId) : null
+        regionalId ? Number(regionalId) : null,
+        municipioId ? Number(municipioId) : null
       );
       await guardarPaqueteEntrega(paquete);
       await refrescar();
+      const desglose = paquete.por_concepto.map((c) => `${c.total} ${c.tipo_apoyo_nombre}`).join(', ');
       setMensaje(
-        `Paquete descargado: ${paquete.total} concepto(s) por entregar de ${paquete.filtro.tipo_apoyo_nombre}.`
+        `Paquete descargado: ${paquete.total} concepto(s) por entregar` +
+          (desglose ? ` (${desglose}).` : '.')
       );
     } catch (fallo) {
       setError(
@@ -121,22 +130,11 @@ export default function PrepararEntrega() {
           </div>
         )}
 
-        <div className="campo">
-          <label htmlFor="entrega-tipo-apoyo">Concepto a entregar</label>
-          <select
-            id="entrega-tipo-apoyo"
-            data-testid="entrega-tipo-apoyo"
-            value={tipoApoyoId}
-            onChange={(e) => setTipoApoyoId(e.target.value)}
-          >
-            <option value="">Selecciona un concepto…</option>
-            {tiposApoyo.map((t) => (
-              <option key={t.clave} value={Number(t.datos?.id)}>
-                {t.valor}
-              </option>
-            ))}
-          </select>
-        </div>
+        <p className="dato">
+          El paquete trae TODOS los conceptos pendientes de entregar (el folio ya trae el suyo
+          amarrado): ya no hace falta elegir uno solo, ni volver a descargar al cambiar de
+          concepto en el mismo evento.
+        </p>
 
         <div className="campo">
           <label htmlFor="entrega-regional">Dirección Regional (opcional)</label>
@@ -144,7 +142,11 @@ export default function PrepararEntrega() {
             id="entrega-regional"
             data-testid="entrega-regional"
             value={regionalId}
-            onChange={(e) => setRegionalId(e.target.value)}
+            onChange={(e) => {
+              setRegionalId(e.target.value);
+              // Un Municipio ya elegido puede pertenecer a otra Regional.
+              setMunicipioId('');
+            }}
           >
             <option value="">Todas las que me correspondan</option>
             {regionales.map((r) => (
@@ -155,11 +157,28 @@ export default function PrepararEntrega() {
           </select>
         </div>
 
+        <div className="campo">
+          <label htmlFor="entrega-municipio">Municipio (opcional)</label>
+          <select
+            id="entrega-municipio"
+            data-testid="entrega-municipio"
+            value={municipioId}
+            onChange={(e) => setMunicipioId(e.target.value)}
+          >
+            <option value="">Todos los municipios</option>
+            {municipiosFiltrados.map((m) => (
+              <option key={m.clave} value={Number(m.datos?.id)}>
+                {m.valor}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <button
           type="button"
           data-testid="entrega-descargar"
           onClick={() => void descargar()}
-          disabled={!enLinea || trabajando || !tipoApoyoId}
+          disabled={!enLinea || trabajando}
         >
           {trabajando ? 'Descargando…' : 'Descargar paquete del evento'}
         </button>
@@ -170,11 +189,17 @@ export default function PrepararEntrega() {
         <p className="dato" data-testid="entrega-total-local">
           <strong>Conceptos por entregar guardados:</strong> {enDispositivo}
         </p>
-        <p className="dato" data-testid="entrega-concepto-local">
-          <strong>Concepto:</strong> {evento?.tipo_apoyo_nombre ?? 'Ninguno'}
-        </p>
+        {evento && evento.por_concepto.length > 0 && (
+          <p className="dato" data-testid="entrega-concepto-local">
+            <strong>Desglose:</strong>{' '}
+            {evento.por_concepto.map((c) => `${c.total} ${c.tipo_apoyo_nombre}`).join(', ')}
+          </p>
+        )}
         <p className="dato" data-testid="entrega-regional-local">
           <strong>Regional:</strong> {evento?.regional_nombre ?? 'Todas'}
+        </p>
+        <p className="dato" data-testid="entrega-municipio-local">
+          <strong>Municipio:</strong> {evento?.municipio_nombre ?? 'Todos'}
         </p>
         <p className="dato" data-testid="entrega-descargado-en">
           <strong>Descargado:</strong> {formatearFecha(evento?.descargado_en ?? null)}

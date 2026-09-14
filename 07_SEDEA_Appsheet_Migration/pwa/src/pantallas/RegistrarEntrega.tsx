@@ -41,6 +41,18 @@ function descripcionConcepto(c: ConceptoEntregaLocal): string {
   return c.concepto_descripcion?.trim() || c.tipo_apoyo_nombre;
 }
 
+/**
+ * Nombre del paquete descargado para la cabecera. Ya no describe un solo
+ * concepto (el paquete trae todos los pendientes de la Regional/Municipio
+ * elegidos) -- muestra el lugar y, si cabe, el desglose por concepto.
+ */
+function nombreEvento(evento: EventoEntregaLocal): string {
+  const lugar = evento.municipio_nombre ?? evento.regional_nombre ?? 'Paquete descargado';
+  if (evento.por_concepto.length === 0) return lugar;
+  const desglose = evento.por_concepto.map((c) => `${c.total} ${c.tipo_apoyo_nombre}`).join(', ');
+  return `${lugar} · ${desglose}`;
+}
+
 function cantidadConUnidad(c: ConceptoEntregaLocal): string {
   return `${c.cantidad} ${c.unidad_medida ?? ''}`.trim();
 }
@@ -251,7 +263,7 @@ export default function RegistrarEntrega() {
         <div>
           <strong>Entregar apoyos</strong>
           <span className="campo-entrega-evento" data-testid="entrega-evento-nombre">
-            {evento ? evento.tipo_apoyo_nombre : 'Sin paquete'}
+            {evento ? nombreEvento(evento) : 'Sin paquete'}
           </span>
         </div>
         <button

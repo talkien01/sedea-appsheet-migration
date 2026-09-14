@@ -153,13 +153,18 @@ export const api = {
     return peticion<RespuestaEntregaApoyo>('/entregas', { method: 'POST', body: formulario });
   },
 
-  /** Paquete de trabajo del evento de entrega, para guardarlo en IndexedDB. */
+  /**
+   * Paquete de trabajo del evento de entrega, para guardarlo en IndexedDB.
+   * Ya no se filtra por concepto (el folio ya trae el suyo amarrado): solo
+   * Regional (forzada por el rol del usuario) y Municipio, ambos opcionales.
+   */
   async prepararEventoEntrega(
-    tipoApoyoId: number,
-    regionalId?: number | null
+    regionalId?: number | null,
+    municipioId?: number | null
   ): Promise<PaqueteEventoEntrega> {
-    const parametros = new URLSearchParams({ tipo_apoyo_id: String(tipoApoyoId) });
+    const parametros = new URLSearchParams();
     if (regionalId) parametros.set('regional_id', String(regionalId));
+    if (municipioId) parametros.set('municipio_id', String(municipioId));
     return peticion<PaqueteEventoEntrega>(`/entregas/preparar-evento?${parametros.toString()}`);
   },
 

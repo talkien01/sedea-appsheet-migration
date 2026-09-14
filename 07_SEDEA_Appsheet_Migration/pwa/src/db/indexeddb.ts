@@ -78,16 +78,22 @@ export interface EntregaLocal {
   error_msg?: string | null;
 }
 
-/** Metadatos del ultimo paquete descargado (registro unico, id = 1). */
+/**
+ * Metadatos del ultimo paquete descargado (registro unico, id = 1). Ya no
+ * describe un concepto (el paquete ya no se filtra por tipo de apoyo): ahora
+ * describe la Regional/Municipio con la que se descargo, mas el desglose por
+ * concepto para que la cabecera de "Entregar apoyos" siga siendo informativa.
+ */
 export interface EventoEntregaLocal {
   id: number; // siempre 1
   generado_en: string;
   descargado_en: string;
-  tipo_apoyo_id: number;
-  tipo_apoyo_nombre: string;
   regional_id: number | null;
   regional_nombre: string | null;
+  municipio_id: number | null;
+  municipio_nombre: string | null;
   total: number;
+  por_concepto: { tipo_apoyo_id: number; tipo_apoyo_nombre: string; total: number }[];
 }
 
 class BaseCampo extends Dexie {

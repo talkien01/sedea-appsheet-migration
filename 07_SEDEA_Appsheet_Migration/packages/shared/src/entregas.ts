@@ -106,17 +106,31 @@ export interface ConceptoPorEntregar {
   unidad_medida: string | null;
 }
 
+/**
+ * Cuenta de un concepto dentro de un paquete de entrega. El paquete ya no se
+ * filtra por concepto (el folio ya trae el suyo amarrado, migracion "un solo
+ * paquete por Regional/Municipio"), asi que la pantalla de descarga y la
+ * cabecera de "Entregar apoyos" usan este desglose para seguir siendo
+ * informativas ("210 avena, 132 garbanzo") sin un unico nombre de concepto.
+ */
+export interface ConteoPorConcepto {
+  tipo_apoyo_id: number;
+  tipo_apoyo_nombre: string;
+  total: number;
+}
+
 /** Respuesta de GET /api/entregas/preparar-evento. */
 export interface PaqueteEventoEntrega {
   /** Momento en que el servidor armo el paquete (ISO 8601). */
   generado_en: string;
   filtro: {
-    tipo_apoyo_id: number;
-    tipo_apoyo_nombre: string;
     regional_id: number | null;
     regional_nombre: string | null;
+    municipio_id: number | null;
+    municipio_nombre: string | null;
   };
   total: number;
+  por_concepto: ConteoPorConcepto[];
   conceptos: ConceptoPorEntregar[];
 }
 

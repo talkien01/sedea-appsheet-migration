@@ -246,11 +246,12 @@ export async function guardarPaqueteEntrega(paquete: PaqueteEventoEntrega): Prom
     id: 1,
     generado_en: paquete.generado_en,
     descargado_en: new Date().toISOString(),
-    tipo_apoyo_id: paquete.filtro.tipo_apoyo_id,
-    tipo_apoyo_nombre: paquete.filtro.tipo_apoyo_nombre,
     regional_id: paquete.filtro.regional_id,
     regional_nombre: paquete.filtro.regional_nombre,
-    total: paquete.total
+    municipio_id: paquete.filtro.municipio_id,
+    municipio_nombre: paquete.filtro.municipio_nombre,
+    total: paquete.total,
+    por_concepto: paquete.por_concepto
   };
   await db.transaction('rw', db.conceptos_entrega, db.evento_entrega, async () => {
     await db.conceptos_entrega.clear();

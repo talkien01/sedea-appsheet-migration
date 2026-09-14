@@ -1,4 +1,4 @@
-// Panel de auditoria: filtros, tabla, mapa Leaflet y exportacion CSV.
+// Panel de auditoria: filtros, tabla, mapa Leaflet y exportacion Excel.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { DireccionRegional, Municipio } from '@sedea/shared';
@@ -114,19 +114,19 @@ export default function Auditoria() {
     p.delete('page');
     p.delete('page_size');
     try {
-      const respuesta = await fetch(`${URL_API}/auditoria/export.csv?${p.toString()}`, {
+      const respuesta = await fetch(`${URL_API}/auditoria/export.xlsx?${p.toString()}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined
       });
       if (!respuesta.ok) throw new Error('export');
       const blob = await respuesta.blob();
       const enlace = document.createElement('a');
       enlace.href = URL.createObjectURL(blob);
-      enlace.download = `capturas_sedea_${new Date().toISOString().slice(0, 10)}.csv`;
+      enlace.download = `capturas_sedea_${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(enlace);
       enlace.click();
       enlace.remove();
     } catch {
-      setError('No fue posible generar el archivo CSV.');
+      setError('No fue posible generar el archivo Excel.');
     }
   };
 
@@ -228,7 +228,7 @@ export default function Auditoria() {
 
         <div className="acciones">
           <button type="button" onClick={() => void exportarCsv()}>
-            Exportar CSV
+            Exportar Excel
           </button>
           <button type="button" className="secundario" onClick={() => void cargar()}>
             Actualizar

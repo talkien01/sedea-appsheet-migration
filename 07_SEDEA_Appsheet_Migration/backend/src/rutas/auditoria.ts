@@ -6,7 +6,8 @@ import { consultar, consultarUna } from '../db/pool.js';
 import { regionalForzada } from '../plugins/rbac.js';
 import { errorNoAutorizado, errorNoEncontrado, errorProhibido } from '../plugins/errores.js';
 import { registrarAuditoria } from '../plugins/auditoria.js';
-import { generarCsv, formatearFecha } from '../servicios/csv.js';
+import { formatearFecha } from '../servicios/csv.js';
+import { generarXlsx, CONTENT_TYPE_XLSX, type ColumnaXlsx } from '../servicios/xlsx.js';
 import { generarExpedientePdf } from '../servicios/pdf.js';
 
 /** Construye el WHERE comun de las consultas de auditoria. */
@@ -154,25 +155,27 @@ export default async function rutasAuditoria(app: FastifyInstance): Promise<void
     });
   });
 
-  const COLUMNAS_EXPORT = [
-    'uuid',
-    'folio',
-    'beneficiario',
-    'curp',
-    'regional',
-    'municipio',
-    'colonia',
-    'seccion',
-    'lat',
-    'lng',
-    'precision_m',
-    'capturado_en',
-    'capturista',
-    'observaciones'
+  const COLUMNAS_EXPORT: ColumnaXlsx[] = [
+    { header: 'UUID', width: 26 },
+    { header: 'Folio', width: 20 },
+    { header: 'Beneficiario', width: 32 },
+    { header: 'CURP', width: 20 },
+    { header: 'Dirección Regional', width: 18 },
+    { header: 'Municipio', width: 20 },
+    { header: 'Colonia', width: 20 },
+    { header: 'Sección', width: 10 },
+    { header: 'Latitud', width: 14, numFmt: '0.000000' },
+    { header: 'Longitud', width: 14, numFmt: '0.000000' },
+    { header: 'Precisión (m)', width: 14 },
+    { header: 'Capturado', width: 18 },
+    { header: 'Capturista', width: 24 },
+    { header: 'Observaciones', width: 32 }
   ];
 
-  // E11 - Exportacion CSV de todas las filas del filtro actual.
-  app.get('/api/auditoria/export.csv', soloAuditores, async (peticion, respuesta) => {
+  // E11 - Exportacion a Excel de todas las filas del filtro actual. Antes era
+  // CSV (2026-09, cambio deliberado): un CSV con coma como separador se abre
+  // mal en Excel configurado en español/México -- ver `servicios/xlsx.ts`.
+  app.get('/api/auditoria/export.xlsx', soloAuditores, async (peticion, respuesta) => {
     const usuario = peticion.usuario!;
     const q = esquemaConsultaAuditoria.parse(peticion.query ?? {});
     const { where, parametros } = construirFiltros(usuario, q);
@@ -182,9 +185,10 @@ export default async function rutasAuditoria(app: FastifyInstance): Promise<void
       parametros
     );
 
-    const csv = generarCsv(
-      COLUMNAS_EXPORT,
-      filas.map((f) => [
+    const buffer = await generarXlsx({
+      hoja: 'Capturas',
+      columnas: COLUMNAS_EXPORT,
+      filas: filas.map((f) => [
         f.uuid,
         f.folio,
         f.beneficiario_nombre,
@@ -200,21 +204,21 @@ export default async function rutasAuditoria(app: FastifyInstance): Promise<void
         f.capturista ?? '',
         f.observaciones ?? ''
       ])
-    );
+    });
 
     await registrarAuditoria(peticion, {
       usuarioId: usuario.id,
-      accion: 'export_csv',
+      accion: 'export_xlsx',
       entidad: 'captura',
       detalle: { filas: filas.length, filtros: q }
     });
 
-    const nombre = `capturas_sedea_${new Date().toISOString().slice(0, 10)}.csv`;
+    const nombre = `capturas_sedea_${new Date().toISOString().slice(0, 10)}.xlsx`;
     return respuesta
-      .header('content-type', 'text/csv; charset=utf-8')
+      .header('content-type', CONTENT_TYPE_XLSX)
       .header('content-disposition', `attachment; filename="${nombre}"`)
       .status(200)
-      .send(csv);
+      .send(buffer);
   });
 
   /** Carga el beneficiario y sus capturas verificando el alcance por Regional. */
@@ -250,27 +254,29 @@ export default async function rutasAuditoria(app: FastifyInstance): Promise<void
     return { beneficiario, capturas };
   }
 
-  // E12/E13 - Expediente por beneficiario. El sufijo del archivo (.pdf o .csv)
-  // decide el formato; se resuelve en el handler para no depender de rutas
-  // parametricas con extension.
+  // E12/E13 - Expediente por beneficiario. El sufijo del archivo (.pdf o
+  // .xlsx) decide el formato; se resuelve en el handler para no depender de
+  // rutas parametricas con extension. Era .csv (2026-09, cambio deliberado,
+  // ver `servicios/xlsx.ts`).
   app.get<{ Params: { archivo: string } }>(
     '/api/auditoria/expediente/:archivo',
     soloAuditores,
     async (peticion, respuesta) => {
       const usuario = peticion.usuario!;
       const archivo = peticion.params.archivo;
-      const formato = archivo.endsWith('.pdf') ? 'pdf' : archivo.endsWith('.csv') ? 'csv' : null;
-      if (!formato) throw errorNoEncontrado('Formato de expediente no soportado (usa .pdf o .csv).');
+      const formato = archivo.endsWith('.pdf') ? 'pdf' : archivo.endsWith('.xlsx') ? 'xlsx' : null;
+      if (!formato) throw errorNoEncontrado('Formato de expediente no soportado (usa .pdf o .xlsx).');
 
-      const id = Number(archivo.replace(/\.(pdf|csv)$/i, ''));
+      const id = Number(archivo.replace(/\.(pdf|xlsx)$/i, ''));
       if (!Number.isInteger(id) || id <= 0) throw errorNoEncontrado('Beneficiario no encontrado.');
 
       const { beneficiario, capturas } = await cargarExpediente(usuario, id);
 
-      if (formato === 'csv') {
-        const csv = generarCsv(
-          COLUMNAS_EXPORT,
-          capturas.map((c) => [
+      if (formato === 'xlsx') {
+        const buffer = await generarXlsx({
+          hoja: 'Expediente',
+          columnas: COLUMNAS_EXPORT,
+          filas: capturas.map((c) => [
             c.uuid,
             beneficiario.folio,
             beneficiario.nombre_completo,
@@ -286,24 +292,24 @@ export default async function rutasAuditoria(app: FastifyInstance): Promise<void
             c.capturista ?? '',
             c.observaciones ?? ''
           ])
-        );
+        });
 
         await registrarAuditoria(peticion, {
           usuarioId: usuario.id,
-          accion: 'export_csv',
+          accion: 'export_xlsx',
           entidad: 'beneficiario',
           entidadId: id,
           detalle: { capturas: capturas.length }
         });
 
         return respuesta
-          .header('content-type', 'text/csv; charset=utf-8')
+          .header('content-type', CONTENT_TYPE_XLSX)
           .header(
             'content-disposition',
-            `attachment; filename="expediente_${beneficiario.folio}.csv"`
+            `attachment; filename="expediente_${beneficiario.folio}.xlsx"`
           )
           .status(200)
-          .send(csv);
+          .send(buffer);
       }
 
       const pdf = await generarExpedientePdf({

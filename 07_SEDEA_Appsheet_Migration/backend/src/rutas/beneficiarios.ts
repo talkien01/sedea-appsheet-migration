@@ -8,7 +8,8 @@ import { regionalForzada } from '../plugins/rbac.js';
 import { errorNoAutorizado, errorNoEncontrado, errorProhibido } from '../plugins/errores.js';
 import { registrarAuditoria } from '../plugins/auditoria.js';
 import { aplicarCorreccion } from '../servicios/correcciones.js';
-import { generarCsv, formatearFecha } from '../servicios/csv.js';
+import { formatearFecha } from '../servicios/csv.js';
+import { generarXlsx, CONTENT_TYPE_XLSX, type ColumnaXlsx } from '../servicios/xlsx.js';
 import { ErrorApi } from '../plugins/errores.js';
 
 /**
@@ -190,41 +191,43 @@ export default async function rutasBeneficiarios(app: FastifyInstance): Promise<
   );
 
   // ---------------------------------------------------------------------
-  // Exportacion a CSV del filtro ACTUAL del padron (mismo criterio que
-  // /api/auditoria/export.csv). No exporta el padron completo: reusa
+  // Exportacion a Excel del filtro ACTUAL del padron (mismo criterio que
+  // /api/auditoria/export.xlsx). No exporta el padron completo: reusa
   // `construirFiltrosBeneficiarios`, asi que Regional, municipio, colonia,
   // seccion y busqueda libre aplican igual que en pantalla, y la Regional
   // forzada del actor sigue siendo inviolable.
   //
-  // El escape de celdas (incluida la mitigacion de CSV injection) es el de
-  // `generarCsv`; aqui no se arma texto CSV a mano.
+  // Antes era CSV (2026-09, cambio deliberado): un CSV con coma como
+  // separador se abre mal en Excel configurado en español/México (el
+  // separador de lista regional ahi es punto y coma) -- .xlsx real no
+  // depende de ningun delimitador. Ver `servicios/xlsx.ts`.
   // ---------------------------------------------------------------------
-  const COLUMNAS_EXPORT = [
-    'folio',
-    'nombre_completo',
-    'curp',
-    'regional',
-    'municipio',
-    'colonia',
-    'seccion',
-    'localidad',
-    'domicilio',
-    'telefono',
-    'concepto_apoyo',
-    'cantidad_asignada',
-    'total_capturas',
-    'fecha_captura'
+  const COLUMNAS_EXPORT: ColumnaXlsx[] = [
+    { header: 'Folio', width: 20 },
+    { header: 'Nombre completo', width: 32 },
+    { header: 'CURP', width: 20 },
+    { header: 'Dirección Regional', width: 18 },
+    { header: 'Municipio', width: 20 },
+    { header: 'Colonia', width: 20 },
+    { header: 'Sección', width: 10 },
+    { header: 'Localidad', width: 20 },
+    { header: 'Domicilio', width: 28 },
+    { header: 'Teléfono', width: 14 },
+    { header: 'Concepto de apoyo', width: 26 },
+    { header: 'Cantidad asignada', width: 16, numFmt: '#,##0.00' },
+    { header: 'Total capturas', width: 14 },
+    { header: 'Fecha de captura', width: 18 }
   ];
 
   app.get(
-    '/api/beneficiarios/export.csv',
+    '/api/beneficiarios/export.xlsx',
     { preHandler: [app.autenticar, app.requiereRol(...ROLES_PADRON)] },
     async (peticion, respuesta) => {
       const usuario = peticion.usuario;
       if (!usuario) throw errorNoAutorizado();
 
       // Un director acotado a su Regional consulta pero no exporta: exportar
-      // a Excel/CSV es exclusivo del perfil central (sin Regional asignada).
+      // a Excel es exclusivo del perfil central (sin Regional asignada).
       // Un auditor regional SI conserva su export de siempre; esta restriccion
       // es unicamente para el rol nuevo `director`.
       if (usuario.rol.split('+').includes('director') && regionalForzada(usuario) !== null) {
@@ -256,9 +259,10 @@ export default async function rutasBeneficiarios(app: FastifyInstance): Promise<
         parametros
       );
 
-      const csv = generarCsv(
-        COLUMNAS_EXPORT,
-        filas.map((f) => [
+      const buffer = await generarXlsx({
+        hoja: 'Padrón',
+        columnas: COLUMNAS_EXPORT,
+        filas: filas.map((f) => [
           f.folio,
           f.nombre_completo,
           f.curp ?? '',
@@ -274,21 +278,21 @@ export default async function rutasBeneficiarios(app: FastifyInstance): Promise<
           f.total_capturas,
           formatearFecha(f.ultima_captura_en)
         ])
-      );
+      });
 
       await registrarAuditoria(peticion, {
         usuarioId: usuario.id,
-        accion: 'export_csv',
+        accion: 'export_xlsx',
         entidad: 'beneficiario',
         detalle: { filas: filas.length, regional_id: regional, filtros: q }
       });
 
-      const nombre = `beneficiarios_sedea_${new Date().toISOString().slice(0, 10)}.csv`;
+      const nombre = `beneficiarios_sedea_${new Date().toISOString().slice(0, 10)}.xlsx`;
       return respuesta
-        .header('content-type', 'text/csv; charset=utf-8')
+        .header('content-type', CONTENT_TYPE_XLSX)
         .header('content-disposition', `attachment; filename="${nombre}"`)
         .status(200)
-        .send(csv);
+        .send(buffer);
     }
   );
 

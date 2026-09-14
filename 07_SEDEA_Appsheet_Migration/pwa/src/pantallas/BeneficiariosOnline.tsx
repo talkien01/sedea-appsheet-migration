@@ -36,7 +36,7 @@ export default function BeneficiariosOnline() {
   const enLinea = useEstadoRed();
 
   // Un director con Regional asignada consulta pero no exporta: el backend
-  // rechaza /beneficiarios/export.csv en ese caso (ver beneficiarios.ts), asi
+  // rechaza /beneficiarios/export.xlsx en ese caso (ver beneficiarios.ts), asi
   // que aqui solo se oculta el boton para no ofrecer una accion que fallaria.
   const puedeExportar = !(
     perfil?.rol.split('+').includes('director') && perfil?.regional_id
@@ -146,13 +146,13 @@ export default function BeneficiariosOnline() {
     try {
       const sesion = await obtenerSesion();
       const parametros = armarParametros(1, false);
-      const respuesta = await fetch(`${URL_API}/beneficiarios/export.csv?${parametros.toString()}`, {
+      const respuesta = await fetch(`${URL_API}/beneficiarios/export.xlsx?${parametros.toString()}`, {
         headers: sesion?.token ? { Authorization: `Bearer ${sesion.token}` } : undefined
       });
       if (!respuesta.ok) throw new Error('export');
       descargarBlob(
         await respuesta.blob(),
-        `beneficiarios_en_linea_${new Date().toISOString().slice(0, 10)}.csv`
+        `beneficiarios_en_linea_${new Date().toISOString().slice(0, 10)}.xlsx`
       );
     } catch {
       setError('No fue posible exportar el padrón.');
@@ -278,7 +278,7 @@ export default function BeneficiariosOnline() {
               disabled={exportando || cargando}
               onClick={() => void exportarCsv()}
             >
-              {exportando ? 'Exportando…' : '⬇️ Exportar CSV filtrado'}
+              {exportando ? 'Exportando…' : '⬇️ Exportar Excel filtrado'}
             </button>
           </div>
         )}

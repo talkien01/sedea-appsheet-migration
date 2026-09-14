@@ -153,7 +153,7 @@ export default function Beneficiarios() {
   // ---------------------------------------------------------------------
   // Exportar / imprimir.
   //
-  // CSV: usa TODO el resultado filtrado.
+  // Excel: usa TODO el resultado filtrado.
   // PDF: usa la PAGINA ACTUAL como lote de impresion. Esto permite seleccionar
   // 50 o 100 en "Mostrar por página", imprimir, avanzar a la página siguiente
   // y generar el siguiente lote sin crear un PDF gigantesco.
@@ -181,16 +181,16 @@ export default function Beneficiarios() {
     try {
       const sesion = await obtenerSesion();
       const p = new URLSearchParams(filtroServidor);
-      const respuesta = await fetch(`${URL_API}/beneficiarios/export.csv?${p.toString()}`, {
+      const respuesta = await fetch(`${URL_API}/beneficiarios/export.xlsx?${p.toString()}`, {
         headers: sesion?.token ? { Authorization: `Bearer ${sesion.token}` } : undefined
       });
       if (!respuesta.ok) throw new Error('export');
       descargarBlob(
         await respuesta.blob(),
-        `beneficiarios_sedea_${new Date().toISOString().slice(0, 10)}.csv`
+        `beneficiarios_sedea_${new Date().toISOString().slice(0, 10)}.xlsx`
       );
     } catch {
-      setErrorAccion('No fue posible generar el archivo CSV. Revisa tu conexión.');
+      setErrorAccion('No fue posible generar el archivo Excel. Revisa tu conexión.');
     } finally {
       setTrabajando(null);
     }
@@ -413,7 +413,7 @@ export default function Beneficiarios() {
             disabled={trabajando !== null}
             onClick={() => void exportarCsv()}
           >
-            {trabajando === 'csv' ? 'Generando CSV…' : '⬇️ Exportar a CSV'}
+            {trabajando === 'csv' ? 'Generando Excel…' : '⬇️ Exportar a Excel'}
           </button>
           <button
             type="button"
@@ -431,7 +431,7 @@ export default function Beneficiarios() {
         </div>
 
         <p className="dato">
-          El CSV usa todos los beneficiarios filtrados. La impresión genera únicamente la página
+          El Excel usa todos los beneficiarios filtrados. La impresión genera únicamente la página
           actual como lote; selecciona 50 o 100 en "Mostrar por página" y avanza con
           Anterior/Siguiente para imprimir los lotes consecutivos. En el PDF solo entran los
           beneficiarios con autorización del Secretario.

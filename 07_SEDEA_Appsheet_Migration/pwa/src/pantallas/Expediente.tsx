@@ -46,7 +46,7 @@ export default function Expediente() {
   }, [cargar]);
 
   /** Descarga un archivo del expediente adjuntando el token en la cabecera. */
-  const descargar = async (extension: 'pdf' | 'csv') => {
+  const descargar = async (extension: 'pdf' | 'xlsx') => {
     try {
       const respuesta = await fetch(
         `${URL_API}/auditoria/expediente/${beneficiarioId}.${extension}`,
@@ -113,8 +113,8 @@ export default function Expediente() {
           <button type="button" onClick={() => void descargar('pdf')}>
             Descargar expediente PDF
           </button>
-          <button type="button" className="secundario" onClick={() => void descargar('csv')}>
-            Descargar expediente CSV
+          <button type="button" className="secundario" onClick={() => void descargar('xlsx')}>
+            Descargar expediente Excel
           </button>
           <Link className="boton secundario" to="/auditoria">
             Volver al panel

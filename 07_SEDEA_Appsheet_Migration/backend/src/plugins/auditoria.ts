@@ -10,6 +10,7 @@ export type AccionAuditoria =
   | 'captura_creada'
   | 'captura_duplicada'
   | 'export_csv'
+  | 'export_xlsx'
   | 'export_pdf'
   | 'import_padron'
   // Build 4: administracion de usuarios (nunca incluyen contrasenas).

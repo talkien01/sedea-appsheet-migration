@@ -60,12 +60,23 @@ export interface EscanerQr {
 /**
  * Decodifica el QR de una imagen estática (foto de la cámara nativa, no
  * video). Mismo pipeline que `leerFrame` (canvas + getImageData + jsQR), pero
- * corrido una sola vez sobre una foto en vez de en loop sobre un stream. El
- * lado máximo es mayor que el del video (2400 vs 1920) porque una foto nativa
- * suele venir con más resolución real y no hay costo de mantenerla en
- * memoria por más de un instante.
+ * corrido sobre una foto en vez de en loop sobre un stream.
+ *
+ * Prueba VARIAS resoluciones, de mayor a menor, y se queda con la primera
+ * que decodifique -- caso real, 2026-09: una foto bien encuadrada y nítida
+ * del QR (no de la Constancia completa) igual falló con un solo tamaño fijo.
+ * jsQR puede fallar tanto por MUY POCO detalle (QR chico dentro de una foto
+ * grande, reducido de más) como por DEMASIADO detalle (una imagen nativa de
+ * celular reciente puede traer más píxeles por módulo de los que el
+ * binarizador de jsQR espera) -- sin poder correr el decodificador contra el
+ * archivo real del usuario, probar varios tamaños cubre ambos casos sin
+ * adivinar cuál aplica en cada dispositivo. El costo es aceptable: jsQR
+ * decodifica en decenas de ms, y esto corre una sola vez por foto, no en
+ * loop. `imageOrientation: 'from-image'` es explícito porque el default de
+ * `createImageBitmap` varía entre navegadores (algunos ignoran la
+ * orientación EXIF de la foto si no se pide).
  */
-const LADO_MAXIMO_FOTO_QR = 2400;
+const ESCALAS_FOTO_QR = [3200, 2000, 1300, 900];
 
 /**
  * Exportada para que `EscaneoMovil.tsx` (celular vinculado, que tiene su
@@ -73,23 +84,35 @@ const LADO_MAXIMO_FOTO_QR = 2400;
  * mismo pipeline en vez de duplicarlo.
  */
 export async function decodificarQrDeImagen(archivo: File): Promise<string | null> {
-  const bitmap = await createImageBitmap(archivo);
-  const escala = Math.min(1, LADO_MAXIMO_FOTO_QR / Math.max(bitmap.width, bitmap.height));
-  const ancho = Math.round(bitmap.width * escala);
-  const alto = Math.round(bitmap.height * escala);
+  const bitmap = await createImageBitmap(archivo, { imageOrientation: 'from-image' });
+  const ladoOriginal = Math.max(bitmap.width, bitmap.height);
 
   const lienzo = document.createElement('canvas');
-  lienzo.width = ancho;
-  lienzo.height = alto;
   const contexto = lienzo.getContext('2d', { willReadFrequently: true });
   if (!contexto) return null;
-  contexto.drawImage(bitmap, 0, 0, ancho, alto);
 
-  const imagen = contexto.getImageData(0, 0, ancho, alto);
-  const codigo = jsQR(imagen.data, imagen.width, imagen.height, {
-    inversionAttempts: 'attemptBoth'
-  });
-  return codigo?.data ?? null;
+  const anchosProbados = new Set<number>();
+  for (const ladoMaximo of ESCALAS_FOTO_QR) {
+    const escala = Math.min(1, ladoMaximo / ladoOriginal);
+    const ancho = Math.round(bitmap.width * escala);
+    const alto = Math.round(bitmap.height * escala);
+    // Si la foto ya es mas chica que un `ladoMaximo`, varios intentos darian
+    // exactamente la misma resolucion -- no tiene caso repetir el decode.
+    if (anchosProbados.has(ancho)) continue;
+    anchosProbados.add(ancho);
+
+    lienzo.width = ancho;
+    lienzo.height = alto;
+    contexto.clearRect(0, 0, ancho, alto);
+    contexto.drawImage(bitmap, 0, 0, ancho, alto);
+
+    const imagen = contexto.getImageData(0, 0, ancho, alto);
+    const codigo = jsQR(imagen.data, imagen.width, imagen.height, {
+      inversionAttempts: 'attemptBoth'
+    });
+    if (codigo?.data) return codigo.data;
+  }
+  return null;
 }
 
 /**

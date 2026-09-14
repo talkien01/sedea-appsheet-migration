@@ -27,6 +27,7 @@ import {
   MENSAJE_PERMISO
 } from '../componentes/camaraQr';
 import { decodificarQrDeImagen, MS_ENTRE_LECTURAS } from '../componentes/usoEscanerQr';
+import { leerQrNativo } from '../componentes/lectorQr';
 
 type Estado = 'escaneando' | 'enviando' | 'enviado' | 'cerrado' | 'error';
 
@@ -130,33 +131,48 @@ export default function EscaneoMovil() {
     // 2026-09): decodificar CADA frame no mejora la deteccion de un QR
     // impreso, solo el consumo de CPU/bateria sostenido.
     let ultimaLectura = 0;
+    let leyendo = false;
+
+    // Detector nativo del sistema primero (Chrome/Android); jsQR solo si el
+    // navegador no lo trae (`undefined`, Safari/iPhone) -- mismo patron que
+    // usoEscanerQr.ts. Ver `lectorQr.ts` para la explicacion completa.
+    const procesarCuadroActual = async () => {
+      const v = video.current;
+      const c = lienzo.current;
+      if (
+        enviando.current ||
+        !v ||
+        !c ||
+        v.readyState !== v.HAVE_ENOUGH_DATA ||
+        v.videoWidth === 0
+      ) {
+        return;
+      }
+      const nativo = await leerQrNativo(v);
+      if (nativo !== undefined) {
+        if (nativo) void procesarTexto(nativo);
+        return;
+      }
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return;
+      c.width = v.videoWidth;
+      c.height = v.videoHeight;
+      ctx.drawImage(v, 0, 0, c.width, c.height);
+      const imagen = ctx.getImageData(0, 0, c.width, c.height);
+      const codigo = jsQR(imagen.data, imagen.width, imagen.height, {
+        inversionAttempts: 'dontInvert'
+      });
+      if (codigo?.data) void procesarTexto(codigo.data);
+    };
 
     const leerFrame = (marca: number) => {
       if (!vivo) return;
-      if (marca - ultimaLectura >= MS_ENTRE_LECTURAS) {
+      if (!leyendo && marca - ultimaLectura >= MS_ENTRE_LECTURAS) {
         ultimaLectura = marca;
-        const v = video.current;
-        const c = lienzo.current;
-        const ctx = c?.getContext('2d', { willReadFrequently: true });
-        if (
-          !enviando.current &&
-          v &&
-          c &&
-          ctx &&
-          v.readyState === v.HAVE_ENOUGH_DATA &&
-          v.videoWidth > 0
-        ) {
-          c.width = v.videoWidth;
-          c.height = v.videoHeight;
-          ctx.drawImage(v, 0, 0, c.width, c.height);
-          const imagen = ctx.getImageData(0, 0, c.width, c.height);
-          const codigo = jsQR(imagen.data, imagen.width, imagen.height, {
-            inversionAttempts: 'dontInvert'
-          });
-          if (codigo?.data) {
-            void procesarTexto(codigo.data);
-          }
-        }
+        leyendo = true;
+        void procesarCuadroActual().finally(() => {
+          leyendo = false;
+        });
       }
       animacion.current = requestAnimationFrame(leerFrame);
     };

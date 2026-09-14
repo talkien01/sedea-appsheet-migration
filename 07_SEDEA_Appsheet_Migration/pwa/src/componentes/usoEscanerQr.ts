@@ -20,6 +20,7 @@ import {
   MENSAJE_SIN_CAMARA,
   MENSAJE_PERMISO
 } from './camaraQr';
+import { leerQrNativo } from './lectorQr';
 
 export { MENSAJE_SIN_CAMARA, MENSAJE_PERMISO };
 
@@ -84,6 +85,12 @@ const ESCALAS_FOTO_QR = [3200, 2000, 1300, 900];
  * mismo pipeline en vez de duplicarlo.
  */
 export async function decodificarQrDeImagen(archivo: File): Promise<string | null> {
+  // Detector nativo primero (Chrome/Android): mismo motor que la camara
+  // nativa del sistema, mas tolerante a angulo/ruido que jsQR. `undefined` =
+  // el navegador no lo trae (Safari/iPhone), se sigue con jsQR como siempre.
+  const nativo = await leerQrNativo(archivo);
+  if (nativo !== undefined) return nativo;
+
   const bitmap = await createImageBitmap(archivo, { imageOrientation: 'from-image' });
   const ladoOriginal = Math.max(bitmap.width, bitmap.height);
 
@@ -160,6 +167,9 @@ export function useEscanerQr({ alTexto, seamPrueba, activo = true }: Opciones): 
 
     let detenerReenfoque: (() => void) | null = null;
     let ultimaLectura = 0;
+    // Evita que dos lecturas nativas se traslapen si `detect()` tarda mas
+    // que el intervalo entre cuadros (no deberia, pero es async).
+    let leyendo = false;
 
     const detener = () => {
       if (animacion.current !== null) cancelAnimationFrame(animacion.current);
@@ -170,26 +180,49 @@ export function useEscanerQr({ alTexto, seamPrueba, activo = true }: Opciones): 
       stream.current = null;
     };
 
+    /**
+     * Detector nativo primero (Chrome/Android, mismo motor que la camara
+     * del sistema); si el navegador no lo trae (`undefined`, Safari/iPhone),
+     * cae al canvas + jsQR de siempre. Un solo lugar decide cual usar, asi
+     * que el resto del loop no necesita saber cual de los dos corrio.
+     */
+    const leerConDetectorNativo = async (v: HTMLVideoElement): Promise<string | null | undefined> =>
+      leerQrNativo(v);
+
+    const leerConJsQr = (v: HTMLVideoElement): string | null => {
+      const c = lienzo.current;
+      const ctx = c?.getContext('2d', { willReadFrequently: true });
+      if (!c || !ctx) return null;
+      c.width = v.videoWidth;
+      c.height = v.videoHeight;
+      ctx.drawImage(v, 0, 0, c.width, c.height);
+      const imagen = ctx.getImageData(0, 0, c.width, c.height);
+      const codigo = jsQR(imagen.data, imagen.width, imagen.height, {
+        inversionAttempts: 'dontInvert'
+      });
+      return codigo?.data ?? null;
+    };
+
+    const procesarCuadroActual = async () => {
+      const v = video.current;
+      if (!v || v.readyState !== v.HAVE_ENOUGH_DATA || v.videoWidth === 0) return;
+      // OJO: `??` conflaría null ("nativo si corrio, no encontro nada este
+      // cuadro") con undefined ("nativo no soportado") -- hay que
+      // distinguirlos a mano, si no cada cuadro sin QR caeria tambien a
+      // jsQR y se perderia el ahorro de bateria de usar el detector nativo.
+      const nativo = await leerConDetectorNativo(v);
+      const texto = nativo !== undefined ? nativo : leerConJsQr(v);
+      if (texto && vivo && procesarTexto(texto)) detener();
+    };
+
     const leerFrame = (marca: number) => {
       if (!vivo) return;
-      if (marca - ultimaLectura >= MS_ENTRE_LECTURAS) {
+      if (!leyendo && marca - ultimaLectura >= MS_ENTRE_LECTURAS) {
         ultimaLectura = marca;
-        const v = video.current;
-        const c = lienzo.current;
-        const ctx = c?.getContext('2d', { willReadFrequently: true });
-        if (v && c && ctx && v.readyState === v.HAVE_ENOUGH_DATA && v.videoWidth > 0) {
-          c.width = v.videoWidth;
-          c.height = v.videoHeight;
-          ctx.drawImage(v, 0, 0, c.width, c.height);
-          const imagen = ctx.getImageData(0, 0, c.width, c.height);
-          const codigo = jsQR(imagen.data, imagen.width, imagen.height, {
-            inversionAttempts: 'dontInvert'
-          });
-          if (codigo?.data && procesarTexto(codigo.data)) {
-            detener();
-            return;
-          }
-        }
+        leyendo = true;
+        void procesarCuadroActual().finally(() => {
+          leyendo = false;
+        });
       }
       animacion.current = requestAnimationFrame(leerFrame);
     };

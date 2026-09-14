@@ -639,6 +639,41 @@ export default function NuevaSolicitud() {
     conceptosValidos &&
     razonSocialOk;
 
+  /**
+   * Espejo, en texto, de cada condicion de `puedeGuardar` -- reporte real:
+   * "no se esta guardando la solicitud" resulto ser el boton deshabilitado
+   * SIN ningun mensaje que dijera por que (10 condiciones distintas, y el
+   * boton solo no reacciona al tocarlo). Se muestra debajo del boton, no
+   * hasta arriba, para que no haga falta subir a buscarlo.
+   */
+  const motivosFaltantes: string[] = [];
+  if (programaId === '') motivosFaltantes.push('Selecciona el Programa (Paso 1 — Encabezado).');
+  if (componenteId === '') motivosFaltantes.push('Selecciona el Componente (Paso 1 — Encabezado).');
+  if (proyectoId === '') motivosFaltantes.push('Selecciona el Proyecto (Paso 1 — Encabezado).');
+  if (ventanillaId === '') motivosFaltantes.push('Selecciona la Ventanilla receptora (Paso 1 — Encabezado).');
+  if (solicitante.nombre_solicitante.trim() === '') {
+    motivosFaltantes.push('Escribe el nombre del solicitante (Paso 2 — Solicitante).');
+  }
+  if (!razonSocialOk) {
+    motivosFaltantes.push(
+      solicitante.tipo_persona === 'municipio'
+        ? 'Escribe el nombre del municipio/ayuntamiento solicitante (Paso 2 — Solicitante).'
+        : 'Escribe la razón social y el número de integrantes (Paso 2 — Solicitante).'
+    );
+  }
+  if (ubiMunicipioId === '') {
+    motivosFaltantes.push('Selecciona el Municipio del predio o proyecto (Paso 4 — Datos del apoyo).');
+  }
+  if (!conceptosValidos) {
+    motivosFaltantes.push('Agrega al menos un concepto de apoyo con cantidad mayor a cero (Paso 5 — Conceptos).');
+  }
+  if (hayConflictoCurp) {
+    motivosFaltantes.push('Quita de la tabla el concepto ya solicitado con esta CURP (Paso 5 — Conceptos).');
+  }
+  if (!declaracion) {
+    motivosFaltantes.push('Acepta la declaración bajo protesta de decir verdad (Paso 6 — Documentos).');
+  }
+
   const guardar = async () => {
     setGuardando(true);
     setError(null);
@@ -1197,15 +1232,6 @@ export default function NuevaSolicitud() {
           alAceptarDeclaracion={setDeclaracion}
         />
 
-        {/* El detalle por concepto vive en la tabla del paso 5; aqui solo se
-            explica por que el boton quedo deshabilitado. */}
-        {hayConflictoCurp && (
-          <div className="mensaje error" role="alert" data-testid="bloqueo-curp-duplicada">
-            No se puede guardar: esta CURP ya tiene una solicitud registrada con alguno de los
-            conceptos del paso 5. Quítalo de la tabla para continuar.
-          </div>
-        )}
-
         <div className="acciones">
           <button
             type="button"
@@ -1216,6 +1242,24 @@ export default function NuevaSolicitud() {
             {guardando ? 'Guardando…' : 'Guardar solicitud'}
           </button>
         </div>
+
+        {/*
+          Debajo del boton, NO hasta arriba de la pantalla: reporte real de
+          un capturista que no entendia por que "no se guardaba" la
+          solicitud -- el boton solo se quedaba deshabilitado, sin decir
+          cual de las ~10 condiciones faltaba. Solo se muestra si de verdad
+          hay algo pendiente (no mientras esta guardando).
+        */}
+        {!puedeGuardar && !guardando && motivosFaltantes.length > 0 && (
+          <div className="mensaje aviso" role="alert" data-testid="aviso-falta-completar">
+            <strong>Falta completar antes de poder guardar:</strong>
+            <ul style={{ margin: '6px 0 0', paddingLeft: 20 }}>
+              {motivosFaltantes.map((motivo) => (
+                <li key={motivo}>{motivo}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
         </div>

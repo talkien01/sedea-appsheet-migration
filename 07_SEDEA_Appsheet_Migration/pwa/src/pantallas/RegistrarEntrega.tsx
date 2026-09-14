@@ -12,10 +12,10 @@
 //
 // El ciclo esta pensado para repetirse decenas de veces seguidas:
 //   escanear -> (elegir concepto) -> confirmar -> foto + GPS -> guardar -> escanear
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CapturaFoto from '../componentes/CapturaFoto';
-import CapturaGPS, { type ResultadoUbicacion } from '../componentes/CapturaGPS';
+import CapturaGPS, { type ResultadoUbicacion, type UbicacionCacheada } from '../componentes/CapturaGPS';
 import { useEscanerQr } from '../componentes/usoEscanerQr';
 import type { ConceptoEntregaLocal, EventoEntregaLocal } from '../db/indexeddb';
 import {
@@ -66,6 +66,18 @@ export default function RegistrarEntrega() {
 
   const [foto, setFoto] = useState<Blob | null>(null);
   const [ubicacion, setUbicacion] = useState<ResultadoUbicacion>(null);
+  // Ultima ubicacion buena de ESTE evento (60+ entregas seguidas, casi
+  // siempre en el mismo lugar fisico): CapturaGPS la reusa en vez de pedir
+  // GPS de alta precision (hasta 45s, uno de los consumos mas altos de
+  // bateria del telefono) para cada beneficiario. Va en un ref, no en
+  // estado: no debe disparar un re-render de esta pantalla al cambiar.
+  const ubicacionCache = useRef<UbicacionCacheada | null>(null);
+  const alUbicacion = useCallback((resultado: ResultadoUbicacion) => {
+    setUbicacion(resultado);
+    if (resultado && resultado !== 'sin_gps') {
+      ubicacionCache.current = { ubicacion: resultado, obtenidaEn: Date.now() };
+    }
+  }, []);
   const [observaciones, setObservaciones] = useState('');
   const [guardando, setGuardando] = useState(false);
 
@@ -153,11 +165,34 @@ export default function RegistrarEntrega() {
     [abrirConceptos]
   );
 
-  const { refVideo, refLienzo, errorCamara } = useEscanerQr({
+  const { refVideo, refLienzo, errorCamara, escanearArchivo } = useEscanerQr({
     alTexto: alLeerQr,
     seamPrueba: '__sedeaEscanerFolio',
     activo: paso === 'escanear' && !busquedaAbierta
   });
+
+  // Alternativa al video en vivo: cámara nativa del sistema en vez de
+  // `getUserMedia` (hallazgo real, Samsung Galaxy A54: el enfoque se queda
+  // atorado en el video pero la cámara nativa del sistema sí enfoca bien).
+  const entradaFotoFolio = useRef<HTMLInputElement>(null);
+  const [leyendoFotoFolio, setLeyendoFotoFolio] = useState(false);
+  const alTomarFotoFolio = async (evento: ChangeEvent<HTMLInputElement>) => {
+    const archivo = evento.target.files?.[0];
+    if (entradaFotoFolio.current) entradaFotoFolio.current.value = '';
+    if (!archivo) return;
+    setAviso(null);
+    setLeyendoFotoFolio(true);
+    try {
+      const ok = await escanearArchivo(archivo);
+      if (!ok) {
+        setAviso(
+          'No se pudo leer el folio en esa foto. Intenta con más luz y el QR bien encuadrado, o búscalo por nombre.'
+        );
+      }
+    } finally {
+      setLeyendoFotoFolio(false);
+    }
+  };
 
   const buscarManual = async (valor: string) => {
     setTexto(valor);
@@ -338,6 +373,26 @@ export default function RegistrarEntrega() {
                 className="campo-entrega-video"
               />
               <canvas ref={refLienzo} style={{ display: 'none' }} />
+
+              <input
+                ref={entradaFotoFolio}
+                id="entrega-foto-folio"
+                data-testid="entrega-input-foto-folio"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display: 'none' }}
+                onChange={(e) => void alTomarFotoFolio(e)}
+              />
+              <button
+                type="button"
+                className="secundario"
+                data-testid="entrega-tomar-foto-folio"
+                disabled={leyendoFotoFolio}
+                onClick={() => entradaFotoFolio.current?.click()}
+              >
+                {leyendoFotoFolio ? 'Leyendo foto…' : '¿No enfoca? Tomar foto del folio'}
+              </button>
               <button
                 type="button"
                 className="secundario"
@@ -433,7 +488,12 @@ export default function RegistrarEntrega() {
           </p>
 
           <CapturaFoto onFoto={setFoto} titulo="Foto: beneficiario, apoyo y folio impreso" />
-          <CapturaGPS onUbicacion={setUbicacion} titulo="Ubicación de la entrega" permitirSinGps />
+          <CapturaGPS
+            onUbicacion={alUbicacion}
+            titulo="Ubicación de la entrega"
+            permitirSinGps
+            cache={ubicacionCache.current}
+          />
 
           <div className="campo">
             <label htmlFor="entrega-observaciones">Observaciones (opcional)</label>

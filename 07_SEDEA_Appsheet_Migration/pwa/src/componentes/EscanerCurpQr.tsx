@@ -6,7 +6,7 @@
 // Alcance: solo camara. Los lectores USB que emulan teclado quedan fuera.
 // Si la camara no esta disponible o el QR no es el de una Constancia CURP, la
 // pantalla avisa y el capturista sigue con la captura manual de siempre.
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState, type ChangeEvent } from 'react';
 import { parsearQrCurp, type DatosCurpQr } from '@sedea/shared';
 import { useEscanerQr } from './usoEscanerQr';
 
@@ -17,10 +17,14 @@ interface Props {
 
 const MENSAJE_QR_INVALIDO =
   'No se pudo leer el CURP, intenta de nuevo o captura los datos manualmente';
+const MENSAJE_QR_INVALIDO_FOTO =
+  'No se pudo leer el CURP en esa foto. Intenta con más luz y el QR bien encuadrado, o captura los datos manualmente.';
 const SUFIJO_MANUAL = ' Captura los datos manualmente.';
 
 export default function EscanerCurpQr({ onDatos, onCerrar }: Props) {
   const [errorQr, setErrorQr] = useState<string | null>(null);
+  const [leyendoFoto, setLeyendoFoto] = useState(false);
+  const entradaFoto = useRef<HTMLInputElement>(null);
 
   /** Punto unico de entrada del texto decodificado (camara o seam de prueba). */
   const procesarTexto = useCallback(
@@ -37,10 +41,32 @@ export default function EscanerCurpQr({ onDatos, onCerrar }: Props) {
     [onDatos]
   );
 
-  const { refVideo, refLienzo, errorCamara } = useEscanerQr({
+  const { refVideo, refLienzo, errorCamara, escanearArchivo } = useEscanerQr({
     alTexto: procesarTexto,
     seamPrueba: '__sedeaEscanerCurp'
   });
+
+  /**
+   * Alternativa al video en vivo: abre la cámara NATIVA del sistema (no
+   * `getUserMedia`) y decodifica el QR de la foto resultante. Pensada para
+   * dispositivos donde el control de enfoque vía web no funciona (hallazgo
+   * real, Samsung Galaxy A54: el video se ve bien al abrir pero nunca
+   * reenfoca al acercar el papel) -- la cámara nativa sí enfoca porque la
+   * controla el sistema operativo, no el navegador.
+   */
+  const alTomarFoto = async (evento: ChangeEvent<HTMLInputElement>) => {
+    const archivo = evento.target.files?.[0];
+    if (entradaFoto.current) entradaFoto.current.value = '';
+    if (!archivo) return;
+    setErrorQr(null);
+    setLeyendoFoto(true);
+    try {
+      const ok = await escanearArchivo(archivo);
+      if (!ok) setErrorQr(MENSAJE_QR_INVALIDO_FOTO);
+    } finally {
+      setLeyendoFoto(false);
+    }
+  };
 
   const error = errorCamara ? `${errorCamara}${SUFIJO_MANUAL}` : errorQr;
 
@@ -70,6 +96,31 @@ export default function EscanerCurpQr({ onDatos, onCerrar }: Props) {
           style={{ width: '100%', borderRadius: 12, background: '#000' }}
         />
         <canvas ref={refLienzo} style={{ display: 'none' }} />
+
+        <div className="campo">
+          <input
+            ref={entradaFoto}
+            id="foto-qr-curp"
+            data-testid="input-foto-qr-curp"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: 'none' }}
+            onChange={(e) => void alTomarFoto(e)}
+          />
+          <button
+            type="button"
+            className="secundario"
+            data-testid="btn-tomar-foto-curp"
+            disabled={leyendoFoto}
+            onClick={() => entradaFoto.current?.click()}
+          >
+            {leyendoFoto ? 'Leyendo foto…' : '¿No enfoca? Tomar foto del QR'}
+          </button>
+          <p className="dato">
+            Usa la cámara del sistema en vez del video: en algunos celulares enfoca mejor.
+          </p>
+        </div>
 
         <button
           type="button"

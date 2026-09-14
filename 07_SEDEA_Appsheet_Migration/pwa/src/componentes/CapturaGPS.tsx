@@ -15,6 +15,12 @@ export interface Ubicacion {
  */
 export type ResultadoUbicacion = Ubicacion | 'sin_gps' | null;
 
+/** Ultima ubicacion buena obtenida en esta sesion, con cuando se tomo. */
+export interface UbicacionCacheada {
+  ubicacion: Ubicacion;
+  obtenidaEn: number;
+}
+
 interface Props {
   onUbicacion: (ubicacion: ResultadoUbicacion) => void;
   /** Encabezado del bloque; la pantalla de entrega del apoyo usa el suyo. */
@@ -26,7 +32,22 @@ interface Props {
    * bloqueo total de siempre (ej. captura de campo generica).
    */
   permitirSinGps?: boolean;
+  /**
+   * Ultima ubicacion buena de ESTE MISMO evento (ej. "Entregar apoyos"
+   * capturando 60 beneficiarios seguidos, casi siempre en el mismo lugar
+   * fisico). Si sigue vigente (`VIGENCIA_CACHE_UBICACION_MS`), se usa
+   * directo en vez de pedir GPS de alta precision de nuevo -- ese request
+   * puede tardar hasta 45s con `enableHighAccuracy` y es de los consumos
+   * mas altos de bateria del telefono (hallazgo real, 2026-09). Siempre se
+   * puede forzar una lectura nueva con el boton "Actualizar ubicación".
+   * Quien use este cache es responsable de refrescarlo con cada resultado
+   * bueno que llegue via `onUbicacion` -- este componente no lo persiste.
+   */
+  cache?: UbicacionCacheada | null;
 }
+
+/** Cuanto se considera vigente una ubicacion cacheada antes de pedir una nueva por default. */
+export const VIGENCIA_CACHE_UBICACION_MS = 10 * 60 * 1000;
 
 type Nivel = 'verde' | 'ambar' | 'rojo';
 
@@ -65,8 +86,22 @@ function mensajeDeFallo(fallo: GeolocationPositionError): string {
   return 'No fue posible obtener la ubicación.';
 }
 
-export default function CapturaGPS({ onUbicacion, titulo, permitirSinGps = false }: Props) {
-  const [ubicacion, setUbicacion] = useState<Ubicacion | null>(null);
+export default function CapturaGPS({
+  onUbicacion,
+  titulo,
+  permitirSinGps = false,
+  cache = null
+}: Props) {
+  // Vigencia evaluada UNA vez al montar (mismo criterio que el resto del
+  // componente: la decision de usar cache o pedir GPS nuevo se toma al
+  // entrar a la pantalla, no se reevalua sola mientras esta abierta).
+  const cacheVigenteAlMontar =
+    cache !== null && Date.now() - cache.obtenidaEn < VIGENCIA_CACHE_UBICACION_MS;
+
+  const [ubicacion, setUbicacion] = useState<Ubicacion | null>(
+    cacheVigenteAlMontar ? cache!.ubicacion : null
+  );
+  const [deCache, setDeCache] = useState(cacheVigenteAlMontar);
   const [error, setError] = useState<string | null>(null);
   const [buscando, setBuscando] = useState(false);
   const [confirmaBaja, setConfirmaBaja] = useState(false);
@@ -78,6 +113,7 @@ export default function CapturaGPS({ onUbicacion, titulo, permitirSinGps = false
     setBuscando(true);
     setOfrecerSinGps(false);
     setConfirmaSinGps(false);
+    setDeCache(false);
 
     if (!('geolocation' in navigator)) {
       setError('Este dispositivo no permite obtener la ubicación.');
@@ -120,6 +156,13 @@ export default function CapturaGPS({ onUbicacion, titulo, permitirSinGps = false
   }, [onUbicacion, permitirSinGps]);
 
   useEffect(() => {
+    if (cacheVigenteAlMontar) {
+      // Ya se sembró `ubicacion`/`deCache` desde el cache en el useState de
+      // arriba -- solo falta avisarle al padre (con la misma regla de
+      // precisión > 50m que aplica siempre).
+      onUbicacion(cache!.ubicacion.precision_m > 50 ? null : cache!.ubicacion);
+      return;
+    }
     void solicitar();
     // Solo al montar la pantalla de captura.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,6 +191,13 @@ export default function CapturaGPS({ onUbicacion, titulo, permitirSinGps = false
       )}
 
       {buscando && <p className="dato">Obteniendo ubicación… puede tardar hasta un minuto sin señal.</p>}
+
+      {deCache && ubicacion && (
+        <div className="mensaje info" role="status" data-testid="aviso-ubicacion-reutilizada">
+          Usando la ubicación de la entrega anterior (no se volvió a pedir el GPS). Si te
+          moviste de lugar, toca "Actualizar ubicación".
+        </div>
+      )}
 
       {ubicacion && (
         <>
@@ -191,8 +241,14 @@ export default function CapturaGPS({ onUbicacion, titulo, permitirSinGps = false
         </div>
       )}
 
-      <button type="button" className="secundario" onClick={() => void solicitar()} disabled={buscando}>
-        Reintentar ubicación
+      <button
+        type="button"
+        className="secundario"
+        data-testid="btn-actualizar-ubicacion"
+        onClick={() => void solicitar()}
+        disabled={buscando}
+      >
+        {ubicacion ? 'Actualizar ubicación' : 'Reintentar ubicación'}
       </button>
     </div>
   );

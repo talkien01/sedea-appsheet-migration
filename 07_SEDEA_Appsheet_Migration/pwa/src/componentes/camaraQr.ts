@@ -15,8 +15,16 @@ export const MENSAJE_SIN_CAMARA =
 export const MENSAJE_PERMISO =
   'No se pudo usar la cámara (permiso denegado o en uso por otra app).';
 
-/** Cada cuanto se vuelve a pedir enfoque (ms). */
-const MS_REENFOQUE = 2000;
+/**
+ * Cada cuanto se vuelve a pedir enfoque (ms). Antes eran 2000 -- se subio a
+ * 5000 (hallazgo de consumo de bateria, 2026-09): pedirle al sensor que
+ * reenfoque es una operacion de hardware, no gratis, y hacerlo cada 2s de
+ * forma indefinida mientras la camara esta abierta (que puede ser toda una
+ * jornada de entregas) sumaba consumo real sin necesidad -- un QR fisico no
+ * se mueve solo, 5s sigue siendo mas que suficiente para recuperar el enfoque
+ * si el capturista mueve el papel.
+ */
+const MS_REENFOQUE = 5000;
 
 /** Distingue "este navegador/dispositivo no tiene camara" de un fallo real de `getUserMedia`
  * (permiso denegado, en uso por otra app) -- quien llama muestra un mensaje distinto para cada caso. */
@@ -41,7 +49,13 @@ export async function abrirCamaraQr(): Promise<MediaStream> {
     video: {
       facingMode: 'environment',
       width: { ideal: 1920 },
-      height: { ideal: 1080 }
+      height: { ideal: 1080 },
+      // `ideal`, nunca `exact`: si el dispositivo no lo soporta, cae a su
+      // default en vez de fallar. Un QR impreso no se mueve -- no hace falta
+      // capturar a 30-60 fps para leerlo, y pedir menos cuadros por segundo
+      // baja el consumo del sensor/ISP mientras la camara esta abierta
+      // (hallazgo de consumo de bateria, 2026-09).
+      frameRate: { ideal: 15 }
     }
   });
 }

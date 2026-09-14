@@ -1,7 +1,12 @@
 // Motor de sincronizacion de capturas pendientes.
 // - Se dispara al abrir la app, con el evento 'online' y con el boton manual.
 // - Idempotente: el backend hace UPSERT por uuid, reenviar no duplica.
-// - Reintentos: hasta 5 con backoff exponencial (2^n segundos).
+// - Reintentos: hasta 5 dentro del mismo ciclo, con backoff exponencial
+//   (2^n segundos). Si se agotan por algo TRANSITORIO (red, 401, 5xx),
+//   vuelve a 'pendiente' con intentos:0 para el siguiente ciclo automatico
+//   -- solo un 403/404/422 (no se resuelve reintentando) queda en 'error'
+//   permanente, que requiere intervencion humana (boton "Reintentar").
+//   Mismo criterio en capturas y entregas.
 import { api, ErrorPeticion } from '../api/cliente';
 import { db } from '../db/indexeddb';
 import { capturasPendientes, entregasPendientes } from '../db/repositorios';
@@ -53,6 +58,14 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
         continue;
       }
 
+      // Un error 'error' ya clasificado como PERMANENTE (403/404/422, ver
+      // abajo) no se vuelve a intentar en cada ciclo automatico -- requiere
+      // intervencion humana (boton "Reintentar" en la ficha o en
+      // Sincronizacion). Espejo exacto del guard de `enviarEntregas`.
+      if (captura.estado === 'error' && (captura.intentos ?? 0) >= MAX_INTENTOS) {
+        continue;
+      }
+
       await marcarEstado(captura.uuid, 'sincronizando');
       notificar();
 
@@ -79,6 +92,7 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
       let intentos = captura.intentos ?? 0;
       let enviado = false;
       let ultimoError = '';
+      let errorPermanente = false;
 
       while (!enviado && intentos < MAX_INTENTOS) {
         try {
@@ -101,6 +115,7 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
 
           // Un 422/403 no se resuelve reintentando.
           if (error instanceof ErrorPeticion && [403, 404, 422].includes(error.estado)) {
+            errorPermanente = true;
             intentos = MAX_INTENTOS;
             break;
           }
@@ -111,10 +126,21 @@ export async function sincronizarPendientes(): Promise<ResultadoSync> {
       }
 
       if (!enviado) {
-        await marcarEstado(captura.uuid, 'error', {
-          intentos,
-          error_msg: ultimoError || 'No fue posible enviar la captura al servidor.'
-        });
+        const mensaje = ultimoError || 'No fue posible enviar la captura al servidor.';
+        if (errorPermanente) {
+          await marcarEstado(captura.uuid, 'error', { intentos, error_msg: mensaje });
+        } else {
+          // No perder una captura por una caida temporal (ej. un 401 por
+          // token vencido durante el intento, o una racha de mala senal):
+          // conserva foto+uuid y vuelve a quedar elegible para el siguiente
+          // ciclo automatico, en vez de quedar en 'error' para siempre con
+          // intentos ya al tope (bug real: una vez ahi, el ciclo de 20s
+          // relee `intentos=5` y nunca vuelve a intentar la subida).
+          await marcarEstado(captura.uuid, 'pendiente', {
+            intentos: 0,
+            error_msg: `${mensaje} Se reintentara automaticamente.`
+          });
+        }
         resultado.fallidas++;
       }
       notificar();

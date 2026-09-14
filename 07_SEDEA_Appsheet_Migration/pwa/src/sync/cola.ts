@@ -48,6 +48,19 @@ export async function reintentarCaptura(uuid: string): Promise<void> {
   await db.capturas.update(uuid, { estado: 'pendiente', intentos: 0, error_msg: null });
 }
 
+/**
+ * Reencola TODAS las capturas en error de una vez (boton "Reintentar ahora"
+ * de Sincronizacion) -- para cuando el usuario no va a ir ficha por ficha.
+ * Devuelve cuantas se reencolaron.
+ */
+export async function reintentarTodasLasCapturas(): Promise<number> {
+  const enError = await db.capturas.where('estado').equals('error').toArray();
+  await Promise.all(
+    enError.map((c) => db.capturas.update(c.uuid, { estado: 'pendiente', intentos: 0, error_msg: null }))
+  );
+  return enError.length;
+}
+
 // --------------------------------------------------------------------------
 // Entregas del apoyo (Parte 2). Mismo ciclo que las capturas: el uuid se
 // genera AQUI, en el cliente, y es la clave de idempotencia del servidor.
@@ -97,4 +110,13 @@ export async function marcarEstadoEntrega(
   extra: Partial<EntregaLocal> = {}
 ): Promise<void> {
   await db.entregas.update(uuid, { estado, ...extra });
+}
+
+/** Espejo de `reintentarTodasLasCapturas` para las entregas (Parte 2). */
+export async function reintentarTodasLasEntregas(): Promise<number> {
+  const enError = await db.entregas.where('estado').equals('error').toArray();
+  await Promise.all(
+    enError.map((e) => db.entregas.update(e.uuid, { estado: 'pendiente', intentos: 0, error_msg: null }))
+  );
+  return enError.length;
 }

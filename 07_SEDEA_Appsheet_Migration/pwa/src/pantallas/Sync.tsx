@@ -11,6 +11,8 @@ import {
   marcarSincronizacion,
   obtenerSesion
 } from '../db/repositorios';
+import { reintentarTodasLasCapturas, reintentarTodasLasEntregas } from '../sync/cola';
+import { sincronizarPendientes } from '../sync/motor';
 import { useEstadoRed } from '../sync/estadoRed';
 
 const TAMANO_PAGINA = 500;
@@ -40,6 +42,7 @@ export default function Sync() {
   const [trabajando, setTrabajando] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reintentando, setReintentando] = useState(false);
 
   const refrescar = useCallback(async () => {
     setTotalLocal(await contarBeneficiarios());
@@ -95,6 +98,35 @@ export default function Sync() {
       );
     } finally {
       setTrabajando(false);
+    }
+  };
+
+  /**
+   * Boton de rescate para capturas/entregas atoradas en 'error' (ej. cuando
+   * agotaron reintentos por una falla transitoria y quedaron esperando
+   * intervencion humana antes del fix de motor.ts que reencola sola). Sin
+   * esto, el usuario solo veia el contador de "Pendientes" subir y no tenia
+   * forma de forzar nada sin ir ficha por ficha.
+   */
+  const reintentarAhora = async () => {
+    setReintentando(true);
+    setMensaje(null);
+    setError(null);
+    try {
+      const capturas = await reintentarTodasLasCapturas();
+      const entregas = await reintentarTodasLasEntregas();
+      await sincronizarPendientes();
+      await refrescar();
+      const total = capturas + entregas;
+      setMensaje(
+        total > 0
+          ? `Se reencolaron ${total} pendiente(s) y se intento sincronizar de nuevo.`
+          : 'No había capturas ni entregas en error. Se intentó sincronizar de todas formas.'
+      );
+    } catch {
+      setError('No fue posible reintentar la sincronización.');
+    } finally {
+      setReintentando(false);
     }
   };
 
@@ -155,7 +187,20 @@ export default function Sync() {
           <button type="button" className="secundario" onClick={() => navegar('/beneficiarios')}>
             Ir al padrón
           </button>
+          <button
+            type="button"
+            className="secundario"
+            data-testid="btn-reintentar-sincronizacion"
+            disabled={!enLinea || reintentando}
+            onClick={() => void reintentarAhora()}
+          >
+            {reintentando ? 'Reintentando…' : 'Reintentar ahora'}
+          </button>
         </div>
+        <p className="dato" style={{ marginTop: 8 }}>
+          Si hay capturas o entregas atoradas (con foto ya tomada pero sin subir), este botón las
+          vuelve a poner en fila y fuerza un nuevo intento de envío.
+        </p>
       </div>
     </>
   );

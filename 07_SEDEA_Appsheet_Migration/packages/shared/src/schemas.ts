@@ -57,7 +57,12 @@ export const esquemaConsultaBeneficiarios = z.object({
   // "adivina" del nombre completo (no hay campo separado) — ver
   // `expresionApellido` en backend/src/rutas/beneficiarios.ts.
   apellido_desde: z.string().trim().length(1).toUpperCase().optional(),
-  apellido_hasta: z.string().trim().length(1).toUpperCase().optional()
+  apellido_hasta: z.string().trim().length(1).toUpperCase().optional(),
+  // Orden del listado/impresion/exportacion. 'apellido' (default, orden de
+  // siempre) o 'colonia' (agrupa por colonia alfabetica y, dentro de cada
+  // colonia, por apellido) -- pedido para que ejidatarios organicen la
+  // entrega por colonia.
+  orden: z.enum(['apellido', 'colonia']).default('apellido')
 });
 
 export const esquemaConsultaAuditoria = z.object({

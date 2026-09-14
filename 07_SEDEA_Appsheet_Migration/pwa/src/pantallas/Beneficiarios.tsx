@@ -44,6 +44,7 @@ export default function Beneficiarios() {
   // separado) — ver apellidoDeNombre en @sedea/shared.
   const [apellidoDesde, setApellidoDesde] = useState<string>('');
   const [apellidoHasta, setApellidoHasta] = useState<string>('');
+  const [orden, setOrden] = useState<'apellido' | 'colonia'>('apellido');
 
   const [texto, setTexto] = useState('');
   const [estado, setEstado] = useState<Estado>('todos');
@@ -100,7 +101,8 @@ export default function Beneficiarios() {
       seccion: seccionValor || null,
       estado,
       apellido_desde: apellidoDesde || null,
-      apellido_hasta: apellidoHasta || null
+      apellido_hasta: apellidoHasta || null,
+      orden
     });
     setFilas(resultado);
   }, [
@@ -111,7 +113,8 @@ export default function Beneficiarios() {
     seccionValor,
     estado,
     apellidoDesde,
-    apellidoHasta
+    apellidoHasta,
+    orden
   ]);
 
   useEffect(() => {
@@ -131,7 +134,8 @@ export default function Beneficiarios() {
     estado,
     porPagina,
     apellidoDesde,
-    apellidoHasta
+    apellidoHasta,
+    orden
   ]);
 
   const totalPaginas = Math.max(1, Math.ceil(filas.length / porPagina));
@@ -171,8 +175,18 @@ export default function Beneficiarios() {
     if (texto.trim()) p.q = texto.trim();
     if (apellidoDesde) p.apellido_desde = apellidoDesde;
     if (apellidoHasta) p.apellido_hasta = apellidoHasta;
+    if (orden !== 'apellido') p.orden = orden;
     return p;
-  }, [regionalId, municipioId, coloniaValor, seccionValor, texto, apellidoDesde, apellidoHasta]);
+  }, [
+    regionalId,
+    municipioId,
+    coloniaValor,
+    seccionValor,
+    texto,
+    apellidoDesde,
+    apellidoHasta,
+    orden
+  ]);
 
   const exportarCsv = async () => {
     setTrabajando('csv');
@@ -342,6 +356,19 @@ export default function Beneficiarios() {
                   {s.valor}
                 </option>
               ))}
+            </select>
+          </div>
+
+          <div className="campo">
+            <label htmlFor="orden">Ordenar por</label>
+            <select
+              id="orden"
+              data-testid="select-orden"
+              value={orden}
+              onChange={(e) => setOrden(e.target.value as 'apellido' | 'colonia')}
+            >
+              <option value="apellido">Apellido</option>
+              <option value="colonia">Colonia y apellido</option>
             </select>
           </div>
 

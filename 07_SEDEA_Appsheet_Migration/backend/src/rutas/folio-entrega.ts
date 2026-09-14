@@ -81,12 +81,14 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
       const q = esquemaConsultaBeneficiarios.parse(cuerpo);
       const { where, parametros, regional } = construirFiltrosBeneficiarios(usuario, q);
 
-      // Mismo orden que la pantalla y el CSV (E62): por apellido, para que
+      // Mismo orden que la pantalla y el Excel (E62/E-colonia): por default
+      // apellido, o colonia+apellido si `q.orden === 'colonia'` — para que
       // "lote 1" en el PDF sea el mismo grupo de gente que "pagina 1" en la
-      // pantalla, y para poder armar mesas por rango de letra de apellido.
-      // SELECT DISTINCT obliga a que las columnas de ORDER BY esten en el
-      // SELECT — de ahi el apellido y nombre_completo aqui, sin usarse en el
-      // PDF mismo (ese dato lo vuelve a leer generarFolioEntregaLotePdf).
+      // pantalla, y para poder armar mesas por rango de letra de apellido o
+      // repartir por colonia. SELECT DISTINCT obliga a que las columnas de
+      // ORDER BY esten en el SELECT — de ahi el apellido, colonia y
+      // nombre_completo aqui, sin usarse en el PDF mismo (ese dato lo vuelve
+      // a leer generarFolioEntregaLotePdf).
       const filas = await consultar<{
         solicitud_id: string;
         autorizada: boolean;
@@ -104,11 +106,12 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
                    WHERE sc2.solicitud_id = s.id
                 ), FALSE) AS todos_autorizados_de_facto,
                 ${expresionApellido('b')} AS apellido,
+                b.colonia,
                 b.nombre_completo
            FROM beneficiarios b
            JOIN solicitudes s ON s.id = b.solicitud_id
            ${where}
-          ORDER BY apellido, b.nombre_completo, s.id`,
+          ORDER BY ${q.orden === 'colonia' ? 'b.colonia NULLS LAST, ' : ''}apellido, b.nombre_completo, s.id`,
         parametros
       );
 

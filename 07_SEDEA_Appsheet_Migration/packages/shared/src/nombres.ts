@@ -62,3 +62,24 @@ export function apellidoEnRango(
 export function compararPorApellido(a: string, b: string): number {
   return apellidoDeNombre(a).localeCompare(apellidoDeNombre(b), 'es', { sensitivity: 'base' });
 }
+
+/**
+ * Comparador para ordenar por colonia y, dentro de cada colonia, por
+ * apellido -- pedido para que ejidatarios organicen la entrega por colonia.
+ * Sin colonia capturada va al final (espejo de `NULLS LAST` en
+ * `expresionOrden`, backend/src/rutas/beneficiarios.ts).
+ */
+export function compararPorColoniaYApellido(
+  coloniaA: string | null | undefined,
+  nombreA: string,
+  coloniaB: string | null | undefined,
+  nombreB: string
+): number {
+  if (!coloniaA && coloniaB) return 1;
+  if (coloniaA && !coloniaB) return -1;
+  if (coloniaA && coloniaB) {
+    const cmp = coloniaA.localeCompare(coloniaB, 'es', { sensitivity: 'base' });
+    if (cmp !== 0) return cmp;
+  }
+  return compararPorApellido(nombreA, nombreB);
+}

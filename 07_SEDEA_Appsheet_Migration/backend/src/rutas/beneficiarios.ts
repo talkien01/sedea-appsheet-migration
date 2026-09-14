@@ -75,6 +75,17 @@ function expresionPrimeraLetraApellido(alias = 'b'): string {
 }
 
 /**
+ * ORDER BY del padron: 'apellido' (default, de siempre) o 'colonia' (agrupa
+ * por colonia alfabetica -- sin colonia capturada va al final -- y dentro de
+ * cada colonia por apellido). Comparten sufijo `nombre_completo, id` para que
+ * el orden sea estable entre dos personas con el mismo apellido detectado.
+ */
+export function expresionOrden(orden: 'apellido' | 'colonia', alias = 'b'): string {
+  const sufijo = `${expresionApellido(alias)}, ${alias}.nombre_completo, ${alias}.id`;
+  return orden === 'colonia' ? `${alias}.colonia NULLS LAST, ${sufijo}` : sufijo;
+}
+
+/**
  * Traduce el filtro del padron a un WHERE parametrizado.
  *
  * Vive fuera del handler porque TRES endpoints deben coincidir exactamente en
@@ -165,7 +176,7 @@ export default async function rutasBeneficiarios(app: FastifyInstance): Promise<
     const desplazamiento = (q.page - 1) * q.page_size;
     const filas = await consultar(
       `${SELECT_BASE} ${where}
-       ORDER BY ${expresionApellido('b')}, b.nombre_completo, b.id
+       ORDER BY ${expresionOrden(q.orden)}
        LIMIT ${q.page_size} OFFSET ${desplazamiento}`,
       parametros
     );
@@ -254,7 +265,7 @@ export default async function rutasBeneficiarios(app: FastifyInstance): Promise<
            LEFT JOIN municipios m ON m.id = b.municipio_id
            LEFT JOIN tipos_apoyo t ON t.id = b.tipo_apoyo_id
            ${where}
-          ORDER BY ${expresionApellido('b')}, b.nombre_completo, b.id
+          ORDER BY ${expresionOrden(q.orden)}
           LIMIT 50000`,
         parametros
       );

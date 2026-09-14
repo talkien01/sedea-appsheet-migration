@@ -6,7 +6,7 @@ import type {
   Beneficiario,
   PaqueteEventoEntrega
 } from '@sedea/shared';
-import { apellidoEnRango, compararPorApellido } from '@sedea/shared';
+import { apellidoEnRango, compararPorApellido, compararPorColoniaYApellido } from '@sedea/shared';
 import {
   db,
   type CapturaLocal,
@@ -169,6 +169,8 @@ export interface FiltrosBeneficiarios {
   /** Rango de letras de apellido (E62), para armar lotes de impresion por mesa. */
   apellido_desde?: string | null;
   apellido_hasta?: string | null;
+  /** 'apellido' (default) o 'colonia' (agrupa por colonia, luego apellido). */
+  orden?: 'apellido' | 'colonia';
 }
 
 /** Busca en IndexedDB aplicando todos los filtros de la pantalla. */
@@ -205,9 +207,14 @@ export async function buscarBeneficiarios(
       ...b,
       capturado: conCaptura.has(b.id) || (b.total_capturas ?? 0) > 0
     }))
-    // Mismo orden que el backend (E62): por apellido, para que "pagina N"
-    // en pantalla sea el mismo grupo de gente que "lote N" en el PDF.
-    .sort((a, b) => compararPorApellido(a.nombre_completo, b.nombre_completo));
+    // Mismo orden que el backend (E62): por default apellido, o colonia+
+    // apellido si se pide -- para que "pagina N" en pantalla sea el mismo
+    // grupo de gente que "lote N" en el PDF.
+    .sort((a, b) =>
+      filtros.orden === 'colonia'
+        ? compararPorColoniaYApellido(a.colonia, a.nombre_completo, b.colonia, b.nombre_completo)
+        : compararPorApellido(a.nombre_completo, b.nombre_completo)
+    );
 }
 
 // --------------------------------------------------------------------------

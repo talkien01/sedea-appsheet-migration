@@ -67,7 +67,12 @@ export interface EscanerQr {
  */
 const LADO_MAXIMO_FOTO_QR = 2400;
 
-async function decodificarQrDeImagen(archivo: File): Promise<string | null> {
+/**
+ * Exportada para que `EscaneoMovil.tsx` (celular vinculado, que tiene su
+ * propio ciclo de lectura -- ver la nota de arriba) reuse exactamente el
+ * mismo pipeline en vez de duplicarlo.
+ */
+export async function decodificarQrDeImagen(archivo: File): Promise<string | null> {
   const bitmap = await createImageBitmap(archivo);
   const escala = Math.min(1, LADO_MAXIMO_FOTO_QR / Math.max(bitmap.width, bitmap.height));
   const ancho = Math.round(bitmap.width * escala);
@@ -97,9 +102,10 @@ async function decodificarQrDeImagen(archivo: File): Promise<string | null> {
  * de escaneo abierta y procesando todo el tiempo entre beneficiario y
  * beneficiario). Se sigue pidiendo `requestAnimationFrame` en cada vuelta
  * (para no perder el ritmo del video), pero el trabajo pesado (drawImage +
- * getImageData + jsQR) solo corre cada `MS_ENTRE_LECTURAS`.
+ * getImageData + jsQR) solo corre cada `MS_ENTRE_LECTURAS`. Exportada para
+ * que `EscaneoMovil.tsx` use el mismo valor en su propio loop.
  */
-const MS_ENTRE_LECTURAS = 150;
+export const MS_ENTRE_LECTURAS = 150;
 
 export function useEscanerQr({ alTexto, seamPrueba, activo = true }: Opciones): EscanerQr {
   const video = useRef<HTMLVideoElement>(null);

@@ -15,7 +15,7 @@
 // Ahora, tras enviar uno, la camara sigue prendida: se muestra "Enviado" un
 // momento y vuelve sola a escanear, hasta que el capturista cierre la
 // vinculacion desde la computadora o venza la vigencia.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import jsQR from 'jsqr';
 import { api, ErrorPeticion } from '../api/cliente';
@@ -26,6 +26,7 @@ import {
   MENSAJE_SIN_CAMARA,
   MENSAJE_PERMISO
 } from '../componentes/camaraQr';
+import { decodificarQrDeImagen, MS_ENTRE_LECTURAS } from '../componentes/usoEscanerQr';
 
 type Estado = 'escaneando' | 'enviando' | 'enviado' | 'cerrado' | 'error';
 
@@ -46,6 +47,8 @@ export default function EscaneoMovil() {
   const [error, setError] = useState<string | null>(null);
   const [curp, setCurp] = useState<string | null>(null);
   const [enviados, setEnviados] = useState(0);
+  const entradaFoto = useRef<HTMLInputElement>(null);
+  const [leyendoFoto, setLeyendoFoto] = useState(false);
 
   const detener = useCallback(() => {
     if (animacion.current !== null) cancelAnimationFrame(animacion.current);
@@ -98,31 +101,61 @@ export default function EscaneoMovil() {
     [token, detener]
   );
 
+  /**
+   * Alternativa al video en vivo: cámara NATIVA del sistema en vez de
+   * `getUserMedia` (hallazgo real, Samsung Galaxy A54: el video se ve
+   * nítido al abrir pero nunca reenfoca al acercar el QR) -- la cámara
+   * nativa sí enfoca porque la controla el sistema operativo.
+   */
+  const alTomarFoto = async (evento: ChangeEvent<HTMLInputElement>) => {
+    const archivo = evento.target.files?.[0];
+    if (entradaFoto.current) entradaFoto.current.value = '';
+    if (!archivo) return;
+    setLeyendoFoto(true);
+    try {
+      const texto = await decodificarQrDeImagen(archivo);
+      if (!texto) {
+        setError('No se pudo leer el CURP en esa foto. Intenta con más luz y el QR bien encuadrado.');
+        return;
+      }
+      await procesarTexto(texto);
+    } finally {
+      setLeyendoFoto(false);
+    }
+  };
+
   useEffect(() => {
     let vivo = true;
+    // Mismo throttle que usoEscanerQr.ts (hallazgo de consumo de bateria,
+    // 2026-09): decodificar CADA frame no mejora la deteccion de un QR
+    // impreso, solo el consumo de CPU/bateria sostenido.
+    let ultimaLectura = 0;
 
-    const leerFrame = () => {
+    const leerFrame = (marca: number) => {
       if (!vivo) return;
-      const v = video.current;
-      const c = lienzo.current;
-      const ctx = c?.getContext('2d', { willReadFrequently: true });
-      if (
-        !enviando.current &&
-        v &&
-        c &&
-        ctx &&
-        v.readyState === v.HAVE_ENOUGH_DATA &&
-        v.videoWidth > 0
-      ) {
-        c.width = v.videoWidth;
-        c.height = v.videoHeight;
-        ctx.drawImage(v, 0, 0, c.width, c.height);
-        const imagen = ctx.getImageData(0, 0, c.width, c.height);
-        const codigo = jsQR(imagen.data, imagen.width, imagen.height, {
-          inversionAttempts: 'dontInvert'
-        });
-        if (codigo?.data) {
-          void procesarTexto(codigo.data);
+      if (marca - ultimaLectura >= MS_ENTRE_LECTURAS) {
+        ultimaLectura = marca;
+        const v = video.current;
+        const c = lienzo.current;
+        const ctx = c?.getContext('2d', { willReadFrequently: true });
+        if (
+          !enviando.current &&
+          v &&
+          c &&
+          ctx &&
+          v.readyState === v.HAVE_ENOUGH_DATA &&
+          v.videoWidth > 0
+        ) {
+          c.width = v.videoWidth;
+          c.height = v.videoHeight;
+          ctx.drawImage(v, 0, 0, c.width, c.height);
+          const imagen = ctx.getImageData(0, 0, c.width, c.height);
+          const codigo = jsQR(imagen.data, imagen.width, imagen.height, {
+            inversionAttempts: 'dontInvert'
+          });
+          if (codigo?.data) {
+            void procesarTexto(codigo.data);
+          }
         }
       }
       animacion.current = requestAnimationFrame(leerFrame);
@@ -234,6 +267,39 @@ export default function EscaneoMovil() {
             }}
           />
           <canvas ref={lienzo} style={{ display: 'none' }} />
+        </>
+      )}
+
+      {/*
+        Fuera del bloque `camaraActiva` A PROPOSITO: si `getUserMedia` falla
+        del todo (permiso denegado, en uso por otra app -- estado 'error'),
+        este es el UNICO camino que le queda a quien esta escaneando. Solo se
+        oculta si la vinculacion misma ya no sirve para nada (`cerrado`).
+      */}
+      {estado !== 'cerrado' && (
+        <>
+          <input
+            ref={entradaFoto}
+            id="foto-qr-escaneo-movil"
+            data-testid="input-foto-escaneo-movil"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: 'none' }}
+            onChange={(e) => void alTomarFoto(e)}
+          />
+          <button
+            type="button"
+            className="secundario"
+            data-testid="btn-tomar-foto-escaneo-movil"
+            disabled={leyendoFoto || enviando.current}
+            onClick={() => entradaFoto.current?.click()}
+          >
+            {leyendoFoto ? 'Leyendo foto…' : '¿No enfoca? Tomar foto del QR'}
+          </button>
+          <p className="dato" style={{ fontSize: '0.85em' }}>
+            Usa la cámara del sistema en vez del video: en algunos celulares enfoca mejor.
+          </p>
         </>
       )}
 

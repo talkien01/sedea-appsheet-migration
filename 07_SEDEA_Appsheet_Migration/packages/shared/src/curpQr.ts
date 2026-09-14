@@ -14,6 +14,15 @@
 // Solo se usan los campos que existen en el formulario de ventanilla: CURP
 // actual, nombre completo, sexo y fecha de nacimiento. La CURP anterior y el
 // codigo INEGI de la entidad se ignoran a proposito.
+//
+// Segundo caso real confirmado (2026-09): cuando una persona tuvo VARIAS
+// correcciones de CURP a lo largo del tiempo, el campo 2 (`CURP_anterior`)
+// no trae una sola CURP sino varias, separadas por COMA dentro de ese mismo
+// campo -- nunca agrega `|` de mas, asi que las posiciones de paterno en
+// adelante NO se recorren. `campos[0]` (antes del primer `|`) sigue siendo
+// el CURP vigente en TODOS los casos observados:
+//
+//   CAUS311101HQTSRN05|CAUS311031HQTSRN14,CAUS311101HQTSRN13,CAUS311101HQTSRN21, |CASTAÑON|URIBE|J. SANTOS|HOMBRE|01/11/1931|QUERETARO|22|
 
 /** Datos ya normalizados, listos para volcarse al formulario. */
 export interface DatosCurpQr {

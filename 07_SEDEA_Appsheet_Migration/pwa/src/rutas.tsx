@@ -43,6 +43,7 @@ import EscaneoMovil from './pantallas/EscaneoMovil';
 import RegistrarEntrega from './pantallas/RegistrarEntregaMonitorizada';
 import Monitor from './pantallas/Monitor';
 import EdicionAdminSolicitudes from './pantallas/EdicionAdminSolicitudes';
+import AjusteMasivoKg from './pantallas/AjusteMasivoKg';
 import Reportes from './pantallas/Reportes';
 import EvidenciaEntregas from './pantallas/EvidenciaEntregas';
 
@@ -302,6 +303,23 @@ export default function Rutas() {
           element={
             <RutaProtegida roles={EDICION_ADMIN}>
               <EdicionAdminSolicitudes />
+            </RutaProtegida>
+          }
+        />
+
+        {/*
+          Ajuste masivo de kilogramos (avena/garbanzo, sin monto): sube un
+          Excel/CSV con folio+cantidad_asignada nueva para corregir el
+          sobre-compromiso de kg contra el tope real de Regional/Municipio
+          (el sistema no lo valida en automatico -- ver
+          servicios/ajusteMasivoKg.ts en el backend). SOLO admin, mismo
+          candado que Editar solicitudes/Anular (motivo + contrasena).
+        */}
+        <Route
+          path="/admin/ajustes-kg"
+          element={
+            <RutaProtegida roles={EDICION_ADMIN}>
+              <AjusteMasivoKg />
             </RutaProtegida>
           }
         />

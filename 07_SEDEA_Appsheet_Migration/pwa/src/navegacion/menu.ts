@@ -207,6 +207,18 @@ export const DESTINOS: Destino[] = [
     roles: ['admin'],
     grupo: 'Administración',
     Icono: IconoLapiz
+  },
+  // Ajuste masivo de kg (avena/garbanzo, sin monto) via Excel/CSV -- ver
+  // servicios/ajusteMasivoKg.ts en el backend. Mismo candado que Editar
+  // solicitudes (admin, motivo + contrasena).
+  {
+    id: 'ajuste-masivo-kg',
+    ruta: '/admin/ajustes-kg',
+    etiqueta: 'Ajuste masivo de kg',
+    testId: 'nav-ajuste-masivo-kg',
+    roles: ['admin'],
+    grupo: 'Administración',
+    Icono: IconoDocumento
   }
 ];
 

@@ -46,6 +46,42 @@ export const NOMBRE_APP: string = import.meta.env.VITE_APP_NOMBRE || 'SISPACQ ve
 export const URL_TILES: string =
   import.meta.env.VITE_TILE_URL || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
+/** Ver backend/src/servicios/ajusteMasivoKg.ts -- ajuste masivo de kg (avena/garbanzo, sin monto). */
+export interface ItemPlanAjusteKg {
+  fila: number;
+  folio: string;
+  aplicable: boolean;
+  motivo_omision: string | null;
+  solicitud_concepto_id: number | null;
+  beneficiario_id: number | null;
+  beneficiario_nombre: string | null;
+  concepto_nombre: string | null;
+  cantidad_actual: number | null;
+  cantidad_nueva: number;
+  delta: number | null;
+}
+
+export interface RespuestaPrevisualizacionAjusteKg {
+  archivo_nombre: string;
+  errores_parseo: { fila: number; mensaje: string }[];
+  items: ItemPlanAjusteKg[];
+  resumen: {
+    total_filas: number;
+    aplicables: number;
+    omitidas: number;
+    kg_actuales: number;
+    kg_nuevos: number;
+  };
+}
+
+export interface ItemAplicarAjusteKg {
+  folio: string;
+  solicitud_concepto_id: number;
+  beneficiario_id: number | null;
+  cantidad_actual: number;
+  cantidad_nueva: number;
+}
+
 export class ErrorPeticion extends Error {
   estado: number;
   codigo: string;
@@ -350,6 +386,26 @@ export const api = {
     cambios: Record<string, unknown>
   ): Promise<{ ok: true; usuario: UsuarioAdmin; cambios: CambioUsuario[] }> {
     return peticion(`/usuarios/${id}`, { method: 'PATCH', body: JSON.stringify(cambios) });
+  },
+
+  /** Sube un Excel/CSV con folio+cantidad_asignada y regresa el plan (sin tocar nada aun). */
+  async previsualizarAjusteKg(archivo: File): Promise<RespuestaPrevisualizacionAjusteKg> {
+    const formulario = new FormData();
+    formulario.append('archivo', archivo);
+    return peticion<RespuestaPrevisualizacionAjusteKg>('/admin/ajustes-kg/previsualizar', {
+      method: 'POST',
+      body: formulario
+    });
+  },
+
+  /** Aplica el subconjunto de filas 'aplicable' que el admin confirmo del plan. */
+  async aplicarAjusteKg(datos: {
+    motivo: string;
+    password: string;
+    archivo_nombre?: string;
+    items: ItemAplicarAjusteKg[];
+  }): Promise<{ ok: true; aplicados: number }> {
+    return peticion('/admin/ajustes-kg/aplicar', { method: 'POST', body: JSON.stringify(datos) });
   },
 
   async resetearPassword(

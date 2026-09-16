@@ -19,7 +19,7 @@ import {
   type TipoPersona
 } from '@sedea/shared';
 import { apiSolicitudes } from '../api/solicitudes';
-import { ErrorPeticion, urlConToken } from '../api/cliente';
+import { ErrorPeticion, urlBlobConToken } from '../api/cliente';
 import { useEstadoRed } from '../sync/estadoRed';
 import { useSesion } from '../App';
 
@@ -83,12 +83,18 @@ export default function DetalleSolicitud() {
     try {
       const datos = await apiSolicitudes.detalle(Number(id));
       setDetalle(datos);
-      // Los adjuntos se sirven por /media/* con token (E15).
+      // Los adjuntos se sirven por /media/*. Se piden con el token en la
+      // cabecera y se muestran como blob: (nunca en la URL, ver
+      // urlBlobConToken): el visor queda montado en pantalla, y una URL con
+      // ?token= ahi se filtraria al historial del navegador.
       const mapa: Record<number, string> = {};
       for (const doc of datos.documentos) {
-        if (doc.archivo_url) mapa[doc.id] = await urlConToken(doc.archivo_url);
+        if (doc.archivo_url) mapa[doc.id] = await urlBlobConToken(doc.archivo_url);
       }
-      setEnlaces(mapa);
+      setEnlaces((previos) => {
+        Object.values(previos).forEach((url) => URL.revokeObjectURL(url));
+        return mapa;
+      });
     } catch (fallo) {
       setError(fallo instanceof ErrorPeticion ? fallo.message : 'No se pudo cargar la solicitud.');
     }
@@ -99,16 +105,32 @@ export default function DetalleSolicitud() {
     void cargar();
   }, [cargar, enLinea]);
 
-  // Acuse/expediente oficial en PDF. El <a> necesita la URL ya resuelta con
-  // token (?token=), igual que los adjuntos de /media.
+  // Libera los blob: de los documentos al salir de la pantalla.
+  useEffect(() => {
+    return () => {
+      setEnlaces((previos) => {
+        Object.values(previos).forEach((url) => URL.revokeObjectURL(url));
+        return previos;
+      });
+    };
+  }, []);
+
+  // Acuse/expediente oficial en PDF.
   useEffect(() => {
     if (!id) return;
     let vigente = true;
-    void urlConToken(`/api/solicitudes/${id}/solicitud-completa.pdf`).then((url) => {
-      if (vigente) setUrlSolicitudPdf(url);
+    let urlCreada: string | null = null;
+    void urlBlobConToken(`/api/solicitudes/${id}/solicitud-completa.pdf`).then((url) => {
+      if (vigente) {
+        urlCreada = url;
+        setUrlSolicitudPdf(url);
+      } else {
+        URL.revokeObjectURL(url);
+      }
     });
     return () => {
       vigente = false;
+      if (urlCreada) URL.revokeObjectURL(urlCreada);
     };
   }, [id]);
 
@@ -128,11 +150,18 @@ export default function DetalleSolicitud() {
       return;
     }
     let vigente = true;
-    void urlConToken(`/api/solicitudes/${id}/folio-entrega.pdf`).then((url) => {
-      if (vigente) setUrlFolioPdf(url);
+    let urlCreada: string | null = null;
+    void urlBlobConToken(`/api/solicitudes/${id}/folio-entrega.pdf`).then((url) => {
+      if (vigente) {
+        urlCreada = url;
+        setUrlFolioPdf(url);
+      } else {
+        URL.revokeObjectURL(url);
+      }
     });
     return () => {
       vigente = false;
+      if (urlCreada) URL.revokeObjectURL(urlCreada);
     };
   }, [id, detalle]);
 

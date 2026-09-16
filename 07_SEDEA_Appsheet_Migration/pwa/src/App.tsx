@@ -6,18 +6,29 @@ import type { PerfilUsuario } from '@sedea/shared';
 import { api, ErrorPeticion, registrarManejadoresSesion } from './api/cliente';
 import {
   actualizarPerfilSesion,
-  cerrarSesion as borrarSesion,
+  contarEntregasPendientes,
+  contarPendientes,
   guardarSesion,
+  limpiarBaseLocal,
   sesionVigente
 } from './db/repositorios';
 import { iniciarSincronizacionAutomatica } from './sync/motor';
+import BloqueoInactividad from './componentes/BloqueoInactividad';
 import Rutas from './rutas';
 
 interface ContextoSesionValor {
   perfil: PerfilUsuario | null;
   cargando: boolean;
   iniciarSesion: (usuario: string, password: string) => Promise<PerfilUsuario>;
-  cerrarSesion: () => Promise<void>;
+  /**
+   * Borra sesion Y todos los datos locales (padron, capturas, entregas):
+   * el dispositivo puede ser un celular personal compartido con otras
+   * personas, no solo una tablet de la Secretaria. Si hay capturas/entregas
+   * sin sincronizar, pide confirmacion antes de perderlas -- salvo cierre
+   * forzado (cuenta desactivada), que no puede esperar una respuesta.
+   * Devuelve false si el usuario cancela por datos pendientes.
+   */
+  cerrarSesion: (opciones?: { forzado?: boolean }) => Promise<boolean>;
   /** Relee el perfil de la API (usado tras cambiar la contrasena). */
   refrescarPerfil: () => Promise<PerfilUsuario | null>;
   /** Mensaje que la pantalla de login debe mostrar tras una expulsion. */
@@ -31,7 +42,7 @@ const ContextoSesion = createContext<ContextoSesionValor>({
   iniciarSesion: async () => {
     throw new Error('Contexto de sesion no inicializado');
   },
-  cerrarSesion: async () => undefined,
+  cerrarSesion: async () => false,
   refrescarPerfil: async () => null,
   avisoSesion: null,
   limpiarAvisoSesion: () => undefined
@@ -57,9 +68,26 @@ function ProveedorSesion({ children }: { children: ReactNode }) {
     iniciarSincronizacionAutomatica();
   }, []);
 
-  const cerrar = useCallback(async () => {
-    await borrarSesion();
+  const cerrar = useCallback(async (opciones?: { forzado?: boolean }) => {
+    if (!opciones?.forzado) {
+      const [capturasPendientes, entregasPendientes] = await Promise.all([
+        contarPendientes(),
+        contarEntregasPendientes()
+      ]);
+      const total = capturasPendientes + entregasPendientes;
+      if (total > 0) {
+        const continuar = window.confirm(
+          `Este dispositivo tiene ${total} captura(s)/entrega(s) sin sincronizar. ` +
+            'Si cierras sesión se perderán junto con el resto de los datos ' +
+            'guardados en este equipo (padrón, fotos, capturas). ' +
+            '¿Cerrar sesión de todas formas?'
+        );
+        if (!continuar) return false;
+      }
+    }
+    await limpiarBaseLocal();
     setPerfil(null);
+    return true;
   }, []);
 
   // Guarda global del build 4: el cliente HTTP avisa aqui cuando el backend
@@ -73,7 +101,7 @@ function ProveedorSesion({ children }: { children: ReactNode }) {
       alCuentaDesactivada: (mensaje) => {
         setAvisoSesion(mensaje);
         void (async () => {
-          await cerrar();
+          await cerrar({ forzado: true });
           navegar('/login', { replace: true });
         })();
       }
@@ -112,7 +140,11 @@ function ProveedorSesion({ children }: { children: ReactNode }) {
     [perfil, cargando, iniciarSesion, cerrar, refrescarPerfil, avisoSesion]
   );
 
-  return <ContextoSesion.Provider value={valor}>{children}</ContextoSesion.Provider>;
+  return (
+    <ContextoSesion.Provider value={valor}>
+      <BloqueoInactividad>{children}</BloqueoInactividad>
+    </ContextoSesion.Provider>
+  );
 }
 
 export { ErrorPeticion };

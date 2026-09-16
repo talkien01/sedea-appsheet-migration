@@ -2,8 +2,10 @@
 //
 // NO hay visor de expediente unico: el panel principal es la lista de los
 // documentos individuales que ventanilla ya adjunto con E46. Cada archivo se
-// abre en una pestana nueva con `?token=` (A19-15): no se incrustan `<img>` ni
-// `<iframe>`.
+// abre en una pestana nueva (A19-15): no se incrustan `<img>` ni `<iframe>`.
+// El token va en la cabecera Authorization al pedir el archivo, nunca en la
+// URL -- se expone como blob: (urlBlobConToken) para que el JWT de sesion no
+// quede en el historial del navegador ni en logs de proxy.
 //
 // La precarga de los radios copia lo que dijo la IA, pero PRECARGAR NO ES
 // CONFIRMAR (D19-8): mientras no se elija un `resultado` explicito y se pulse
@@ -11,7 +13,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { RespuestaDetalleDictamen, VeredictoDocumento } from '@sedea/shared';
-import { api, urlConToken } from '../api/cliente';
+import { api, urlBlobConToken } from '../api/cliente';
 import { useEstadoRed } from '../sync/estadoRed';
 
 const MIN_NOTA_NEGATIVA = 10;
@@ -88,13 +90,26 @@ export default function DictamenDetalle() {
 
       const mapa: Record<string, string> = {};
       for (const doc of detalle.documentos) {
-        if (doc.archivo_url) mapa[claveDocumento(doc)] = await urlConToken(doc.archivo_url);
+        if (doc.archivo_url) mapa[claveDocumento(doc)] = await urlBlobConToken(doc.archivo_url);
       }
-      setEnlaces(mapa);
+      setEnlaces((previos) => {
+        Object.values(previos).forEach((url) => URL.revokeObjectURL(url));
+        return mapa;
+      });
     } catch {
       setError('No se pudo cargar el detalle del dictamen.');
     }
   }, [solicitudId]);
+
+  // Libera los blob: de los documentos al salir de la pantalla.
+  useEffect(() => {
+    return () => {
+      setEnlaces((previos) => {
+        Object.values(previos).forEach((url) => URL.revokeObjectURL(url));
+        return previos;
+      });
+    };
+  }, []);
 
   useEffect(() => {
     if (!enLinea) return;

@@ -715,3 +715,30 @@ export async function urlConToken(ruta: string): Promise<string> {
 export async function urlFoto(fotoUrl: string): Promise<string> {
   return urlConToken(fotoUrl);
 }
+
+/**
+ * Igual que `urlConToken`, pero para documentos que quedan MONTADOS en la
+ * pantalla (visor de PDF/imagen en <iframe>/<img>, o un enlace que se deja
+ * abierto) en vez de ser una descarga de un solo golpe. En ese caso el token
+ * completo de 12 h queda pegado en la URL mientras el visor sigue montado, y
+ * de ahi pasa al historial del navegador y a cualquier log de proxy que
+ * registre la URL completa -- riesgo real en equipo compartido (kiosco de
+ * ventanilla o celular personal del capturista). Aqui se pide el archivo con
+ * el token en la cabecera `Authorization` (nunca en la URL) y se expone como
+ * `blob:`, que no lleva el token ni queda en el historial.
+ *
+ * El `blob:` que devuelve DEBE liberarse con `URL.revokeObjectURL()` cuando
+ * el componente que lo usa se desmonta o pide uno nuevo, o el navegador retiene
+ * la memoria del archivo mientras la pestaña siga abierta.
+ */
+export async function urlBlobConToken(ruta: string): Promise<string> {
+  const token = await tokenActual();
+  const respuesta = await fetch(ruta, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined
+  });
+  if (!respuesta.ok) {
+    throw new ErrorPeticion(respuesta.status, 'error', 'No se pudo descargar el archivo.');
+  }
+  const blob = await respuesta.blob();
+  return URL.createObjectURL(blob);
+}

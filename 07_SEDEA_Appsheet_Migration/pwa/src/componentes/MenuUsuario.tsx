@@ -19,8 +19,8 @@ export default function MenuUsuario({ compacto = false }: Props) {
   const navegar = useNavigate();
 
   const salir = async () => {
-    await cerrarSesion();
-    navegar('/login', { replace: true });
+    const procedio = await cerrarSesion();
+    if (procedio) navegar('/login', { replace: true });
   };
 
   return (

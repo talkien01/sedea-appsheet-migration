@@ -635,6 +635,14 @@ export type CampoEditableAdminSolicitud = (typeof CAMPOS_EDITABLES_ADMIN_SOLICIT
 export const esquemaConceptoEditadoAdmin = z.object({
   id: z.number().int().positive(),
   cantidad: z.number().positive(),
+  // Espejo de TablaConceptos.tsx (captura original en Ventanilla): el total
+  // se autocalcula en el cliente como estatal + productor mientras no se
+  // sobrescriba a mano (Assumption 48, aportaciones de terceros). Los 3
+  // campos se guardan independientes porque asi los captura el alta -- antes
+  // esta edicion solo aceptaba monto_total, perdiendo el desglose real de
+  // cuanto pone el productor.
+  monto_estatal: z.number().nonnegative(),
+  monto_productor: z.number().nonnegative(),
   monto_total: z.number().nonnegative()
 });
 

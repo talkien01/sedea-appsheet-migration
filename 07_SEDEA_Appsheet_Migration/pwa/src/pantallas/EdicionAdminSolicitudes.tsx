@@ -354,9 +354,25 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
     setCampos((previo) => (previo ? { ...previo, [clave]: valor } : previo));
   };
 
-  const cambiarConcepto = (conceptoId: number, clave: 'cantidad' | 'monto_total', valor: number) => {
+  const cambiarConcepto = (
+    conceptoId: number,
+    clave: 'cantidad' | 'monto_estatal' | 'monto_productor' | 'monto_total',
+    valor: number
+  ) => {
     setConceptos((previos) =>
-      previos.map((c) => (c.id === conceptoId ? { ...c, [clave]: valor } : c))
+      previos.map((c) => {
+        if (c.id !== conceptoId) return c;
+        const actualizado = { ...c, [clave]: valor };
+        // Mismo criterio que TablaConceptos.tsx (captura original en
+        // Ventanilla): el total se autocalcula como estatal + productor.
+        // Solo se recalcula cuando se toca uno de esos dos -- si el admin
+        // escribe el total directo, se respeta tal cual (aportacion de
+        // tercero que no encaja en la suma simple, Assumption 48).
+        if (clave === 'monto_estatal' || clave === 'monto_productor') {
+          actualizado.monto_total = actualizado.monto_estatal + actualizado.monto_productor;
+        }
+        return actualizado;
+      })
     );
   };
 
@@ -387,6 +403,8 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
         conceptos: conceptos.map((c) => ({
           id: c.id,
           cantidad: Number(c.cantidad),
+          monto_estatal: Number(c.monto_estatal),
+          monto_productor: Number(c.monto_productor),
           monto_total: Number(c.monto_total)
         }))
       });
@@ -633,7 +651,9 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
                     <tr>
                       <th>Concepto</th>
                       <th>Cantidad</th>
-                      <th>Monto</th>
+                      <th>Monto estatal</th>
+                      <th>Monto productor</th>
+                      <th>Monto total</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -653,6 +673,30 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
                         <td>
                           <input
                             type="number"
+                            data-testid={`campo-monto-estatal-edicion-admin-${c.id}`}
+                            className="mono"
+                            style={{ width: 120 }}
+                            value={c.monto_estatal}
+                            onChange={(e) =>
+                              cambiarConcepto(c.id, 'monto_estatal', Number(e.target.value))
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            data-testid={`campo-monto-productor-edicion-admin-${c.id}`}
+                            className="mono"
+                            style={{ width: 120 }}
+                            value={c.monto_productor}
+                            onChange={(e) =>
+                              cambiarConcepto(c.id, 'monto_productor', Number(e.target.value))
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
                             data-testid={`campo-monto-edicion-admin-${c.id}`}
                             className="mono"
                             style={{ width: 120 }}
@@ -667,7 +711,10 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
                   </tbody>
                 </table>
                 <p className="dato">
-                  No se agregan ni quitan conceptos desde aquí — solo se corrige lo ya capturado.
+                  El monto total se autocalcula como estatal + productor; si lo escribes directo,
+                  ya no se recalcula (para aportaciones de terceros que no encajan en la suma
+                  simple). No se agregan ni quitan conceptos desde aquí — solo se corrige lo ya
+                  capturado.
                 </p>
               </>
             )}

@@ -1645,21 +1645,33 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
         for (const c of entrada.conceptos) {
           const previoConcepto = conceptosPrevios.find((p) => Number(p.id) === c.id)!;
           const cantidadPrevia = Number(previoConcepto.cantidad);
+          const estatalPrevio = Number(previoConcepto.monto_estatal);
+          const productorPrevio = Number(previoConcepto.monto_productor);
           const montoPrevio = Number(previoConcepto.monto_total);
           const cambioCantidad = cantidadPrevia !== c.cantidad;
+          const cambioEstatal = estatalPrevio !== c.monto_estatal;
+          const cambioProductor = productorPrevio !== c.monto_productor;
           const cambioMonto = montoPrevio !== c.monto_total;
-          if (!cambioCantidad && !cambioMonto) continue;
+          if (!cambioCantidad && !cambioEstatal && !cambioProductor && !cambioMonto) continue;
 
           if (cambioCantidad) {
             cambiosConceptos.push({ id: c.id, campo: 'cantidad', anterior: cantidadPrevia, nuevo: c.cantidad });
+          }
+          if (cambioEstatal) {
+            cambiosConceptos.push({ id: c.id, campo: 'monto_estatal', anterior: estatalPrevio, nuevo: c.monto_estatal });
+          }
+          if (cambioProductor) {
+            cambiosConceptos.push({ id: c.id, campo: 'monto_productor', anterior: productorPrevio, nuevo: c.monto_productor });
           }
           if (cambioMonto) {
             cambiosConceptos.push({ id: c.id, campo: 'monto_total', anterior: montoPrevio, nuevo: c.monto_total });
           }
 
           await cliente.query(
-            `UPDATE solicitud_conceptos SET cantidad = $1, monto_total = $2 WHERE id = $3 AND solicitud_id = $4`,
-            [c.cantidad, c.monto_total, c.id, id]
+            `UPDATE solicitud_conceptos
+                SET cantidad = $1, monto_estatal = $2, monto_productor = $3, monto_total = $4
+              WHERE id = $5 AND solicitud_id = $6`,
+            [c.cantidad, c.monto_estatal, c.monto_productor, c.monto_total, c.id, id]
           );
           if (previoConcepto.beneficiario_id) {
             await cliente.query(

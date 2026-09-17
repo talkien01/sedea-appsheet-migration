@@ -1517,11 +1517,18 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
         }
       }
       if (typeof campos.curp === 'string') {
-        const curpNormalizada = campos.curp.trim().toUpperCase();
-        if (!PATRON_CURP.test(curpNormalizada)) {
-          throw error422('curp_invalida', 'La CURP no tiene el formato correcto.');
+        if (campos.curp.trim() === '') {
+          // Persona moral/grupo/municipio: nunca capturan CURP. La exigencia
+          // real (obligatoria solo para fisica) se valida mas abajo con
+          // tipoPersonaFinal, una vez resuelto el tipo_persona definitivo.
+          campos.curp = null;
+        } else {
+          const curpNormalizada = campos.curp.trim().toUpperCase();
+          if (!PATRON_CURP.test(curpNormalizada)) {
+            throw error422('curp_invalida', 'La CURP no tiene el formato correcto.');
+          }
+          campos.curp = curpNormalizada;
         }
-        campos.curp = curpNormalizada;
       }
       if (typeof campos.telefono === 'string') {
         const normalizado = normalizarTelefono(campos.telefono);
@@ -1566,11 +1573,15 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       // regla que ya protege el alta (E42), replicada aqui para que la
       // correccion no pueda crear el mismo problema que evita al capturar.
       const tipoPersonaFinal = (campos.tipo_persona as TipoPersona | undefined) ?? previa.tipo_persona;
-      if (typeof campos.curp === 'string') {
+      // `campos.curp` puede ser string, null (se limpio arriba) o undefined
+      // (no vino en el body) -- se distingue de `typeof === 'string'` porque
+      // limpiar la CURP de una fisica tambien debe pasar por el candado de
+      // "obligatoria".
+      if (campos.curp !== undefined) {
         if (tipoPersonaFinal === 'fisica' && !campos.curp) {
           throw error422('curp_requerida', 'La CURP es obligatoria para persona física.');
         }
-        if (campos.curp !== (previa.curp ?? '')) {
+        if (campos.curp && campos.curp !== (previa.curp ?? null)) {
           const idsConceptos = conceptosPrevios.map((c) => Number(c.tipo_apoyo_id));
           const duplicados = (await conceptosDuplicadosPorCurp(campos.curp as string, idsConceptos)).filter(
             (d) => Number(d.solicitud_id) !== id

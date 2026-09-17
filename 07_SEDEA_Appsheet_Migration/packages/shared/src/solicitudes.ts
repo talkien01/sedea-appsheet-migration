@@ -653,7 +653,13 @@ export const esquemaEditarSolicitudAdmin = z.object({
     .object({
       nombre_solicitante: z.string().trim().min(1).max(200).optional(),
       tipo_persona: z.enum(TIPOS_PERSONA).optional(),
-      curp: z.string().trim().length(18).optional(),
+      // Cadena vacia = "sin CURP" (moral/grupo/municipio nunca la capturan);
+      // el formulario de edicion SIEMPRE manda esta clave, aunque venga vacia
+      // -- .optional() de Zod solo tolera la clave AUSENTE, no un valor
+      // vacio, asi que antes esto rechazaba con 422 cualquier edicion sobre
+      // una solicitud sin CURP. La exigencia real (obligatoria solo para
+      // persona fisica) se valida aparte en el handler.
+      curp: z.union([z.literal(''), z.string().trim().length(18)]).optional(),
       telefono: z.string().trim().max(20).optional(),
       ubi_municipio_id: z.number().int().positive().optional(),
       ubi_localidad: z.string().trim().max(120).optional()

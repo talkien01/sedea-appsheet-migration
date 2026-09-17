@@ -32,6 +32,10 @@ interface CamposEditables {
   ubi_localidad: string;
 }
 
+// Mismo patron que Beneficiarios en línea/Evidencia de entregas: el
+// backend admite hasta 200 por pagina (ver GET /api/solicitudes).
+const OPCIONES_POR_PAGINA = [20, 30, 50, 100, 200] as const;
+
 export default function EdicionAdminSolicitudes() {
   const enLinea = useEstadoRed();
   const [busqueda, setBusqueda] = useState('');
@@ -41,6 +45,8 @@ export default function EdicionAdminSolicitudes() {
 
   const [filas, setFilas] = useState<FilaSolicitud[]>([]);
   const [total, setTotal] = useState(0);
+  const [pagina, setPagina] = useState(1);
+  const [porPagina, setPorPagina] = useState<number>(OPCIONES_POR_PAGINA[2]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,30 +67,44 @@ export default function EdicionAdminSolicitudes() {
       .then((p) => setUsuarios(p.data.filter((u) => u.activo && !u.eliminado)));
   }, [enLinea]);
 
-  const buscar = useCallback(async () => {
-    setCargando(true);
-    setError(null);
-    try {
-      const parametros = new URLSearchParams({ page: '1', page_size: '50' });
-      if (busqueda.trim()) parametros.set('q', busqueda.trim());
-      if (capturadoPorId) parametros.set('capturado_por_id', capturadoPorId);
-      if (regionalId) parametros.set('regional_id', regionalId);
-      if (municipioId) parametros.set('municipio_id', municipioId);
-      const resultado = await apiSolicitudes.listar(parametros);
-      setFilas(resultado.data);
-      setTotal(resultado.total);
-    } catch {
-      setError('No se pudieron cargar las solicitudes.');
-    } finally {
-      setCargando(false);
-    }
-  }, [busqueda, capturadoPorId, regionalId, municipioId]);
+  const cargarPagina = useCallback(
+    async (paginaPedida: number) => {
+      setCargando(true);
+      setError(null);
+      try {
+        const parametros = new URLSearchParams({
+          page: String(paginaPedida),
+          page_size: String(porPagina)
+        });
+        if (busqueda.trim()) parametros.set('q', busqueda.trim());
+        if (capturadoPorId) parametros.set('capturado_por_id', capturadoPorId);
+        if (regionalId) parametros.set('regional_id', regionalId);
+        if (municipioId) parametros.set('municipio_id', municipioId);
+        const resultado = await apiSolicitudes.listar(parametros);
+        setFilas(resultado.data);
+        setTotal(resultado.total);
+        setPagina(resultado.page);
+      } catch {
+        setError('No se pudieron cargar las solicitudes.');
+      } finally {
+        setCargando(false);
+      }
+    },
+    [busqueda, capturadoPorId, regionalId, municipioId, porPagina]
+  );
 
+  // Cualquier cambio de filtro o de tamaño de pagina vuelve a la pagina 1;
+  // el debounce evita una peticion por tecla en el buscador.
   useEffect(() => {
     if (!enLinea) return;
-    const temporizador = setTimeout(() => void buscar(), 300);
+    setPagina(1);
+    const temporizador = setTimeout(() => void cargarPagina(1), 300);
     return () => clearTimeout(temporizador);
-  }, [buscar, enLinea]);
+  }, [cargarPagina, enLinea]);
+
+  const totalPaginas = total === 0 ? 0 : Math.ceil(total / porPagina);
+  const primerRegistro = total === 0 ? 0 : (pagina - 1) * porPagina + 1;
+  const ultimoRegistro = total === 0 ? 0 : Math.min((pagina - 1) * porPagina + filas.length, total);
 
   if (!enLinea) return <p className="vacio">Esta sección requiere conexión a internet.</p>;
 
@@ -160,7 +180,31 @@ export default function EdicionAdminSolicitudes() {
       </div>
 
       <div className="tarjeta">
-        <h2>Resultados ({total})</h2>
+        <div className="rejilla" style={{ alignItems: 'end' }}>
+          <div>
+            <h2>Resultados ({total})</h2>
+            <p className="dato" data-testid="resumen-edicion-admin">
+              Mostrando {primerRegistro}–{ultimoRegistro} de {total} solicitudes.
+            </p>
+          </div>
+
+          <div className="campo">
+            <label htmlFor="edicion-admin-por-pagina">Mostrar por página</label>
+            <select
+              id="edicion-admin-por-pagina"
+              data-testid="select-edicion-admin-por-pagina"
+              value={porPagina}
+              onChange={(e) => setPorPagina(Number(e.target.value))}
+            >
+              {OPCIONES_POR_PAGINA.map((opcion) => (
+                <option key={opcion} value={opcion}>
+                  {opcion}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         {error && (
           <div className="mensaje error" role="alert">
             {error}
@@ -168,6 +212,32 @@ export default function EdicionAdminSolicitudes() {
         )}
         {cargando && <p className="vacio">Cargando…</p>}
         {!cargando && filas.length === 0 && <p className="vacio">Sin resultados</p>}
+
+        {!cargando && total > 0 && (
+          <div className="acciones" style={{ marginBottom: '12px' }}>
+            <button
+              type="button"
+              className="secundario"
+              data-testid="btn-edicion-admin-anterior"
+              disabled={pagina <= 1}
+              onClick={() => void cargarPagina(pagina - 1)}
+            >
+              ‹ Anterior
+            </button>
+            <span className="dato" data-testid="pagina-edicion-admin-actual">
+              Página {pagina} de {totalPaginas}
+            </span>
+            <button
+              type="button"
+              className="secundario"
+              data-testid="btn-edicion-admin-siguiente"
+              disabled={pagina >= totalPaginas}
+              onClick={() => void cargarPagina(pagina + 1)}
+            >
+              Siguiente ›
+            </button>
+          </div>
+        )}
 
         {!cargando && filas.length > 0 && (
           <div className="tabla-contenedor">
@@ -222,7 +292,7 @@ export default function EdicionAdminSolicitudes() {
           onCerrar={() => setIdEditando(null)}
           onGuardado={() => {
             setIdEditando(null);
-            void buscar();
+            void cargarPagina(pagina);
           }}
         />
       )}

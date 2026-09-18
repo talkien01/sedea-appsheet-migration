@@ -60,6 +60,10 @@ export default function BeneficiariosOnline() {
     perfil?.regional_id ? String(perfil.regional_id) : ''
   );
   const [municipioId, setMunicipioId] = useState('');
+  // Concepto de apoyo (CFA/CFG/etc.) -- pedido para exportar por Regional+
+  // Municipio+Concepto y mandarle a la ventanilla un archivo ya acotado a
+  // un solo concepto (ver "Ajuste masivo de kg", que reusa este export).
+  const [tipoApoyoId, setTipoApoyoId] = useState('');
 
   useEffect(() => {
     if (!enLinea) return;
@@ -99,9 +103,10 @@ export default function BeneficiariosOnline() {
       if (busqueda.trim()) parametros.set('q', busqueda.trim());
       if (regionalId) parametros.set('regional_id', regionalId);
       if (municipioId) parametros.set('municipio_id', municipioId);
+      if (tipoApoyoId) parametros.set('tipo_apoyo_id', tipoApoyoId);
       return parametros;
     },
-    [busqueda, regionalId, municipioId, porPagina]
+    [busqueda, regionalId, municipioId, tipoApoyoId, porPagina]
   );
 
   const cargarPagina = useCallback(
@@ -236,6 +241,23 @@ export default function BeneficiariosOnline() {
               {municipiosVisibles.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="campo">
+            <label htmlFor="beneficiarios-online-concepto">Concepto de apoyo</label>
+            <select
+              id="beneficiarios-online-concepto"
+              data-testid="select-beneficiarios-online-concepto"
+              value={tipoApoyoId}
+              onChange={(e) => setTipoApoyoId(e.target.value)}
+            >
+              <option value="">Todos</option>
+              {(catalogos?.tipos_apoyo ?? []).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.nombre}
                 </option>
               ))}
             </select>

@@ -32,11 +32,16 @@ export default function Beneficiarios() {
 
   const [regionales, setRegionales] = useState<EntradaCatalogoLocal[]>([]);
   const [municipios, setMunicipios] = useState<EntradaCatalogoLocal[]>([]);
+  const [conceptos, setConceptos] = useState<EntradaCatalogoLocal[]>([]);
   const [colonias, setColonias] = useState<EntradaCatalogoLocal[]>([]);
   const [secciones, setSecciones] = useState<EntradaCatalogoLocal[]>([]);
 
   const [regionalId, setRegionalId] = useState<number | null>(perfil?.regional_id ?? null);
   const [municipioClave, setMunicipioClave] = useState<string>('');
+  // Concepto de apoyo (CFA/CFG/etc.) -- pedido para exportar por Regional+
+  // Municipio+Concepto y mandarle a la ventanilla un archivo ya acotado a
+  // un solo concepto (ver "Ajuste masivo de kg", que reusa este mismo export).
+  const [tipoApoyoId, setTipoApoyoId] = useState<number | null>(null);
   const [coloniaClave, setColoniaClave] = useState<string>('');
   const [seccionValor, setSeccionValor] = useState<string>('');
   // Rango de letras de apellido (E62): para armar lotes de impresion por
@@ -61,6 +66,7 @@ export default function Beneficiarios() {
     void (async () => {
       setRegionales(await catalogosPorGrupo('regional'));
       setMunicipios(await catalogosPorGrupo('municipio'));
+      setConceptos(await catalogosPorGrupo('tipo_apoyo'));
       setColonias(await catalogosPorGrupo('colonia'));
       setSecciones(await catalogosPorGrupo('seccion'));
       setTotalLocal(await contarBeneficiarios());
@@ -97,6 +103,7 @@ export default function Beneficiarios() {
       texto,
       regional_id: regionalId,
       municipio_id: municipioId,
+      tipo_apoyo_id: tipoApoyoId,
       colonia: coloniaValor,
       seccion: seccionValor || null,
       estado,
@@ -109,6 +116,7 @@ export default function Beneficiarios() {
     texto,
     regionalId,
     municipioId,
+    tipoApoyoId,
     coloniaValor,
     seccionValor,
     estado,
@@ -129,6 +137,7 @@ export default function Beneficiarios() {
     texto,
     regionalId,
     municipioClave,
+    tipoApoyoId,
     coloniaClave,
     seccionValor,
     estado,
@@ -170,6 +179,7 @@ export default function Beneficiarios() {
     const p: Record<string, string> = {};
     if (regionalId) p.regional_id = String(regionalId);
     if (municipioId) p.municipio_id = String(municipioId);
+    if (tipoApoyoId) p.tipo_apoyo_id = String(tipoApoyoId);
     if (coloniaValor) p.colonia = coloniaValor;
     if (seccionValor) p.seccion = seccionValor;
     if (texto.trim()) p.q = texto.trim();
@@ -180,6 +190,7 @@ export default function Beneficiarios() {
   }, [
     regionalId,
     municipioId,
+    tipoApoyoId,
     coloniaValor,
     seccionValor,
     texto,
@@ -315,6 +326,23 @@ export default function Beneficiarios() {
               {municipiosVisibles.map((m) => (
                 <option key={m.clave} value={m.clave}>
                   {m.valor}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="campo">
+            <label htmlFor="concepto">Concepto de apoyo</label>
+            <select
+              id="concepto"
+              data-testid="select-concepto"
+              value={tipoApoyoId ?? ''}
+              onChange={(e) => setTipoApoyoId(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">Todos</option>
+              {conceptos.map((c) => (
+                <option key={c.clave} value={Number(c.datos?.id)}>
+                  {c.valor}
                 </option>
               ))}
             </select>

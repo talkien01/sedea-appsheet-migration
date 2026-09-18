@@ -163,6 +163,8 @@ export interface FiltrosBeneficiarios {
   texto?: string;
   regional_id?: number | null;
   municipio_id?: number | null;
+  /** Concepto de apoyo (ej. CFA-AVENA/CFG-GARBANZO), para exportar por Regional+Municipio+Concepto. */
+  tipo_apoyo_id?: number | null;
   colonia?: string | null;
   seccion?: string | null;
   estado?: 'todos' | 'pendientes' | 'capturados';
@@ -187,6 +189,7 @@ export async function buscarBeneficiarios(
     .filter((b) => {
       if (filtros.regional_id && b.regional_id !== filtros.regional_id) return false;
       if (filtros.municipio_id && b.municipio_id !== filtros.municipio_id) return false;
+      if (filtros.tipo_apoyo_id && b.tipo_apoyo_id !== filtros.tipo_apoyo_id) return false;
       if (filtros.colonia && b.colonia !== filtros.colonia) return false;
       if (filtros.seccion && b.seccion !== filtros.seccion) return false;
       if (texto) {

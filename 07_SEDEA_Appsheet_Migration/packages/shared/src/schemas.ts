@@ -48,6 +48,10 @@ export const esquemaConsultaBeneficiarios = z.object({
   page_size: z.coerce.number().int().min(1).max(500).default(200),
   regional_id: z.coerce.number().int().positive().optional(),
   municipio_id: z.coerce.number().int().positive().optional(),
+  // Concepto de apoyo (ej. CFA-AVENA, CFG-GARBANZO) -- pedido para poder
+  // exportar por Regional+Municipio+Concepto y mandarle a la ventanilla un
+  // archivo ya acotado a un solo concepto para que revise/corrija kg.
+  tipo_apoyo_id: z.coerce.number().int().positive().optional(),
   colonia: z.string().optional(),
   seccion: z.string().optional(),
   q: z.string().optional(),

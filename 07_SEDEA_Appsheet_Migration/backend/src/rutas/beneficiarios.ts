@@ -115,6 +115,10 @@ export function construirFiltrosBeneficiarios(
     parametros.push(q.municipio_id);
     condiciones.push(`b.municipio_id = $${parametros.length}`);
   }
+  if (q.tipo_apoyo_id) {
+    parametros.push(q.tipo_apoyo_id);
+    condiciones.push(`b.tipo_apoyo_id = $${parametros.length}`);
+  }
   if (q.colonia) {
     parametros.push(q.colonia);
     condiciones.push(`b.colonia = $${parametros.length}`);

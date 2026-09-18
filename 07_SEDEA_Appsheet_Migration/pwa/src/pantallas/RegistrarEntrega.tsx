@@ -48,8 +48,14 @@ function descripcionConcepto(c: ConceptoEntregaLocal): string {
  */
 function nombreEvento(evento: EventoEntregaLocal): string {
   const lugar = evento.municipio_nombre ?? evento.regional_nombre ?? 'Paquete descargado';
-  if (evento.por_concepto.length === 0) return lugar;
-  const desglose = evento.por_concepto.map((c) => `${c.total} ${c.tipo_apoyo_nombre}`).join(', ');
+  // `?? []`: un paquete guardado en el celular ANTES del cambio a
+  // multi-concepto no tiene este campo -- IndexedDB no migra el CONTENIDO
+  // de un registro viejo solo porque el codigo cambio. Bug real en
+  // produccion: `.length` sobre `undefined` tronaba el render (pantalla en
+  // blanco) al abrir "Entregar apoyos" con uno de esos paquetes viejos.
+  const porConcepto = evento.por_concepto ?? [];
+  if (porConcepto.length === 0) return lugar;
+  const desglose = porConcepto.map((c) => `${c.total} ${c.tipo_apoyo_nombre}`).join(', ');
   return `${lugar} · ${desglose}`;
 }
 

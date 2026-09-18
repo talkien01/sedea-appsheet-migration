@@ -189,10 +189,20 @@ export default function PrepararEntrega() {
         <p className="dato" data-testid="entrega-total-local">
           <strong>Conceptos por entregar guardados:</strong> {enDispositivo}
         </p>
-        {evento && evento.por_concepto.length > 0 && (
+        {/*
+          `evento.por_concepto` con `?? []`: bug real en produccion (celular
+          con un paquete guardado ANTES del cambio a multi-concepto, cuando
+          `EventoEntregaLocal` no tenia este campo). IndexedDB no migra el
+          CONTENIDO de un registro viejo solo porque el codigo cambio -- ese
+          registro se queda con la forma vieja para siempre hasta que se
+          borra o se sobreescribe. Sin este guard, `.length` sobre
+          `undefined` tronaba el render entero (pantalla en blanco, sin
+          ErrorBoundary para avisar).
+        */}
+        {evento && (evento.por_concepto ?? []).length > 0 && (
           <p className="dato" data-testid="entrega-concepto-local">
             <strong>Desglose:</strong>{' '}
-            {evento.por_concepto.map((c) => `${c.total} ${c.tipo_apoyo_nombre}`).join(', ')}
+            {(evento.por_concepto ?? []).map((c) => `${c.total} ${c.tipo_apoyo_nombre}`).join(', ')}
           </p>
         )}
         <p className="dato" data-testid="entrega-regional-local">

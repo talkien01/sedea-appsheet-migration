@@ -27,9 +27,18 @@
 // aqui, hay que cambiarla alla tambien para que la pantalla (offline, esta
 // funcion) y el PDF impreso (backend, SQL) queden en el mismo orden.
 
-/** Apellido(s) "adivinados": las ultimas 1 o 2 palabras del nombre completo. */
-export function apellidoDeNombre(nombreCompleto: string): string {
-  const partes = nombreCompleto.trim().split(/\s+/).filter(Boolean);
+/**
+ * Apellido(s) "adivinados": las ultimas 1 o 2 palabras del nombre completo.
+ * Un nombre nulo/vacio (dato historico sin capturar) no truena: regresa ''
+ * en vez de tronar el ordenamiento completo del padron (bug real: un solo
+ * registro asi rompia el `.sort()` completo de la pantalla de Beneficiarios,
+ * y sin ErrorBoundary eso se veia como pantalla en blanco sin ningun aviso).
+ */
+export function apellidoDeNombre(nombreCompleto: string | null | undefined): string {
+  const partes = String(nombreCompleto ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
   const n = partes.length;
   if (n >= 3) return partes.slice(n - 2).join(' ');
   if (n === 2) return partes[1];

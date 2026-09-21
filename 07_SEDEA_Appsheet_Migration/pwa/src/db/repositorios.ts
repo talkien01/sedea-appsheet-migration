@@ -330,6 +330,30 @@ export async function contarEntregasPendientes(): Promise<number> {
   return db.entregas.where('estado').anyOf('pendiente', 'sincronizando', 'error').count();
 }
 
+/**
+ * Cuanto se subiria con "Enviar ahora": capturas + entregas en cola y el peso
+ * aproximado de sus fotos, para que el capturista decida con datos moviles
+ * sabiendo el costo. Cuenta lo mismo que "Reintentar ahora" reencola.
+ */
+export async function resumenEnvioPendiente(): Promise<{
+  capturas: number;
+  entregas: number;
+  bytes: number;
+}> {
+  const capturas = await db.capturas
+    .where('estado')
+    .anyOf('pendiente', 'sincronizando', 'error')
+    .toArray();
+  const entregas = await db.entregas
+    .where('estado')
+    .anyOf('pendiente', 'sincronizando', 'error')
+    .toArray();
+  const bytes =
+    capturas.reduce((s, c) => s + (c.foto?.size ?? 0), 0) +
+    entregas.reduce((s, e) => s + (e.foto?.size ?? 0), 0);
+  return { capturas: capturas.length, entregas: entregas.length, bytes };
+}
+
 export async function limpiarPaqueteEntrega(): Promise<void> {
   await db.transaction('rw', db.conceptos_entrega, db.evento_entrega, async () => {
     await db.conceptos_entrega.clear();

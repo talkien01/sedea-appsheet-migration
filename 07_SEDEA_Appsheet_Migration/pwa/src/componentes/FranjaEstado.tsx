@@ -13,9 +13,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useSesion } from '../App';
-import { contarPendientes } from '../db/repositorios';
+import { contarEntregasPendientes, contarPendientes } from '../db/repositorios';
 import { useEstadoRed } from '../sync/estadoRed';
 import { alCambiarCola } from '../sync/motor';
+import { useEnvioPausado } from '../sync/pausaEnvio';
 import { tituloDeRuta } from '../navegacion/menu';
 import Marca from './Marca';
 import ToggleTema from './ToggleTema';
@@ -30,9 +31,12 @@ export default function FranjaEstado({ ancho }: Props) {
   const enLinea = useEstadoRed();
   const ubicacion = useLocation();
   const [pendientes, setPendientes] = useState(0);
+  const pausado = useEnvioPausado();
 
+  // Suma capturas Y entregas: antes solo contaba capturas y decia "0" cuando
+  // habia una entrega (foto+GPS) sin subir -- reporte real de campo.
   const refrescar = useCallback(async () => {
-    setPendientes(await contarPendientes());
+    setPendientes((await contarPendientes()) + (await contarEntregasPendientes()));
   }, []);
 
   useEffect(() => {
@@ -91,10 +95,10 @@ export default function FranjaEstado({ ancho }: Props) {
       </span>
 
       <span
-        className={`indicador ${pendientes > 0 ? 'con-pendientes' : ''}`}
+        className={`indicador ${pendientes > 0 || pausado ? 'con-pendientes' : ''}`}
         data-testid="contador-pendientes"
       >
-        Pendientes: {pendientes}
+        {pausado ? `Envío pausado · ${pendientes}` : `Pendientes: ${pendientes}`}
       </span>
 
       <span className="usuario" data-testid="usuario-actual">

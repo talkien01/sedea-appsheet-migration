@@ -12,6 +12,7 @@ import { db } from '../db/indexeddb';
 import { capturasPendientes, entregasPendientes } from '../db/repositorios';
 import { marcarEstado, marcarEstadoEntrega } from './cola';
 import { estaEnLinea } from './estadoRed';
+import { envioPausado } from './pausaEnvio';
 
 const MAX_INTENTOS = 5;
 
@@ -39,10 +40,16 @@ export interface ResultadoSync {
 }
 
 /** Envia todas las capturas pendientes. Devuelve el resumen del intento. */
-export async function sincronizarPendientes(): Promise<ResultadoSync> {
+export async function sincronizarPendientes(
+  opciones: { forzar?: boolean } = {}
+): Promise<ResultadoSync> {
   const resultado: ResultadoSync = { enviadas: 0, duplicadas: 0, fallidas: 0 };
   if (sincronizando) return resultado;
   if (!estaEnLinea()) return resultado;
+  // Envio pausado por el capturista (ahorro de datos moviles): ningun disparo
+  // automatico sube nada. Solo "Enviar ahora", ya con confirmacion, pasa
+  // `forzar`. Lo capturado sigue guardandose local con foto y GPS.
+  if (envioPausado() && !opciones.forzar) return resultado;
 
   sincronizando = true;
   try {

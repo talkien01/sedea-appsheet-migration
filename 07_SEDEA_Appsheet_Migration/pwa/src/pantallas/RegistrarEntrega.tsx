@@ -30,6 +30,7 @@ import {
 import { encolarEntrega } from '../sync/cola';
 import { alCambiarCola, sincronizarPendientes } from '../sync/motor';
 import { estaEnLinea, useEstadoRed } from '../sync/estadoRed';
+import { envioPausado, useEnvioPausado } from '../sync/pausaEnvio';
 
 /** Pasos del flujo. `escanear` es el estado de reposo entre beneficiarios. */
 type Paso = 'escanear' | 'elegir' | 'confirmar' | 'evidencia';
@@ -101,6 +102,7 @@ export default function RegistrarEntrega() {
 
   const [aviso, setAviso] = useState<string | null>(null);
   const [exito, setExito] = useState<string | null>(null);
+  const envioEnPausa = useEnvioPausado();
 
   const refrescarContadores = useCallback(async () => {
     setEvento((await eventoEntregaLocal()) ?? null);
@@ -240,13 +242,17 @@ export default function RegistrarEntrega() {
       });
 
       const habiaSenal = estaEnLinea();
+      const pausada = envioPausado();
       setExito(
-        habiaSenal
-          ? `Entrega registrada en el dispositivo. Intentando sincronizar: ${elegido.beneficiario_nombre}.`
-          : `Entrega registrada, se subirá cuando haya señal: ${elegido.beneficiario_nombre}.`
+        pausada
+          ? `Entrega registrada en el dispositivo (envío pausado, se subirá cuando lo reanudes): ${elegido.beneficiario_nombre}.`
+          : habiaSenal
+            ? `Entrega registrada en el dispositivo. Intentando sincronizar: ${elegido.beneficiario_nombre}.`
+            : `Entrega registrada, se subirá cuando haya señal: ${elegido.beneficiario_nombre}.`
       );
       // Con senal se intenta de inmediato, sin bloquear el regreso al escaneo.
       // La UI no afirma que se sincronizo hasta que el servidor lo haya confirmado.
+      // (Con el envio pausado, el motor no sube nada aunque se llame.)
       if (habiaSenal) void sincronizarPendientes();
 
       await refrescarContadores();
@@ -288,7 +294,7 @@ export default function RegistrarEntrega() {
       </p>
       {porSubir > 0 && (
         <p className="campo-entrega-porsubir" data-testid="entrega-por-subir">
-          {porSubir} por subir
+          {porSubir} por subir{envioEnPausa ? ' · envío pausado (Sincronización → Enviar ahora)' : ''}
         </p>
       )}
       {!enLinea && (

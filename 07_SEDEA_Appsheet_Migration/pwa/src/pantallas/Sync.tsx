@@ -4,16 +4,24 @@ import { useNavigate } from 'react-router-dom';
 import { api, ErrorPeticion } from '../api/cliente';
 import {
   contarBeneficiarios,
+  contarEntregasPendientes,
   contarPendientes,
   guardarBeneficiarios,
   guardarCatalogos,
   limpiarBeneficiariosLocal,
   marcarSincronizacion,
-  obtenerSesion
+  obtenerSesion,
+  resumenEnvioPendiente
 } from '../db/repositorios';
 import { reintentarTodasLasCapturas, reintentarTodasLasEntregas } from '../sync/cola';
-import { sincronizarPendientes } from '../sync/motor';
+import { alCambiarCola, sincronizarPendientes } from '../sync/motor';
 import { useEstadoRed } from '../sync/estadoRed';
+import { fijarEnvioPausado, useEnvioPausado } from '../sync/pausaEnvio';
+
+function formatearPeso(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 const TAMANO_PAGINA = 500;
 
@@ -43,16 +51,26 @@ export default function Sync() {
   const [mensaje, setMensaje] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reintentando, setReintentando] = useState(false);
+  const [entregasPend, setEntregasPend] = useState(0);
+  const pausado = useEnvioPausado();
+  // Confirmacion antes de subir con el envio pausado (puede usar datos moviles).
+  const [confirmandoEnvio, setConfirmandoEnvio] = useState<{
+    capturas: number;
+    entregas: number;
+    bytes: number;
+  } | null>(null);
 
   const refrescar = useCallback(async () => {
     setTotalLocal(await contarBeneficiarios());
     setPendientes(await contarPendientes());
+    setEntregasPend(await contarEntregasPendientes());
     const sesion = await obtenerSesion();
     setUltimaSync(sesion?.ultima_sincronizacion ?? null);
   }, []);
 
   useEffect(() => {
     void refrescar();
+    return alCambiarCola(() => void refrescar());
   }, [refrescar]);
 
   const descargar = async () => {
@@ -115,7 +133,9 @@ export default function Sync() {
     try {
       const capturas = await reintentarTodasLasCapturas();
       const entregas = await reintentarTodasLasEntregas();
-      await sincronizarPendientes();
+      // Llega aqui solo con el envio activo o ya confirmado por el usuario:
+      // `forzar` es lo unico que salta la pausa.
+      await sincronizarPendientes({ forzar: true });
       await refrescar();
       const total = capturas + entregas;
       setMensaje(
@@ -128,6 +148,20 @@ export default function Sync() {
     } finally {
       setReintentando(false);
     }
+  };
+
+  /** Con el envio pausado, primero se muestra cuanto se subiria y se pide OK. */
+  const pedirEnvio = async () => {
+    if (!pausado) {
+      await reintentarAhora();
+      return;
+    }
+    setConfirmandoEnvio(await resumenEnvioPendiente());
+  };
+
+  const confirmarEnvio = async () => {
+    setConfirmandoEnvio(null);
+    await reintentarAhora();
   };
 
   const porcentaje = totalRemoto > 0 ? Math.min(100, Math.round((descargados / totalRemoto) * 100)) : 0;
@@ -183,6 +217,53 @@ export default function Sync() {
         <p className="dato">
           <strong>Capturas pendientes de enviar:</strong> {pendientes}
         </p>
+        <p className="dato" data-testid="entregas-pendientes-enviar">
+          <strong>Entregas pendientes de enviar:</strong> {entregasPend}
+        </p>
+
+        <label className="casilla" style={{ display: 'block', margin: '12px 0' }}>
+          <input
+            type="checkbox"
+            data-testid="chk-pausar-envio"
+            checked={pausado}
+            onChange={(e) => {
+              fijarEnvioPausado(e.target.checked);
+              setConfirmandoEnvio(null);
+            }}
+            style={{ marginRight: 8 }}
+          />
+          Pausar el envío de fotos (ahorra datos móviles)
+        </label>
+        <p className="dato">
+          {pausado
+            ? 'Envío PAUSADO: las capturas y entregas se guardan en este teléfono pero no se suben solas. Bajar el padrón y el paquete de entrega sigue funcionando normal. Usa "Enviar ahora" cuando quieras subirlas.'
+            : 'Envío activo: las fotos se suben solas en cuanto hay conexión. Actívalo si no quieres gastar tus datos móviles y súbelas después con WiFi.'}
+        </p>
+
+        {confirmandoEnvio && (
+          <div className="mensaje aviso" role="alert" data-testid="confirmar-envio">
+            Se van a subir {confirmandoEnvio.capturas} captura(s) y {confirmandoEnvio.entregas}{' '}
+            entrega(s), ≈ {formatearPeso(confirmandoEnvio.bytes)} de fotos. Esto puede usar tus datos
+            móviles si no estás en WiFi. ¿Continuar?
+            <div className="acciones" style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                data-testid="btn-confirmar-envio"
+                onClick={() => void confirmarEnvio()}
+              >
+                Sí, enviar ahora
+              </button>
+              <button
+                type="button"
+                className="secundario"
+                onClick={() => setConfirmandoEnvio(null)}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="acciones">
           <button type="button" className="secundario" onClick={() => navegar('/beneficiarios')}>
             Ir al padrón
@@ -192,9 +273,9 @@ export default function Sync() {
             className="secundario"
             data-testid="btn-reintentar-sincronizacion"
             disabled={!enLinea || reintentando}
-            onClick={() => void reintentarAhora()}
+            onClick={() => void pedirEnvio()}
           >
-            {reintentando ? 'Reintentando…' : 'Reintentar ahora'}
+            {reintentando ? 'Enviando…' : pausado ? 'Enviar ahora' : 'Reintentar ahora'}
           </button>
         </div>
         <p className="dato" style={{ marginTop: 8 }}>

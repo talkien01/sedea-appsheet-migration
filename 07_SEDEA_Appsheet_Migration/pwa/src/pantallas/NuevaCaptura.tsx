@@ -9,6 +9,7 @@ import type { EntradaCatalogoLocal } from '../db/indexeddb';
 import { encolarCaptura } from '../sync/cola';
 import { sincronizarPendientes } from '../sync/motor';
 import { estaEnLinea } from '../sync/estadoRed';
+import { envioPausado } from '../sync/pausaEnvio';
 
 export default function NuevaCaptura() {
   const { id } = useParams();
@@ -56,7 +57,11 @@ export default function NuevaCaptura() {
         observaciones: observaciones.trim() ? observaciones.trim().slice(0, 500) : null
       });
 
-      setToast('Captura guardada localmente. Pendiente de sincronizar.');
+      setToast(
+        envioPausado()
+          ? 'Captura guardada localmente. Envío pausado: se subirá cuando lo reanudes.'
+          : 'Captura guardada localmente. Pendiente de sincronizar.'
+      );
 
       // Si hay red se intenta enviar de inmediato, sin bloquear la navegacion.
       if (estaEnLinea()) void sincronizarPendientes();

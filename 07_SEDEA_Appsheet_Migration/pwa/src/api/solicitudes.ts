@@ -255,5 +255,36 @@ export const apiSolicitudes = {
       method: 'POST',
       body: JSON.stringify(cuerpo)
     });
+  },
+
+  /** Que pasaria al pasar la solicitud a otro concepto (no toca nada). */
+  previsualizarReclasificacion(id: number, tipoApoyoId: number): Promise<{ plan: PlanReclasificacion }> {
+    return peticion(`/admin/solicitudes/${id}/reclasificar/previsualizar`, {
+      method: 'POST',
+      body: JSON.stringify({ tipo_apoyo_id: tipoApoyoId })
+    });
+  },
+
+  /** Crea la solicitud nueva con el concepto correcto y anula la vieja. */
+  reclasificar(
+    id: number,
+    cuerpo: { tipo_apoyo_id: number; motivo: string; password: string }
+  ): Promise<{ ok: true; plan: PlanReclasificacion; solicitud_nueva: { id: number; folio: string }; capturas_movidas: number }> {
+    return peticion(`/admin/solicitudes/${id}/reclasificar`, {
+      method: 'POST',
+      body: JSON.stringify(cuerpo)
+    });
   }
 };
+
+/** Espejo de PlanReclasificacion (backend/src/servicios/reclasificacion.ts). */
+export interface PlanReclasificacion {
+  folio_actual: string;
+  concepto_actual: { nombre: string };
+  concepto_destino: { tipo_apoyo_id: number; nombre: string; proyecto_clave: string };
+  cantidad_actual: number;
+  cantidad_nueva: number;
+  ajustada_por_maximo: boolean;
+  superficie_ha: number | null;
+  capturas_a_mover: number;
+}

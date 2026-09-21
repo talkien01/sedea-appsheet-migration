@@ -104,7 +104,13 @@ export function construirFiltrosBeneficiarios(
   // Si el usuario tiene Regional forzada se ignora cualquier regional_id del cliente.
   const regional = forzada ?? q.regional_id ?? null;
 
-  const condiciones: string[] = [];
+  // Un beneficiario cuya solicitud fue ANULADA (ej. reclasificada de avena a
+  // garbanzo) ya no es padron vigente: sin esto salia dos veces (el viejo, con
+  // su folio anulado, y el nuevo) en el listado, el Excel, el lote de folios
+  // impreso y el padron que baja al celular.
+  const condiciones: string[] = [
+    `NOT EXISTS (SELECT 1 FROM solicitudes sa WHERE sa.id = b.solicitud_id AND sa.anulada_en IS NOT NULL)`
+  ];
   const parametros: unknown[] = [];
 
   if (regional) {

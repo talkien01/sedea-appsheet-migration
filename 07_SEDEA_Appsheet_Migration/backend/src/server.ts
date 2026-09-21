@@ -36,6 +36,8 @@ import rutasFolioEntrega from './rutas/folio-entrega.js';
 // Ajuste masivo de kg (avena/garbanzo, sin monto) contra el tope real de
 // Regional/Municipio -- ver servicios/ajusteMasivoKg.ts.
 import rutasAjusteMasivoKg from './rutas/ajusteMasivoKg.js';
+// Reclasificar el concepto de una solicitud (ej. avena -> garbanzo).
+import rutasReclasificacion from './rutas/reclasificacion.js';
 // Build 13: pre-dictaminacion con IA y dictamen humano.
 import rutasDictamen from './rutas/dictamen.js';
 // E60: traspaso celular -> PC para el escaneo de la Constancia CURP.
@@ -175,6 +177,7 @@ async function construirApp() {
   // Build 12: folio de entrega con QR.
   await app.register(rutasFolioEntrega);
   await app.register(rutasAjusteMasivoKg);
+  await app.register(rutasReclasificacion);
   // Build 13: dictamen (E55-E59).
   await app.register(rutasDictamen);
   // E60: sesiones de escaneo con celular vinculado.

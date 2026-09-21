@@ -19,7 +19,7 @@ import type {
 } from '@sedea/shared';
 import { TIPOS_PERSONA, ETIQUETAS_TIPO_PERSONA } from '@sedea/shared';
 import { api, ErrorPeticion } from '../api/cliente';
-import { apiSolicitudes } from '../api/solicitudes';
+import { apiSolicitudes, type PlanReclasificacion } from '../api/solicitudes';
 import { useEstadoRed } from '../sync/estadoRed';
 import CampoPassword from '../componentes/CampoPassword';
 
@@ -324,6 +324,72 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
   const [confirmandoAnular, setConfirmandoAnular] = useState(false);
   const [anulando, setAnulando] = useState(false);
 
+  // Reclasificar concepto (ej. avena -> garbanzo): crea la solicitud nueva con
+  // el concepto correcto y anula esta. Ver servicios/reclasificacion.ts.
+  const [abriendoReclasif, setAbriendoReclasif] = useState(false);
+  const [opcionesDestino, setOpcionesDestino] = useState<{ id: number; nombre: string }[]>([]);
+  const [destinoId, setDestinoId] = useState('');
+  const [planReclasif, setPlanReclasif] = useState<PlanReclasificacion | null>(null);
+  const [reclasificando, setReclasificando] = useState(false);
+  const [reclasificadaA, setReclasificadaA] = useState<{ folio: string; capturas: number } | null>(null);
+
+  const abrirReclasificar = async () => {
+    setAbriendoReclasif(true);
+    setError(null);
+    try {
+      const cat = await apiSolicitudes.catalogos();
+      const actuales = new Set(conceptos.map((c) => Number(c.tipo_apoyo_id)));
+      setOpcionesDestino(
+        cat.tipos_apoyo
+          .filter((t) => t.proyecto_id !== null && t.proyecto_id !== undefined && !actuales.has(t.id))
+          .map((t) => ({ id: t.id, nombre: t.nombre }))
+      );
+    } catch {
+      setError('No se pudieron cargar los conceptos disponibles.');
+    }
+  };
+
+  const elegirDestino = async (valor: string) => {
+    setDestinoId(valor);
+    setPlanReclasif(null);
+    setError(null);
+    if (!valor) return;
+    try {
+      const { plan } = await apiSolicitudes.previsualizarReclasificacion(id, Number(valor));
+      setPlanReclasif(plan);
+    } catch (fallo) {
+      setError(fallo instanceof ErrorPeticion ? fallo.message : 'No se pudo calcular la reclasificación.');
+    }
+  };
+
+  const reclasificar = async () => {
+    if (!planReclasif) return;
+    if (motivo.trim().length < 5) {
+      setError('Escribe el motivo (mínimo 5 caracteres) antes de reclasificar.');
+      return;
+    }
+    if (!password) {
+      setError('Ingresa tu contraseña para confirmar.');
+      return;
+    }
+    setReclasificando(true);
+    setError(null);
+    try {
+      const r = await apiSolicitudes.reclasificar(id, {
+        tipo_apoyo_id: planReclasif.concepto_destino.tipo_apoyo_id,
+        motivo: motivo.trim(),
+        password
+      });
+      setReclasificadaA({ folio: r.solicitud_nueva.folio, capturas: r.capturas_movidas });
+      setAnulada({ en: new Date().toISOString(), motivo: `Reclasificada a ${r.solicitud_nueva.folio}` });
+      setAbriendoReclasif(false);
+    } catch (fallo) {
+      setError(fallo instanceof ErrorPeticion ? fallo.message : 'No se pudo reclasificar la solicitud.');
+    } finally {
+      setReclasificando(false);
+    }
+  };
+
   useEffect(() => {
     void (async () => {
       try {
@@ -574,6 +640,89 @@ function ModalEdicionAdmin({ id, municipios, onCerrar, onGuardado }: PropsModal)
                         {anulando ? 'Anulando…' : 'Sí, anular esta solicitud'}
                       </button>
                     </span>
+                  </div>
+                )}
+              </>
+            )}
+
+            {reclasificadaA && (
+              <div className="mensaje exito" role="status" data-testid="aviso-reclasificada">
+                <span>
+                  Reclasificada. Se creó la solicitud nueva{' '}
+                  <strong className="mono" data-testid="folio-reclasificado">{reclasificadaA.folio}</strong>{' '}
+                  con los mismos datos ({reclasificadaA.capturas} captura(s) de foto pasadas) y esta
+                  quedó anulada como historial.{' '}
+                  <button type="button" data-testid="btn-cerrar-reclasificada" onClick={onGuardado}>
+                    Listo
+                  </button>
+                </span>
+              </div>
+            )}
+
+            {!anulada && conceptos.length === 1 && (
+              <>
+                {!abriendoReclasif ? (
+                  <button
+                    type="button"
+                    className="secundario"
+                    data-testid="btn-abrir-reclasificar"
+                    onClick={() => void abrirReclasificar()}
+                  >
+                    Reclasificar concepto
+                  </button>
+                ) : (
+                  <div className="mensaje aviso" data-testid="panel-reclasificar">
+                    <span>
+                      Para cuando se capturó con el concepto equivocado (ej. avena en vez de
+                      garbanzo). Crea una solicitud NUEVA con los mismos datos ya capturados, folio
+                      nuevo del concepto correcto, y ANULA esta. Usa el motivo y la contraseña de
+                      abajo.
+                    </span>
+                    <label className="campo">
+                      <span>Pasar al concepto</span>
+                      <select
+                        data-testid="select-destino-reclasificar"
+                        value={destinoId}
+                        onChange={(e) => void elegirDestino(e.target.value)}
+                      >
+                        <option value="">Elige el concepto correcto…</option>
+                        {opcionesDestino.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.nombre}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {planReclasif && (
+                      <p className="dato" data-testid="plan-reclasificar">
+                        {planReclasif.concepto_actual.nombre} → <strong>{planReclasif.concepto_destino.nombre}</strong>
+                        . Folio nuevo con prefijo {planReclasif.concepto_destino.proyecto_clave}. Cantidad:{' '}
+                        {planReclasif.cantidad_actual} → <strong>{planReclasif.cantidad_nueva}</strong>
+                        {planReclasif.ajustada_por_maximo &&
+                          ` (se baja al máximo de este concepto para ${planReclasif.superficie_ha} ha)`}
+                        . Fotos de captura que se pasan: {planReclasif.capturas_a_mover}.
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      className="secundario"
+                      onClick={() => {
+                        setAbriendoReclasif(false);
+                        setDestinoId('');
+                        setPlanReclasif(null);
+                      }}
+                      disabled={reclasificando}
+                    >
+                      Cancelar
+                    </button>{' '}
+                    <button
+                      type="button"
+                      data-testid="btn-confirmar-reclasificar"
+                      onClick={() => void reclasificar()}
+                      disabled={reclasificando || !planReclasif}
+                    >
+                      {reclasificando ? 'Reclasificando…' : 'Sí, reclasificar'}
+                    </button>
                   </div>
                 )}
               </>

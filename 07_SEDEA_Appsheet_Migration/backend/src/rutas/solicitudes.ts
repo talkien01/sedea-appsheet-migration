@@ -1121,6 +1121,8 @@ export default async function rutasSolicitudes(app: FastifyInstance): Promise<vo
       municipio_id: q.municipio_id ? Number(q.municipio_id) : null,
       ventanilla_id: q.ventanilla_id ? Number(q.ventanilla_id) : null,
       capturado_por_id: q.capturado_por_id ? Number(q.capturado_por_id) : null,
+      // Sin `estatus` se listan todas (comportamiento historico de otras pantallas).
+      estatus: q.estatus === 'activas' || q.estatus === 'anuladas' ? q.estatus : 'todas',
       desde: q.desde || null,
       hasta: q.hasta || null,
       page,

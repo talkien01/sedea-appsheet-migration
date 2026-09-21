@@ -199,6 +199,7 @@ export async function listarSolicitudes(params: {
   capturado_por_id: number | null;
   /** Filtro explicito de Regional (independiente del alcance forzado de arriba). */
   regional_filtro_id: number | null;
+  estatus?: 'activas' | 'anuladas' | 'todas';
   desde: string | null;
   hasta: string | null;
   page: number;
@@ -245,6 +246,8 @@ export async function listarSolicitudes(params: {
     valores.push(params.regional_filtro_id);
     i++;
   }
+  if (params.estatus === 'activas') condiciones.push('s.anulada_en IS NULL');
+  if (params.estatus === 'anuladas') condiciones.push('s.anulada_en IS NOT NULL');
   if (params.desde) {
     condiciones.push(`s.recibida_en >= $${i}::timestamptz`);
     valores.push(params.desde);

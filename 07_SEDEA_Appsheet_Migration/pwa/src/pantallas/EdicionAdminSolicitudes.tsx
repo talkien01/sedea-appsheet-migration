@@ -42,6 +42,7 @@ export default function EdicionAdminSolicitudes() {
   const [capturadoPorId, setCapturadoPorId] = useState('');
   const [regionalId, setRegionalId] = useState('');
   const [municipioId, setMunicipioId] = useState('');
+  const [estatus, setEstatus] = useState<'activas' | 'anuladas' | 'todas'>('activas');
 
   const [filas, setFilas] = useState<FilaSolicitud[]>([]);
   const [total, setTotal] = useState(0);
@@ -80,6 +81,7 @@ export default function EdicionAdminSolicitudes() {
         if (capturadoPorId) parametros.set('capturado_por_id', capturadoPorId);
         if (regionalId) parametros.set('regional_id', regionalId);
         if (municipioId) parametros.set('municipio_id', municipioId);
+        parametros.set('estatus', estatus);
         const resultado = await apiSolicitudes.listar(parametros);
         setFilas(resultado.data);
         setTotal(resultado.total);
@@ -90,7 +92,7 @@ export default function EdicionAdminSolicitudes() {
         setCargando(false);
       }
     },
-    [busqueda, capturadoPorId, regionalId, municipioId, porPagina]
+    [busqueda, capturadoPorId, regionalId, municipioId, estatus, porPagina]
   );
 
   // Cualquier cambio de filtro o de tamaño de pagina vuelve a la pagina 1;
@@ -144,6 +146,18 @@ export default function EdicionAdminSolicitudes() {
                   {u.nombre_completo}
                 </option>
               ))}
+            </select>
+          </label>
+          <label className="campo">
+            <span>Estatus</span>
+            <select
+              data-testid="select-estatus-edicion-admin"
+              value={estatus}
+              onChange={(e) => setEstatus(e.target.value as 'activas' | 'anuladas' | 'todas')}
+            >
+              <option value="activas">Activas</option>
+              <option value="anuladas">Anuladas</option>
+              <option value="todas">Todas</option>
             </select>
           </label>
           <label className="campo">

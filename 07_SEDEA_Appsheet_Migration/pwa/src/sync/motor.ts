@@ -10,11 +10,28 @@
 import { api, ErrorPeticion } from '../api/cliente';
 import { db } from '../db/indexeddb';
 import { capturasPendientes, entregasPendientes } from '../db/repositorios';
+import { comprimirImagen, PESO_MAXIMO_BYTES } from '../utilidades/comprimirImagen';
 import { marcarEstado, marcarEstadoEntrega } from './cola';
 import { estaEnLinea } from './estadoRed';
 import { envioPausado } from './pausaEnvio';
 
 const MAX_INTENTOS = 5;
+
+/**
+ * Blindaje para fotos que ya quedaron encoladas ANTES del fix de compresion
+ * (CapturaFoto.tsx podia, en un respaldo silencioso, mandar el archivo de
+ * camara ORIGINAL sin comprimir -- 5-15 MB en iPhones recientes). Un Blob asi
+ * de pesado satura la memoria del navegador a media subida en senal movil, lo
+ * que en la practica se ve identico a "el envio se queda pegado para
+ * siempre" (bug real de campo, 2026-09-22: 122 entregas nunca lograban ni un
+ * solo intento real, con WiFi y con datos moviles). Se intenta recomprimir
+ * aqui mismo antes de subir; si no se puede, mejor marcar 'error' visible
+ * que intentar una subida condenada a fallar en silencio.
+ */
+async function normalizarFoto(foto: Blob): Promise<Blob> {
+  if (foto.size <= PESO_MAXIMO_BYTES) return foto;
+  return comprimirImagen(foto);
+}
 
 let sincronizando = false;
 const escuchas = new Set<() => void>();
@@ -80,6 +97,19 @@ export async function sincronizarPendientes(
         continue;
       }
 
+      let fotoNormalizada: Blob;
+      try {
+        fotoNormalizada = await normalizarFoto(captura.foto);
+      } catch {
+        await marcarEstado(captura.uuid, 'error', {
+          intentos: MAX_INTENTOS,
+          error_msg: 'La fotografía pesa demasiado y no se pudo comprimir para subirla. Vuelve a capturarla.'
+        });
+        resultado.fallidas++;
+        notificar();
+        continue;
+      }
+
       await marcarEstado(captura.uuid, 'sincronizando');
       notificar();
 
@@ -98,9 +128,9 @@ export async function sincronizarPendientes(
       }
       if (captura.observaciones) formulario.append('observaciones', captura.observaciones);
       // El servidor exige un mimetype image/*; si el Blob perdio el tipo se reetiqueta.
-      const archivoFoto = captura.foto.type.startsWith('image/')
-        ? captura.foto
-        : new Blob([captura.foto], { type: 'image/jpeg' });
+      const archivoFoto = fotoNormalizada.type.startsWith('image/')
+        ? fotoNormalizada
+        : new Blob([fotoNormalizada], { type: 'image/jpeg' });
       formulario.append('foto', archivoFoto, `${captura.uuid}.jpg`);
 
       let intentos = captura.intentos ?? 0;
@@ -202,6 +232,19 @@ async function enviarEntregas(resultado: ResultadoSync): Promise<void> {
       continue;
     }
 
+    let fotoNormalizada: Blob;
+    try {
+      fotoNormalizada = await normalizarFoto(entrega.foto);
+    } catch {
+      await marcarEstadoEntrega(entrega.uuid, 'error', {
+        intentos: MAX_INTENTOS,
+        error_msg: 'La fotografía pesa demasiado y no se pudo comprimir para subirla. Vuelve a registrar la entrega.'
+      });
+      resultado.fallidas++;
+      notificar();
+      continue;
+    }
+
     await marcarEstadoEntrega(entrega.uuid, 'sincronizando');
     notificar();
 
@@ -217,9 +260,9 @@ async function enviarEntregas(resultado: ResultadoSync): Promise<void> {
     }
     formulario.append('entregado_en', entrega.entregado_en);
     if (entrega.observaciones) formulario.append('observaciones', entrega.observaciones);
-    const archivoFoto = entrega.foto.type.startsWith('image/')
-      ? entrega.foto
-      : new Blob([entrega.foto], { type: 'image/jpeg' });
+    const archivoFoto = fotoNormalizada.type.startsWith('image/')
+      ? fotoNormalizada
+      : new Blob([fotoNormalizada], { type: 'image/jpeg' });
     formulario.append('foto', archivoFoto, `${entrega.uuid}.jpg`);
 
     let intentos = entrega.intentos ?? 0;

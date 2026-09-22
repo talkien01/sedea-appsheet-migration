@@ -1,7 +1,9 @@
 // Paso A de la captura: fotografia desde la camara del dispositivo.
 // Se comprime en el cliente a 1600 px de lado mayor y JPEG calidad 0.75 para
-// que el Blob quepa en IndexedDB y la subida funcione con mala senal.
+// que el Blob quepa en IndexedDB y la subida funcione con mala senal (ver
+// utilidades/comprimirImagen.ts, compartido con el motor de sync).
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { comprimirImagen } from '../utilidades/comprimirImagen';
 
 interface Props {
   onFoto: (blob: Blob | null) => void;
@@ -10,32 +12,6 @@ interface Props {
    * pantalla de entrega del apoyo reusa el componente con su propio texto.
    */
   titulo?: string;
-}
-
-const LADO_MAXIMO = 1600;
-const CALIDAD = 0.75;
-
-/** Redimensiona y recomprime la imagen en un canvas. */
-async function comprimir(archivo: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(archivo);
-  const escala = Math.min(1, LADO_MAXIMO / Math.max(bitmap.width, bitmap.height));
-  const ancho = Math.round(bitmap.width * escala);
-  const alto = Math.round(bitmap.height * escala);
-
-  const lienzo = document.createElement('canvas');
-  lienzo.width = ancho;
-  lienzo.height = alto;
-  const contexto = lienzo.getContext('2d');
-  if (!contexto) return archivo;
-  contexto.drawImage(bitmap, 0, 0, ancho, alto);
-
-  return new Promise<Blob>((resolver) => {
-    lienzo.toBlob(
-      (blob) => resolver(blob ?? archivo),
-      'image/jpeg',
-      CALIDAD
-    );
-  });
 }
 
 export default function CapturaFoto({ onFoto, titulo }: Props) {
@@ -56,19 +32,16 @@ export default function CapturaFoto({ onFoto, titulo }: Props) {
     setError(null);
     setProcesando(true);
     try {
-      let blob: Blob;
-      try {
-        blob = await comprimir(archivo);
-      } catch {
-        // Si el navegador no puede recomprimir, se envia el archivo original:
-        // el servidor lo normaliza igualmente antes de guardarlo.
-        blob = archivo;
-      }
+      const blob = await comprimirImagen(archivo);
       if (previa) URL.revokeObjectURL(previa);
       setPrevia(URL.createObjectURL(blob));
       onFoto(blob);
-    } catch {
-      setError('No fue posible procesar la fotografía. Intenta tomarla de nuevo.');
+    } catch (fallo) {
+      setError(
+        fallo instanceof Error && fallo.message === 'La fotografía sigue pesando demasiado incluso comprimida.'
+          ? 'La fotografía pesa demasiado incluso comprimida. Vuelve a tomarla más de cerca o con menos zoom.'
+          : 'No fue posible procesar la fotografía. Intenta tomarla de nuevo.'
+      );
       onFoto(null);
     } finally {
       setProcesando(false);

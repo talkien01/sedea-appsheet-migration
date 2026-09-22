@@ -16,7 +16,7 @@ import { useSesion } from '../App';
 import { contarEntregasPendientes, contarPendientes } from '../db/repositorios';
 import { useEstadoRed } from '../sync/estadoRed';
 import { alCambiarCola } from '../sync/motor';
-import { useEnvioPausado } from '../sync/pausaEnvio';
+import { fijarEnvioPausado, useEnvioPausado } from '../sync/pausaEnvio';
 import { tituloDeRuta } from '../navegacion/menu';
 import Marca from './Marca';
 import ToggleTema from './ToggleTema';
@@ -94,12 +94,22 @@ export default function FranjaEstado({ ancho }: Props) {
         {enLinea ? 'En línea' : 'Sin conexión'}
       </span>
 
-      <span
-        className={`indicador ${pendientes > 0 || pausado ? 'con-pendientes' : ''}`}
+      {/* Mismo pill de siempre, ahora tocable: pausar/reanudar el envio sin
+          salir de la pantalla en la que se esta (camara, entregas, etc.). El
+          detalle fino (MB estimados, "Enviar ahora") sigue solo en Sync. */}
+      <button
+        type="button"
+        className={`indicador boton-indicador ${pendientes > 0 || pausado ? 'con-pendientes' : ''}`}
         data-testid="contador-pendientes"
+        title={
+          pausado
+            ? 'Envío pausado: toca para reanudar la subida de fotos.'
+            : 'Toca para pausar la subida de fotos (bajar padrón/paquete nunca se pausa).'
+        }
+        onClick={() => fijarEnvioPausado(!pausado)}
       >
         {pausado ? `Envío pausado · ${pendientes}` : `Pendientes: ${pendientes}`}
-      </span>
+      </button>
 
       <span className="usuario" data-testid="usuario-actual">
         {perfil && (

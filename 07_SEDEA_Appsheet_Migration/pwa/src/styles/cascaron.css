@@ -144,6 +144,17 @@
   border-color: var(--accent);
 }
 
+/* El pill de pendientes tambien es el switch de pausa de envio (tocable). */
+.boton-indicador {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.boton-indicador:hover,
+.boton-indicador:focus-visible {
+  background: var(--bg-elev-3, var(--bg-elev-2));
+}
+
 .punto {
   width: 8px;
   height: 8px;

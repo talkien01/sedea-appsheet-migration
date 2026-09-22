@@ -115,7 +115,24 @@ export function registrarManejadoresSesion(nuevos: ManejadoresSesion): void {
 
 export { peticion };
 
-async function peticion<T>(ruta: string, opciones: RequestInit = {}): Promise<T> {
+/**
+ * Limite de tiempo por defecto. Sin esto, un `fetch` de subida (foto+GPS)
+ * puede quedar colgado para siempre en iOS Safari si la app pasa a segundo
+ * plano a media subida -- la promesa nunca resuelve ni rechaza. Como el motor
+ * de sincronizacion (`sync/motor.ts`) usa una bandera que solo se libera
+ * cuando el fetch termina, eso lo deja bloqueado para siempre: el ciclo
+ * automatico de 20s y el boton "Reintentar ahora" dejan de hacer nada, sin
+ * ningun error visible (bug real reportado en campo, iPhone, 2026-09-22).
+ */
+const TIEMPO_LIMITE_MS = 30000;
+/** Las subidas con foto tardan mas en senal rural/movil: mas margen. */
+const TIEMPO_LIMITE_SUBIDA_MS = 60000;
+
+async function peticion<T>(
+  ruta: string,
+  opciones: RequestInit = {},
+  tiempoLimiteMs = TIEMPO_LIMITE_MS
+): Promise<T> {
   const token = await tokenActual();
   const cabeceras = new Headers(opciones.headers);
   if (token) cabeceras.set('Authorization', `Bearer ${token}`);
@@ -123,11 +140,27 @@ async function peticion<T>(ruta: string, opciones: RequestInit = {}): Promise<T>
     cabeceras.set('Content-Type', 'application/json');
   }
 
+  const controlador = new AbortController();
+  const limite = setTimeout(() => controlador.abort(), tiempoLimiteMs);
+
   let respuesta: Response;
   try {
-    respuesta = await fetch(`${URL_API}${ruta}`, { ...opciones, headers: cabeceras });
-  } catch {
-    throw new ErrorPeticion(0, 'sin_red', 'No hay conexion con el servidor.');
+    respuesta = await fetch(`${URL_API}${ruta}`, {
+      ...opciones,
+      headers: cabeceras,
+      signal: controlador.signal
+    });
+  } catch (error) {
+    const cancelado = error instanceof DOMException && error.name === 'AbortError';
+    throw new ErrorPeticion(
+      0,
+      cancelado ? 'tiempo_agotado' : 'sin_red',
+      cancelado
+        ? 'El servidor tardó demasiado en responder. Se reintentará.'
+        : 'No hay conexión con el servidor.'
+    );
+  } finally {
+    clearTimeout(limite);
   }
 
   const tipo = respuesta.headers.get('content-type') ?? '';
@@ -181,12 +214,20 @@ export const api = {
   },
 
   async subirCaptura(formulario: FormData): Promise<RespuestaCaptura> {
-    return peticion<RespuestaCaptura>('/capturas', { method: 'POST', body: formulario });
+    return peticion<RespuestaCaptura>(
+      '/capturas',
+      { method: 'POST', body: formulario },
+      TIEMPO_LIMITE_SUBIDA_MS
+    );
   },
 
   /** Evidencia de la entrega fisica de UN concepto (mismo multipart que las capturas). */
   async subirEntrega(formulario: FormData): Promise<RespuestaEntregaApoyo> {
-    return peticion<RespuestaEntregaApoyo>('/entregas', { method: 'POST', body: formulario });
+    return peticion<RespuestaEntregaApoyo>(
+      '/entregas',
+      { method: 'POST', body: formulario },
+      TIEMPO_LIMITE_SUBIDA_MS
+    );
   },
 
   /**

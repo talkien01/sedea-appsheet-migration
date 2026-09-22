@@ -269,9 +269,37 @@ async function enviarEntregas(resultado: ResultadoSync): Promise<void> {
   }
 }
 
+/**
+ * Reencola lo que quedo huerfano en 'sincronizando' de una sesion anterior
+ * interrumpida (app cerrada/recargada, telefono que la suspendio, o quedo
+ * congelada en segundo plano a media subida). Bug real de campo (2026-09-22,
+ * iPhone): 'sincronizando' NUNCA se revisa en ningun otro lado --
+ * `capturasPendientes()`/`entregasPendientes()` solo miran 'pendiente' y
+ * 'error', y "Reintentar ahora" solo mira 'error' -- asi que sin esto, un
+ * registro atascado ahi se queda PARA SIEMPRE invisible a todo intento de
+ * reintentar, aunque el contador de "Pendientes" lo siga contando. Como el
+ * modulo se acaba de cargar (pagina recien abierta), cualquier 'sincronizando'
+ * que exista es por definicion de una sesion anterior: ninguna subida puede
+ * seguir "en curso" a traves de una recarga.
+ */
+async function recuperarInterrumpidas(): Promise<void> {
+  const mensaje = 'Se interrumpió a media subida (app cerrada o en segundo plano). Se reintentará.';
+  const [capturas, entregas] = await Promise.all([
+    db.capturas.where('estado').equals('sincronizando').toArray(),
+    db.entregas.where('estado').equals('sincronizando').toArray()
+  ]);
+  await Promise.all([
+    ...capturas.map((c) => marcarEstado(c.uuid, 'pendiente', { intentos: 0, error_msg: mensaje })),
+    ...entregas.map((e) => marcarEstadoEntrega(e.uuid, 'pendiente', { intentos: 0, error_msg: mensaje }))
+  ]);
+  if (capturas.length + entregas.length > 0) notificar();
+}
+
 /** Registra los disparadores automaticos de sincronizacion. */
 export function iniciarSincronizacionAutomatica(): void {
   if (typeof window === 'undefined') return;
+
+  void recuperarInterrumpidas().then(() => void sincronizarPendientes());
 
   window.addEventListener('online', () => {
     void sincronizarPendientes();

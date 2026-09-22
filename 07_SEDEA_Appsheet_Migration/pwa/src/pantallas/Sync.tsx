@@ -11,7 +11,8 @@ import {
   limpiarBeneficiariosLocal,
   marcarSincronizacion,
   obtenerSesion,
-  resumenEnvioPendiente
+  resumenEnvioPendiente,
+  ultimoErrorSincronizacion
 } from '../db/repositorios';
 import { reintentarTodasLasCapturas, reintentarTodasLasEntregas } from '../sync/cola';
 import { alCambiarCola, sincronizarPendientes } from '../sync/motor';
@@ -52,6 +53,10 @@ export default function Sync() {
   const [error, setError] = useState<string | null>(null);
   const [reintentando, setReintentando] = useState(false);
   const [entregasPend, setEntregasPend] = useState(0);
+  // Diagnostico de campo: el motivo real del ultimo intento fallido, aunque
+  // el item siga 'pendiente' (reencolado en silencio -- ver motor.ts). Sin
+  // esto un atasco por, ej., un 401 nunca se podia ver desde la pantalla.
+  const [ultimoError, setUltimoError] = useState<string | null>(null);
   const pausado = useEnvioPausado();
   // Confirmacion antes de subir con el envio pausado (puede usar datos moviles).
   const [confirmandoEnvio, setConfirmandoEnvio] = useState<{
@@ -64,6 +69,7 @@ export default function Sync() {
     setTotalLocal(await contarBeneficiarios());
     setPendientes(await contarPendientes());
     setEntregasPend(await contarEntregasPendientes());
+    setUltimoError(await ultimoErrorSincronizacion());
     const sesion = await obtenerSesion();
     setUltimaSync(sesion?.ultima_sincronizacion ?? null);
   }, []);
@@ -131,18 +137,33 @@ export default function Sync() {
     setMensaje(null);
     setError(null);
     try {
-      const capturas = await reintentarTodasLasCapturas();
-      const entregas = await reintentarTodasLasEntregas();
+      await reintentarTodasLasCapturas();
+      await reintentarTodasLasEntregas();
       // Llega aqui solo con el envio activo o ya confirmado por el usuario:
       // `forzar` es lo unico que salta la pausa.
-      await sincronizarPendientes({ forzar: true });
+      const resultado = await sincronizarPendientes({ forzar: true });
       await refrescar();
-      const total = capturas + entregas;
-      setMensaje(
-        total > 0
-          ? `Se reencolaron ${total} pendiente(s) y se intento sincronizar de nuevo.`
-          : 'No había capturas ni entregas en error. Se intentó sincronizar de todas formas.'
-      );
+      const subidas = resultado.enviadas + resultado.duplicadas;
+      const siguenPendientes = (await contarPendientes()) + (await contarEntregasPendientes());
+      // El mensaje ahora refleja lo que en verdad paso -- antes siempre decia
+      // "se intento sincronizar" aunque nada se hubiera subido en realidad
+      // (ej. token vencido: se reintenta en silencio para siempre, sin error
+      // visible). `siguenPendientes` se lee de IndexedDB, no del resultado del
+      // propio ciclo, porque si ya habia una sincronizacion en curso este
+      // ciclo no hace nada y `resultado` sale en ceros sin avisarlo.
+      if (subidas > 0 && siguenPendientes === 0) {
+        setMensaje(`Se subieron ${subidas} pendiente(s). Todo al día.`);
+      } else if (subidas > 0) {
+        setMensaje(`Se subieron ${subidas} pendiente(s). Aún faltan ${siguenPendientes}.`);
+      } else if (siguenPendientes > 0) {
+        const detalle = await ultimoErrorSincronizacion();
+        setError(
+          `No se pudo subir nada (siguen ${siguenPendientes} pendiente(s)).` +
+            (detalle ? ` Motivo: ${detalle}` : ' Vuelve a intentar en unos minutos.')
+        );
+      } else {
+        setMensaje('No había nada pendiente por subir.');
+      }
     } catch {
       setError('No fue posible reintentar la sincronización.');
     } finally {
@@ -220,6 +241,12 @@ export default function Sync() {
         <p className="dato" data-testid="entregas-pendientes-enviar">
           <strong>Entregas pendientes de enviar:</strong> {entregasPend}
         </p>
+
+        {(pendientes > 0 || entregasPend > 0) && ultimoError && (
+          <div className="mensaje aviso" role="status" data-testid="ultimo-error-sync">
+            <strong>Motivo del último intento fallido:</strong> {ultimoError}
+          </div>
+        )}
 
         <label className="casilla" style={{ display: 'block', margin: '12px 0' }}>
           <input

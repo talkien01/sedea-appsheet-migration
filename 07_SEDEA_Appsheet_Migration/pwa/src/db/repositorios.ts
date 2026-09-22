@@ -354,6 +354,24 @@ export async function resumenEnvioPendiente(): Promise<{
   return { capturas: capturas.length, entregas: entregas.length, bytes };
 }
 
+/**
+ * Diagnostico de campo: el motivo real por el que algo no sube. `error_msg`
+ * se guarda tanto en 'error' (permanente) como en 'pendiente' (transitorio,
+ * reencolado en silencio -- ver motor.ts), asi que sin esto un atasco
+ * silencioso (ej. 401 por token vencido) no se podia ver desde la UI.
+ */
+export async function ultimoErrorSincronizacion(): Promise<string | null> {
+  const [capturas, entregas] = await Promise.all([
+    db.capturas.where('estado').anyOf('pendiente', 'error').toArray(),
+    db.entregas.where('estado').anyOf('pendiente', 'error').toArray()
+  ]);
+  const conMensaje = [...capturas, ...entregas].filter((f) => f.error_msg);
+  if (conMensaje.length === 0) return null;
+  // No hay campo "actualizado_en" comun a ambas tablas: el ultimo de la lista
+  // (mismo orden en que se proceso en el ciclo) es una aproximacion razonable.
+  return conMensaje[conMensaje.length - 1].error_msg ?? null;
+}
+
 export async function limpiarPaqueteEntrega(): Promise<void> {
   await db.transaction('rw', db.conceptos_entrega, db.evento_entrega, async () => {
     await db.conceptos_entrega.clear();

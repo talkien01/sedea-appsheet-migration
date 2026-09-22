@@ -53,6 +53,13 @@ export async function sincronizarPendientes(
 
   sincronizando = true;
   try {
+    // Rescata lo que haya quedado huerfano en 'sincronizando' de un ciclo
+    // ANTERIOR que se interrumpio a medias (app cerrada/suspendida). No basta
+    // con hacer esto solo al abrir la app: si la senal es tan mala que hasta
+    // "Reintentar ahora" se interrumpe, ese intento deja sus propios huerfanos
+    // que necesitan rescatarse en el SIGUIENTE ciclo, no solo en el arranque.
+    await recuperarInterrumpidas();
+
     const pendientes = await capturasPendientes();
 
     for (const captura of pendientes) {
@@ -298,8 +305,8 @@ async function recuperarInterrumpidas(): Promise<void> {
 /** Registra los disparadores automaticos de sincronizacion. */
 export function iniciarSincronizacionAutomatica(): void {
   if (typeof window === 'undefined') return;
-
-  void recuperarInterrumpidas().then(() => void sincronizarPendientes());
+  // El rescate de 'sincronizando' huerfano ya vive DENTRO de
+  // sincronizarPendientes() (corre en cada ciclo, no solo aqui al arrancar).
 
   window.addEventListener('online', () => {
     void sincronizarPendientes();

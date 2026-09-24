@@ -9,6 +9,7 @@
 #   DESTINO_LOCAL      carpeta local de respaldos (default: /var/backups/sedea)
 #   RETENCION_DIAS     dias de dumps locales a conservar (default: 14)
 #   RCLONE_REMOTO      remoto rclone externo, ej. "r2:sedea-respaldos" (si se omite, solo local)
+#   RETENCION_REMOTA_DIAS dias de dumps de BD a conservar en el remoto (default: 60)
 #   AVISO_URL          URL a la que hacer GET si el respaldo TERMINA BIEN (healthchecks.io, etc.)
 set -euo pipefail
 
@@ -41,7 +42,12 @@ echo "Media ok: $(du -sh "$DESTINO_LOCAL/media" | cut -f1)"
 # 3) Copia fuera del VPS (lo que de verdad protege si el servidor se pierde).
 if [ -n "${RCLONE_REMOTO:-}" ]; then
   rclone copy "$DESTINO_LOCAL/db" "$RCLONE_REMOTO/db" --min-age 1m
-  rclone sync "$DESTINO_LOCAL/media" "$RCLONE_REMOTO/media"
+  # `copy` y NO `sync` a proposito: `sync` replica tambien los BORRADOS. Si el
+  # volumen media se pierde o queda vacio (justo el desastre que el respaldo
+  # cubre), un `sync` borraria tambien la copia buena del destino.
+  rclone copy "$DESTINO_LOCAL/media" "$RCLONE_REMOTO/media"
+  # Retencion remota de dumps de BD (las fotos nunca se borran solas).
+  rclone delete "$RCLONE_REMOTO/db" --min-age "${RETENCION_REMOTA_DIAS:-60}d"
   echo "Copia externa ok: $RCLONE_REMOTO"
 else
   echo "AVISO: sin RCLONE_REMOTO, el respaldo queda SOLO en este servidor." >&2

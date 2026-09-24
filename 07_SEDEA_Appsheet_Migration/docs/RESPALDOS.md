@@ -37,8 +37,11 @@ Probados en local: respaldo → restauración en base temporal → comparación 
 7. **Aviso si falla:** crear un check en healthchecks.io (o similar) con periodo de 1 día y poner su URL
    en `AVISO_URL`. Si el respaldo deja de llegar, avisa por correo.
 
-Alternativa para la BD: si en EasyPanel la base corre como servicio Postgres nativo, su pestaña de
-backups programados a S3 puede reemplazar el paso de `pg_dump` (el de `media` sigue siendo necesario).
+**Nota sobre EasyPanel (proyecto `sedea`):** los servicios `db`, `backend` y `pwa` estan desplegados como
+tipo *app*. La base es la imagen `postgis` corriendo como app, NO el servicio Postgres nativo de EasyPanel,
+asi que su pestaña de backups nativos no aplica: se usa `pg_dump` (este script). Los contenedores se
+llaman `sedea_db` y `sedea_backend` (verificar con `docker ps`). Las tareas programadas de una *app* de
+EasyPanel corren DENTRO de su contenedor y no tienen acceso a `docker`, por eso el cron va en el host del VPS.
 
 ## Restaurar
 

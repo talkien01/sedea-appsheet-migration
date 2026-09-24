@@ -1,0 +1,2 @@
+# Los scripts de shell corren en Linux (VPS): CRLF los rompe.
+*.sh text eol=lf

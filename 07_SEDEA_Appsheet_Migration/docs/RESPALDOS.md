@@ -32,8 +32,6 @@ Probados en local: respaldo → restauración en base temporal → comparación 
    ```cron
    30 2,13 * * * PG_CONTAINER=<postgres> MEDIA_CONTAINER=<backend> PG_USER=<u> PG_DB=<db> RCLONE_REMOTO=sedea:respaldos AVISO_URL=<url_latido> /opt/sedea-respaldos/respaldo.sh >> /var/log/sedea-respaldo.log 2>&1
    ```
-   Si EasyPanel ofrece tareas programadas para el servicio, puede usarse en lugar del cron del host,
-   siempre que el comando tenga acceso a `docker`.
 7. **Aviso si falla:** crear un check en healthchecks.io (o similar) con periodo de 1 día y poner su URL
    en `AVISO_URL`. Si el respaldo deja de llegar, avisa por correo.
 

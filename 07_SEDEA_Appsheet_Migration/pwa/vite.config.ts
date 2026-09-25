@@ -4,6 +4,12 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  // Fecha/hora de compilacion: se muestra en Sincronizacion (diagnostico) para
+  // saber SIN DUDA que version de la app esta corriendo un telefono, dado que
+  // en iPhone la PWA puede seguir sirviendo una copia vieja cacheada.
+  define: {
+    __APP_VERSION__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC')
+  },
   plugins: [
     react(),
     VitePWA({

@@ -11,11 +11,12 @@ import {
   limpiarBeneficiariosLocal,
   marcarSincronizacion,
   obtenerSesion,
+  detalleColaEnvio,
   resumenEnvioPendiente,
   ultimoErrorSincronizacion
 } from '../db/repositorios';
 import { reintentarTodasLasCapturas, reintentarTodasLasEntregas } from '../sync/cola';
-import { alCambiarCola, sincronizarPendientes } from '../sync/motor';
+import { alCambiarCola, obtenerEstadoMotor, reiniciarMotor, sincronizarPendientes } from '../sync/motor';
 import { useEstadoRed } from '../sync/estadoRed';
 import { fijarEnvioPausado, useEnvioPausado } from '../sync/pausaEnvio';
 
@@ -57,6 +58,9 @@ export default function Sync() {
   // el item siga 'pendiente' (reencolado en silencio -- ver motor.ts). Sin
   // esto un atasco por, ej., un 401 nunca se podia ver desde la pantalla.
   const [ultimoError, setUltimoError] = useState<string | null>(null);
+  // Diagnostico en vivo del motor de envio (ver sync/motor.ts, guardian).
+  const [detalleCola, setDetalleCola] = useState<Awaited<ReturnType<typeof detalleColaEnvio>> | null>(null);
+  const [, setLatidoUI] = useState(0);
   const pausado = useEnvioPausado();
   // Confirmacion antes de subir con el envio pausado (puede usar datos moviles).
   const [confirmandoEnvio, setConfirmandoEnvio] = useState<{
@@ -70,13 +74,19 @@ export default function Sync() {
     setPendientes(await contarPendientes());
     setEntregasPend(await contarEntregasPendientes());
     setUltimoError(await ultimoErrorSincronizacion());
+    setDetalleCola(await detalleColaEnvio());
     const sesion = await obtenerSesion();
     setUltimaSync(sesion?.ultima_sincronizacion ?? null);
   }, []);
 
   useEffect(() => {
     void refrescar();
-    return alCambiarCola(() => void refrescar());
+    const quitar = alCambiarCola(() => void refrescar());
+    const t = setInterval(() => setLatidoUI((n) => n + 1), 2000);
+    return () => {
+      quitar();
+      clearInterval(t);
+    };
   }, [refrescar]);
 
   const descargar = async () => {
@@ -241,6 +251,63 @@ export default function Sync() {
         <p className="dato" data-testid="entregas-pendientes-enviar">
           <strong>Entregas pendientes de enviar:</strong> {entregasPend}
         </p>
+
+        {(pendientes > 0 || entregasPend > 0) && (
+          <details className="mensaje info" data-testid="diagnostico-envio" open>
+            <summary>
+              <strong>Diagnóstico del envío</strong>
+            </summary>
+            {(() => {
+              const m = obtenerEstadoMotor();
+              const seg = (t: number) => Math.round((Date.now() - t) / 1000);
+              return (
+                <ul style={{ margin: '6px 0', paddingLeft: 18 }}>
+                  <li>
+                    Motor: <strong>{m.ocupado ? 'ocupado' : 'libre'}</strong>
+                    {m.ocupado && m.desde ? ` desde hace ${seg(m.desde)} s` : ''}
+                  </li>
+                  <li>
+                    Paso actual: {m.paso}
+                    {m.ocupado && m.latido ? ` (sin avance hace ${seg(m.latido)} s)` : ''}
+                  </li>
+                  <li>Destrabes automáticos: {m.recuperaciones}</li>
+                  {detalleCola && (
+                    <>
+                      <li>
+                        En cola:{' '}
+                        {Object.entries(detalleCola.porEstado)
+                          .map(([e, n]) => `${e} ${n}`)
+                          .join(' · ') || 'nada'}
+                      </li>
+                      <li>
+                        Foto más pesada: {detalleCola.fotoMayorKB} KB · sobre 4 MB:{' '}
+                        {detalleCola.fotosSobreTopeMB4}
+                      </li>
+                      {detalleCola.primeras.map((f) => (
+                        <li key={f.uuid}>
+                          {f.tipo} {f.uuid}: {f.estado}, {f.kb} KB, intentos {f.intentos}
+                          {f.error ? ` — ${f.error}` : ''}
+                        </li>
+                      ))}
+                    </>
+                  )}
+                  <li>Versión de la app: {__APP_VERSION__}</li>
+                </ul>
+              );
+            })()}
+            <button
+              type="button"
+              className="secundario"
+              data-testid="btn-reiniciar-envio"
+              onClick={() => {
+                reiniciarMotor();
+                void reintentarAhora();
+              }}
+            >
+              Reiniciar envío
+            </button>
+          </details>
+        )}
 
         {(pendientes > 0 || entregasPend > 0) && ultimoError && (
           <div className="mensaje aviso" role="status" data-testid="ultimo-error-sync">

@@ -12,6 +12,20 @@ export const CALIDAD = 0.75;
 /** Tope final: por debajo del limite del servidor (8 MB), con margen. */
 export const PESO_MAXIMO_BYTES = 4 * 1024 * 1024;
 
+/**
+ * En iOS Safari, decodificar una foto muy grande puede no terminar NUNCA (ni
+ * resolver ni rechazar). Sin tope, eso colgaba el motor de envio completo.
+ */
+function conTope<T>(trabajo: Promise<T>, ms: number, etiqueta: string): Promise<T> {
+  return new Promise<T>((resolver, rechazar) => {
+    const t = setTimeout(() => rechazar(new Error(`Tiempo agotado: ${etiqueta}`)), ms);
+    trabajo.then(
+      (v) => { clearTimeout(t); resolver(v); },
+      (e) => { clearTimeout(t); rechazar(e); }
+    );
+  });
+}
+
 /** Dibuja una imagen ya decodificada (bitmap o <img>) en un canvas y la recomprime. */
 function dibujarYComprimir(
   fuente: CanvasImageSource,
@@ -36,7 +50,7 @@ function dibujarYComprimir(
 
 /** Intento 1: createImageBitmap (rapido, pero con huecos de soporte en iOS Safari segun version/formato). */
 async function comprimirConBitmap(archivo: Blob): Promise<Blob | null> {
-  const bitmap = await createImageBitmap(archivo);
+  const bitmap = await conTope(createImageBitmap(archivo), 12_000, 'createImageBitmap');
   try {
     return await dibujarYComprimir(bitmap, bitmap.width, bitmap.height);
   } finally {
@@ -54,11 +68,15 @@ async function comprimirConImg(archivo: Blob): Promise<Blob | null> {
   const url = URL.createObjectURL(archivo);
   try {
     const img = new Image();
-    await new Promise<void>((resolver, rechazar) => {
-      img.onload = () => resolver();
-      img.onerror = () => rechazar(new Error('No se pudo decodificar la imagen.'));
-      img.src = url;
-    });
+    await conTope(
+      new Promise<void>((resolver, rechazar) => {
+        img.onload = () => resolver();
+        img.onerror = () => rechazar(new Error('No se pudo decodificar la imagen.'));
+        img.src = url;
+      }),
+      12_000,
+      'decodificar imagen'
+    );
     return await dibujarYComprimir(img, img.naturalWidth, img.naturalHeight);
   } finally {
     URL.revokeObjectURL(url);

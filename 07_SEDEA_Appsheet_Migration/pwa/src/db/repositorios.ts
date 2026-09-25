@@ -393,6 +393,42 @@ export async function ultimoErrorSincronizacion(): Promise<string | null> {
   return conMensaje[conMensaje.length - 1].error_msg ?? null;
 }
 
+/** Diagnostico de campo: resumen de lo que hay en cola (tamano de fotos y estado). */
+export async function detalleColaEnvio(): Promise<{
+  porEstado: Record<string, number>;
+  fotoMayorKB: number;
+  fotosSobreTopeMB4: number;
+  primeras: { tipo: string; uuid: string; estado: string; kb: number; intentos: number; error: string }[];
+}> {
+  const [capturas, entregas] = await Promise.all([db.capturas.toArray(), db.entregas.toArray()]);
+  const todas = [
+    ...capturas.map((c) => ({ tipo: 'captura', ...c })),
+    ...entregas.map((e) => ({ tipo: 'entrega', ...e }))
+  ].filter((f) => f.estado !== 'sincronizada');
+  const porEstado: Record<string, number> = {};
+  let mayor = 0;
+  let grandes = 0;
+  for (const f of todas) {
+    porEstado[f.estado] = (porEstado[f.estado] ?? 0) + 1;
+    const kb = Math.round((f.foto?.size ?? 0) / 1024);
+    if (kb > mayor) mayor = kb;
+    if (kb > 4096) grandes++;
+  }
+  return {
+    porEstado,
+    fotoMayorKB: mayor,
+    fotosSobreTopeMB4: grandes,
+    primeras: todas.slice(0, 5).map((f) => ({
+      tipo: f.tipo,
+      uuid: f.uuid.slice(0, 8),
+      estado: f.estado,
+      kb: Math.round((f.foto?.size ?? 0) / 1024),
+      intentos: f.intentos ?? 0,
+      error: f.error_msg ?? ''
+    }))
+  };
+}
+
 export async function limpiarPaqueteEntrega(): Promise<void> {
   await db.transaction('rw', db.conceptos_entrega, db.evento_entrega, async () => {
     await db.conceptos_entrega.clear();

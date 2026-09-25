@@ -30,11 +30,72 @@ const MAX_INTENTOS = 5;
  */
 async function normalizarFoto(foto: Blob): Promise<Blob> {
   if (foto.size <= PESO_MAXIMO_BYTES) return foto;
-  return comprimirImagen(foto);
+  try {
+    return await comprimirImagen(foto);
+  } catch (fallo) {
+    // Si el telefono no logra recomprimirla pero cabe en el limite del
+    // servidor (8 MB), se sube tal cual: es evidencia real y perderla como
+    // 'error' permanente seria peor que intentar subirla. Solo se rechaza lo
+    // que el servidor de todos modos no aceptaria.
+    if (foto.size <= LIMITE_SERVIDOR_BYTES) return foto;
+    throw fallo;
+  }
 }
+
+/** Limite de foto del servidor (MAX_UPLOAD_MB=8) con un poco de margen. */
+const LIMITE_SERVIDOR_BYTES = 7.5 * 1024 * 1024;
 
 let sincronizando = false;
 const escuchas = new Set<() => void>();
+
+/**
+ * GUARDIAN del ciclo. Bug real de campo (iPhone, 2026-09-22/25): 122 entregas
+ * que NUNCA bajan, "Reintentar ahora" no hace nada y el motivo mostrado es
+ * siempre el mismo. Si UN paso del ciclo se queda esperando para siempre (una
+ * lectura de IndexedDB o la decodificacion de una foto en Safari que nunca
+ * termina), `sincronizando` queda en true y TODOS los disparos siguientes
+ * (ciclo de 20 s, evento online, boton manual) regresan de inmediato sin hacer
+ * nada. Ahora cada paso deja un latido; si pasan LIMITE_SIN_LATIDO_MS sin
+ * ninguno, el siguiente disparo suelta el candado y arranca de nuevo.
+ */
+const LIMITE_SIN_LATIDO_MS = 150_000;
+let generacion = 0;
+const estadoMotor = { ocupado: false, desde: 0, latido: 0, paso: 'inactivo', recuperaciones: 0 };
+
+export function obtenerEstadoMotor(): Readonly<typeof estadoMotor> {
+  return estadoMotor;
+}
+
+function latido(paso: string): void {
+  estadoMotor.paso = paso;
+  estadoMotor.latido = Date.now();
+  notificar();
+}
+
+/** Suelta el candado a la fuerza (boton "Reiniciar envio" de Sincronizacion). */
+export function reiniciarMotor(): void {
+  generacion++;
+  sincronizando = false;
+  estadoMotor.ocupado = false;
+  estadoMotor.paso = 'reiniciado a mano';
+  estadoMotor.recuperaciones++;
+  notificar();
+}
+
+/** Corre `trabajo` pero no espera mas de `ms`: un paso colgado no puede colgar todo el ciclo. */
+async function conLimite<T>(trabajo: Promise<T>, ms: number, etiqueta: string): Promise<T> {
+  let temporizador: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      trabajo,
+      new Promise<never>((_, rechazar) => {
+        temporizador = setTimeout(() => rechazar(new Error(`Tiempo agotado: ${etiqueta}`)), ms);
+      })
+    ]);
+  } finally {
+    if (temporizador) clearTimeout(temporizador);
+  }
+}
 
 /** Permite a la UI refrescar contadores cuando cambia la cola. */
 export function alCambiarCola(escucha: () => void): () => void {
@@ -61,23 +122,34 @@ export async function sincronizarPendientes(
   opciones: { forzar?: boolean } = {}
 ): Promise<ResultadoSync> {
   const resultado: ResultadoSync = { enviadas: 0, duplicadas: 0, fallidas: 0 };
-  if (sincronizando) return resultado;
+  if (sincronizando) {
+    if (Date.now() - estadoMotor.latido < LIMITE_SIN_LATIDO_MS) return resultado;
+    // Sin latido hace mucho: el ciclo anterior esta colgado. Se suelta el candado.
+    generacion++;
+    estadoMotor.recuperaciones++;
+  }
   if (!estaEnLinea()) return resultado;
   // Envio pausado por el capturista (ahorro de datos moviles): ningun disparo
   // automatico sube nada. Solo "Enviar ahora", ya con confirmacion, pasa
   // `forzar`. Lo capturado sigue guardandose local con foto y GPS.
   if (envioPausado() && !opciones.forzar) return resultado;
 
+  const miGeneracion = ++generacion;
   sincronizando = true;
+  estadoMotor.ocupado = true;
+  estadoMotor.desde = Date.now();
+  latido('iniciando ciclo');
   try {
     // Rescata lo que haya quedado huerfano en 'sincronizando' de un ciclo
     // ANTERIOR que se interrumpio a medias (app cerrada/suspendida). No basta
     // con hacer esto solo al abrir la app: si la senal es tan mala que hasta
     // "Reintentar ahora" se interrumpe, ese intento deja sus propios huerfanos
     // que necesitan rescatarse en el SIGUIENTE ciclo, no solo en el arranque.
-    await recuperarInterrumpidas();
+    latido('rescatando interrumpidas');
+    await conLimite(recuperarInterrumpidas(), 20_000, 'rescatar interrumpidas');
 
-    const pendientes = await capturasPendientes();
+    latido('leyendo capturas pendientes');
+    const pendientes = await conLimite(capturasPendientes(), 20_000, 'leer capturas');
 
     for (const captura of pendientes) {
       if (!captura.foto) {
@@ -97,19 +169,24 @@ export async function sincronizarPendientes(
         continue;
       }
 
+      // Otro ciclo tomo el relevo (este quedo colgado y el guardian lo solto).
+      if (miGeneracion !== generacion) return resultado;
+
       let fotoNormalizada: Blob;
       try {
-        fotoNormalizada = await normalizarFoto(captura.foto);
-      } catch {
+        latido(`comprimiendo foto de captura ${captura.uuid.slice(0, 8)} (${Math.round(captura.foto.size / 1024)} KB)`);
+        fotoNormalizada = await conLimite(normalizarFoto(captura.foto), 25_000, 'comprimir foto');
+      } catch (fallo) {
         await marcarEstado(captura.uuid, 'error', {
           intentos: MAX_INTENTOS,
-          error_msg: 'La fotografía pesa demasiado y no se pudo comprimir para subirla. Vuelve a capturarla.'
+          error_msg: `No se pudo preparar la foto para subirla (${fallo instanceof Error ? fallo.message : 'error'}). Vuelve a capturarla.`
         });
         resultado.fallidas++;
         notificar();
         continue;
       }
 
+      latido(`subiendo captura ${captura.uuid.slice(0, 8)}`);
       await marcarEstado(captura.uuid, 'sincronizando');
       notificar();
 
@@ -192,9 +269,16 @@ export async function sincronizarPendientes(
 
     // Entregas del apoyo (Parte 2): misma cola, mismo ciclo, mismo uuid de
     // idempotencia. Van despues de las capturas para no retrasarlas.
-    await enviarEntregas(resultado);
+    await enviarEntregas(resultado, miGeneracion);
   } finally {
-    sincronizando = false;
+    // Solo suelta el candado quien todavia es el ciclo vigente: si el guardian
+    // ya lo solto y otro ciclo arranco, este (colgado que por fin termino) no
+    // debe pisarle el candado al nuevo.
+    if (miGeneracion === generacion) {
+      sincronizando = false;
+      estadoMotor.ocupado = false;
+      estadoMotor.paso = 'inactivo';
+    }
     notificar();
   }
 
@@ -212,8 +296,9 @@ export async function sincronizarPendientes(
  * para que el disparador automatico de 20 s pueda recuperarla despues. Los
  * 403/404/409/422 quedan en `error` porque requieren intervencion humana.
  */
-async function enviarEntregas(resultado: ResultadoSync): Promise<void> {
-  const pendientes = await entregasPendientes();
+async function enviarEntregas(resultado: ResultadoSync, miGeneracion: number): Promise<void> {
+  latido('leyendo entregas pendientes');
+  const pendientes = await conLimite(entregasPendientes(), 20_000, 'leer entregas');
 
   for (const entrega of pendientes) {
     // Un error permanente ya clasificado no se vuelve a intentar en cada
@@ -232,19 +317,23 @@ async function enviarEntregas(resultado: ResultadoSync): Promise<void> {
       continue;
     }
 
+    if (miGeneracion !== generacion) return;
+
     let fotoNormalizada: Blob;
     try {
-      fotoNormalizada = await normalizarFoto(entrega.foto);
-    } catch {
+      latido(`comprimiendo foto de entrega ${entrega.uuid.slice(0, 8)} (${Math.round(entrega.foto.size / 1024)} KB)`);
+      fotoNormalizada = await conLimite(normalizarFoto(entrega.foto), 25_000, 'comprimir foto');
+    } catch (fallo) {
       await marcarEstadoEntrega(entrega.uuid, 'error', {
         intentos: MAX_INTENTOS,
-        error_msg: 'La fotografía pesa demasiado y no se pudo comprimir para subirla. Vuelve a registrar la entrega.'
+        error_msg: `No se pudo preparar la foto para subirla (${fallo instanceof Error ? fallo.message : 'error'}). Vuelve a registrar la entrega.`
       });
       resultado.fallidas++;
       notificar();
       continue;
     }
 
+    latido(`subiendo entrega ${entrega.uuid.slice(0, 8)}`);
     await marcarEstadoEntrega(entrega.uuid, 'sincronizando');
     notificar();
 

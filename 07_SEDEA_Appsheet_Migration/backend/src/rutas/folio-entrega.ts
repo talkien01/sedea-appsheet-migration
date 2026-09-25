@@ -10,7 +10,11 @@ import { consultar } from '../db/pool.js';
 import { registrarAuditoria } from '../plugins/auditoria.js';
 import { conceptosAutorizadosDeFacto } from '../servicios/autorizacion-operativa.js';
 import { exigirAutorizacionSecretario } from './solicitudes.js';
-import { construirFiltrosBeneficiarios, expresionApellido } from './beneficiarios.js';
+import {
+  construirFiltrosBeneficiarios,
+  expresionApellido,
+  expresionConsecutivoFolio
+} from './beneficiarios.js';
 
 /**
  * Protección contra peticiones enormes de clientes viejos que no mandan
@@ -107,11 +111,17 @@ export default async function rutasFolioEntrega(app: FastifyInstance): Promise<v
                 ), FALSE) AS todos_autorizados_de_facto,
                 ${expresionApellido('b')} AS apellido,
                 b.colonia,
-                b.nombre_completo
+                b.nombre_completo,
+                b.folio AS folio_beneficiario,
+                ${expresionConsecutivoFolio('b')} AS consecutivo_folio
            FROM beneficiarios b
            JOIN solicitudes s ON s.id = b.solicitud_id
            ${where}
-          ORDER BY ${q.orden === 'colonia' ? 'b.colonia NULLS LAST, ' : ''}apellido, b.nombre_completo, s.id`,
+          ORDER BY ${
+            q.orden === 'folio'
+              ? 'consecutivo_folio, folio_beneficiario, s.id'
+              : `${q.orden === 'colonia' ? 'b.colonia NULLS LAST, ' : ''}apellido, b.nombre_completo, s.id`
+          }`,
         parametros
       );
 

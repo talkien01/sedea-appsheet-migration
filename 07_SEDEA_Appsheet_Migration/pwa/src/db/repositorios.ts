@@ -171,8 +171,17 @@ export interface FiltrosBeneficiarios {
   /** Rango de letras de apellido (E62), para armar lotes de impresion por mesa. */
   apellido_desde?: string | null;
   apellido_hasta?: string | null;
-  /** 'apellido' (default) o 'colonia' (agrupa por colonia, luego apellido). */
-  orden?: 'apellido' | 'colonia';
+  /** Tramo de folios por consecutivo (CFA-SJR-AME-0575-26 -> 575), para reimprimir recibos. */
+  folio_desde?: number | null;
+  folio_hasta?: number | null;
+  /** 'apellido' (default), 'colonia' (agrupa por colonia, luego apellido) o 'folio' (consecutivo). */
+  orden?: 'apellido' | 'colonia' | 'folio';
+}
+
+/** Consecutivo numerico del folio ('CFA-SJR-AME-0575-26[-C1]' -> 575); null si no tiene el formato. */
+export function consecutivoDeFolio(folio: string): number | null {
+  const parte = folio.split('-')[3];
+  return parte && /^[0-9]+$/.test(parte) ? Number(parte) : null;
 }
 
 /** Busca en IndexedDB aplicando todos los filtros de la pantalla. */
@@ -201,6 +210,12 @@ export async function buscarBeneficiarios(
       if (!apellidoEnRango(b.nombre_completo, filtros.apellido_desde, filtros.apellido_hasta)) {
         return false;
       }
+      if (filtros.folio_desde || filtros.folio_hasta) {
+        const consecutivo = consecutivoDeFolio(b.folio);
+        if (consecutivo === null) return false;
+        if (filtros.folio_desde && consecutivo < filtros.folio_desde) return false;
+        if (filtros.folio_hasta && consecutivo > filtros.folio_hasta) return false;
+      }
       const capturado = conCaptura.has(b.id) || (b.total_capturas ?? 0) > 0;
       if (filtros.estado === 'pendientes' && capturado) return false;
       if (filtros.estado === 'capturados' && !capturado) return false;
@@ -213,11 +228,17 @@ export async function buscarBeneficiarios(
     // Mismo orden que el backend (E62): por default apellido, o colonia+
     // apellido si se pide -- para que "pagina N" en pantalla sea el mismo
     // grupo de gente que "lote N" en el PDF.
-    .sort((a, b) =>
-      filtros.orden === 'colonia'
+    .sort((a, b) => {
+      if (filtros.orden === 'folio') {
+        // Espejo de expresionOrden('folio'): consecutivo, luego folio completo.
+        const ca = consecutivoDeFolio(a.folio) ?? Number.MAX_SAFE_INTEGER;
+        const cb = consecutivoDeFolio(b.folio) ?? Number.MAX_SAFE_INTEGER;
+        return ca - cb || a.folio.localeCompare(b.folio);
+      }
+      return filtros.orden === 'colonia'
         ? compararPorColoniaYApellido(a.colonia, a.nombre_completo, b.colonia, b.nombre_completo)
-        : compararPorApellido(a.nombre_completo, b.nombre_completo)
-    );
+        : compararPorApellido(a.nombre_completo, b.nombre_completo);
+    });
 }
 
 // --------------------------------------------------------------------------

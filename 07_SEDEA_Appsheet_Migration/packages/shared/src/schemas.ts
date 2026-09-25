@@ -66,7 +66,14 @@ export const esquemaConsultaBeneficiarios = z.object({
   // siempre) o 'colonia' (agrupa por colonia alfabetica y, dentro de cada
   // colonia, por apellido) -- pedido para que ejidatarios organicen la
   // entrega por colonia.
-  orden: z.enum(['apellido', 'colonia']).default('apellido')
+  // 'folio' ordena por el consecutivo del folio (el numero de 4 digitos), para
+  // reimprimir recibos consecutivos.
+  orden: z.enum(['apellido', 'colonia', 'folio']).default('apellido'),
+  // Rango del CONSECUTIVO del folio (CFA-SJR-AME-0575-26 -> 575): para bajar/
+  // imprimir los recibos de un tramo ("del 0575 al 0713 de Amealco"). Solo
+  // compara el numero, no el prefijo: combinar con Municipio y Concepto.
+  folio_desde: z.coerce.number().int().min(1).max(999999).optional(),
+  folio_hasta: z.coerce.number().int().min(1).max(999999).optional()
 });
 
 export const esquemaConsultaAuditoria = z.object({

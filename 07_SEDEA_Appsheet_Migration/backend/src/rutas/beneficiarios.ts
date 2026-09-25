@@ -80,9 +80,19 @@ function expresionPrimeraLetraApellido(alias = 'b'): string {
  * cada colonia por apellido). Comparten sufijo `nombre_completo, id` para que
  * el orden sea estable entre dos personas con el mismo apellido detectado.
  */
-export function expresionOrden(orden: 'apellido' | 'colonia', alias = 'b'): string {
+export function expresionOrden(orden: 'apellido' | 'colonia' | 'folio', alias = 'b'): string {
+  if (orden === 'folio') return `${expresionConsecutivoFolio(alias)}, ${alias}.folio, ${alias}.id`;
   const sufijo = `${expresionApellido(alias)}, ${alias}.nombre_completo, ${alias}.id`;
   return orden === 'colonia' ? `${alias}.colonia NULLS LAST, ${sufijo}` : sufijo;
+}
+
+/**
+ * Consecutivo numerico del folio: 'CFA-SJR-AME-0575-26' (y su variante
+ * '...-26-C1') -> 575. NULL si el folio no tiene el formato esperado.
+ */
+export function expresionConsecutivoFolio(alias = 'b'): string {
+  return `(CASE WHEN split_part(${alias}.folio, '-', 4) ~ '^[0-9]+$'
+                THEN split_part(${alias}.folio, '-', 4)::int END)`;
 }
 
 /**
@@ -157,6 +167,16 @@ export function construirFiltrosBeneficiarios(
   if (q.apellido_hasta) {
     parametros.push(q.apellido_hasta);
     condiciones.push(`${expresionPrimeraLetraApellido('b')} <= $${parametros.length}`);
+  }
+
+  // Tramo de folios por consecutivo (ver esquemaConsultaBeneficiarios).
+  if (q.folio_desde) {
+    parametros.push(q.folio_desde);
+    condiciones.push(`${expresionConsecutivoFolio('b')} >= $${parametros.length}`);
+  }
+  if (q.folio_hasta) {
+    parametros.push(q.folio_hasta);
+    condiciones.push(`${expresionConsecutivoFolio('b')} <= $${parametros.length}`);
   }
 
   return {

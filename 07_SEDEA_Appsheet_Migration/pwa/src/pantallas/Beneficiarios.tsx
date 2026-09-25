@@ -49,7 +49,12 @@ export default function Beneficiarios() {
   // separado) — ver apellidoDeNombre en @sedea/shared.
   const [apellidoDesde, setApellidoDesde] = useState<string>('');
   const [apellidoHasta, setApellidoHasta] = useState<string>('');
-  const [orden, setOrden] = useState<'apellido' | 'colonia'>('apellido');
+  const [orden, setOrden] = useState<'apellido' | 'colonia' | 'folio'>('apellido');
+  // Tramo de folios por consecutivo (texto para permitir vacio mientras se escribe).
+  const [folioDesde, setFolioDesde] = useState('');
+  const [folioHasta, setFolioHasta] = useState('');
+  const folioDesdeNum = Number(folioDesde) > 0 ? Number(folioDesde) : null;
+  const folioHastaNum = Number(folioHasta) > 0 ? Number(folioHasta) : null;
 
   const [texto, setTexto] = useState('');
   const [estado, setEstado] = useState<Estado>('todos');
@@ -109,6 +114,8 @@ export default function Beneficiarios() {
       estado,
       apellido_desde: apellidoDesde || null,
       apellido_hasta: apellidoHasta || null,
+      folio_desde: folioDesdeNum,
+      folio_hasta: folioHastaNum,
       orden
     });
     setFilas(resultado);
@@ -122,6 +129,8 @@ export default function Beneficiarios() {
     estado,
     apellidoDesde,
     apellidoHasta,
+    folioDesdeNum,
+    folioHastaNum,
     orden
   ]);
 
@@ -144,6 +153,8 @@ export default function Beneficiarios() {
     porPagina,
     apellidoDesde,
     apellidoHasta,
+    folioDesdeNum,
+    folioHastaNum,
     orden
   ]);
 
@@ -185,6 +196,8 @@ export default function Beneficiarios() {
     if (texto.trim()) p.q = texto.trim();
     if (apellidoDesde) p.apellido_desde = apellidoDesde;
     if (apellidoHasta) p.apellido_hasta = apellidoHasta;
+    if (folioDesdeNum) p.folio_desde = String(folioDesdeNum);
+    if (folioHastaNum) p.folio_hasta = String(folioHastaNum);
     if (orden !== 'apellido') p.orden = orden;
     return p;
   }, [
@@ -196,6 +209,8 @@ export default function Beneficiarios() {
     texto,
     apellidoDesde,
     apellidoHasta,
+    folioDesdeNum,
+    folioHastaNum,
     orden
   ]);
 
@@ -393,11 +408,40 @@ export default function Beneficiarios() {
               id="orden"
               data-testid="select-orden"
               value={orden}
-              onChange={(e) => setOrden(e.target.value as 'apellido' | 'colonia')}
+              onChange={(e) => setOrden(e.target.value as 'apellido' | 'colonia' | 'folio')}
             >
               <option value="apellido">Apellido</option>
               <option value="colonia">Colonia y apellido</option>
+              <option value="folio">Folio (consecutivo)</option>
             </select>
+          </div>
+
+          <div className="campo">
+            <label htmlFor="folio-desde">Folio desde (n.º)</label>
+            <input
+              id="folio-desde"
+              data-testid="input-folio-desde"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              placeholder="Ej. 575"
+              value={folioDesde}
+              onChange={(e) => setFolioDesde(e.target.value)}
+            />
+          </div>
+
+          <div className="campo">
+            <label htmlFor="folio-hasta">Folio hasta (n.º)</label>
+            <input
+              id="folio-hasta"
+              data-testid="input-folio-hasta"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              placeholder="Ej. 713"
+              value={folioHasta}
+              onChange={(e) => setFolioHasta(e.target.value)}
+            />
           </div>
 
           <div className="campo">

@@ -11,6 +11,7 @@ import { api, ErrorPeticion } from '../api/cliente';
 import { db } from '../db/indexeddb';
 import { capturasPendientes, entregasPendientes } from '../db/repositorios';
 import { comprimirImagen, PESO_MAXIMO_BYTES } from '../utilidades/comprimirImagen';
+import { copiarBlobEnMemoria } from '../utilidades/copiarBlob';
 import { marcarEstado, marcarEstadoEntrega } from './cola';
 import { estaEnLinea } from './estadoRed';
 import { envioPausado } from './pausaEnvio';
@@ -37,15 +38,23 @@ const INTENTOS_POR_CICLO = 2;
  * que intentar una subida condenada a fallar en silencio.
  */
 async function normalizarFoto(foto: Blob): Promise<Blob> {
-  if (foto.size <= PESO_MAXIMO_BYTES) return foto;
+  // Siempre se sube una COPIA EN MEMORIA, nunca el Blob respaldado por
+  // IndexedDB (ver utilidades/copiarBlob.ts: en iOS puede fallar la subida).
+  let enMemoria: Blob = foto;
   try {
-    return await comprimirImagen(foto);
+    enMemoria = await copiarBlobEnMemoria(foto);
+  } catch {
+    // Si ni siquiera se puede leer, se intenta con el original.
+  }
+  if (enMemoria.size <= PESO_MAXIMO_BYTES) return enMemoria;
+  try {
+    return await comprimirImagen(enMemoria);
   } catch (fallo) {
     // Si el telefono no logra recomprimirla pero cabe en el limite del
     // servidor (8 MB), se sube tal cual: es evidencia real y perderla como
     // 'error' permanente seria peor que intentar subirla. Solo se rechaza lo
     // que el servidor de todos modos no aceptaria.
-    if (foto.size <= LIMITE_SERVIDOR_BYTES) return foto;
+    if (enMemoria.size <= LIMITE_SERVIDOR_BYTES) return enMemoria;
     throw fallo;
   }
 }

@@ -5,6 +5,7 @@
 import { URL_API } from '../api/cliente';
 import { db } from '../db/indexeddb';
 import { obtenerSesion } from '../db/repositorios';
+import { copiarBlobEnMemoria } from '../utilidades/copiarBlob';
 
 export interface LineaPrueba {
   ok: boolean;
@@ -30,10 +31,18 @@ function conTope<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 /** POST multipart pequeno/mediano con datos invalidos: el servidor debe contestar 422 (= llego y respondio). */
-async function postMultipart(bytes: number, token: string | null): Promise<string> {
+async function postMultipart(
+  bytes: number,
+  token: string | null,
+  fotoReal?: Blob
+): Promise<string> {
   const f = new FormData();
   f.append('uuid', 'prueba-no-valido');
-  f.append('foto', new Blob([new Uint8Array(bytes)], { type: 'image/jpeg' }), 'prueba.jpg');
+  f.append(
+    'foto',
+    fotoReal ?? new Blob([new Uint8Array(bytes)], { type: 'image/jpeg' }),
+    'prueba.jpg'
+  );
   const r = await conTope(
     fetch(`${URL_API}/entregas`, {
       method: 'POST',
@@ -59,6 +68,27 @@ export async function ejecutarPruebaConexion(): Promise<LineaPrueba[]> {
   out.push(await medir('2. Envio POST pequeno (1 KB)', () => postMultipart(1024, token)));
   out.push(await medir('3. Envio POST de 500 KB', () => postMultipart(500 * 1024, token)));
   out.push(await medir('4. Envio POST de 1 MB', () => postMultipart(1024 * 1024, token)));
+
+  // 6/7. La MISMA subida, con una foto real guardada: tal cual (como hacia el
+  // envio hasta ahora) y copiada a memoria (como hace ahora).
+  const primera = await db.entregas
+    .where('estado')
+    .anyOf('pendiente', 'error', 'sincronizando')
+    .filter((e) => !!e.foto)
+    .first();
+  if (primera?.foto) {
+    const foto = primera.foto;
+    out.push(
+      await medir(`6. POST con foto guardada TAL CUAL (${Math.round(foto.size / 1024)} KB)`, () =>
+        postMultipart(0, token, foto)
+      )
+    );
+    out.push(
+      await medir('7. POST con esa foto COPIADA A MEMORIA', async () =>
+        postMultipart(0, token, await copiarBlobEnMemoria(foto))
+      )
+    );
+  }
 
   // 5. Las fotos guardadas se pueden LEER? (iOS puede borrar el archivo detras de un Blob)
   const entregas = await db.entregas.where('estado').anyOf('pendiente', 'error', 'sincronizando').limit(15).toArray();

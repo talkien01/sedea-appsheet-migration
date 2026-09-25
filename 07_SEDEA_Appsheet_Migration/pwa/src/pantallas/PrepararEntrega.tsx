@@ -6,6 +6,7 @@
 // paquete, igual que /sync baja el padron antes de salir a campo.
 import { useCallback, useEffect, useState } from 'react';
 import QRCode from 'qrcode';
+import type { ResumenEventoEntrega } from '@sedea/shared';
 import { api, ErrorPeticion } from '../api/cliente';
 import {
   catalogosPorGrupo,
@@ -18,6 +19,14 @@ import type { EntradaCatalogoLocal, EventoEntregaLocal } from '../db/indexeddb';
 import { useEstadoRed } from '../sync/estadoRed';
 import { formatearFecha } from './Sync';
 
+/** A partir de cuantos folios se avisa que el paquete es grande y se pide confirmar. */
+const FOLIOS_PAQUETE_GRANDE = 1000;
+
+function formatearPesoPaquete(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function PrepararEntrega() {
   const enLinea = useEstadoRed();
 
@@ -25,6 +34,10 @@ export default function PrepararEntrega() {
   const [municipios, setMunicipios] = useState<EntradaCatalogoLocal[]>([]);
   const [regionalId, setRegionalId] = useState('');
   const [municipioId, setMunicipioId] = useState('');
+
+  // Vista previa: cuantos folios traeria el paquete con el filtro elegido.
+  const [resumen, setResumen] = useState<ResumenEventoEntrega | null>(null);
+  const [resumenFallo, setResumenFallo] = useState(false);
 
   const [evento, setEvento] = useState<EventoEntregaLocal | null>(null);
   const [enDispositivo, setEnDispositivo] = useState(0);
@@ -71,7 +84,36 @@ export default function PrepararEntrega() {
     ? municipios.filter((m) => String(m.datos?.regional_id) === regionalId)
     : municipios;
 
+  useEffect(() => {
+    if (!enLinea) return;
+    let vivo = true;
+    setResumen(null);
+    setResumenFallo(false);
+    const t = setTimeout(() => {
+      api
+        .resumenEventoEntrega(regionalId ? Number(regionalId) : null, municipioId ? Number(municipioId) : null)
+        .then((r) => vivo && setResumen(r))
+        .catch(() => vivo && setResumenFallo(true));
+    }, 300);
+    return () => {
+      vivo = false;
+      clearTimeout(t);
+    };
+  }, [regionalId, municipioId, enLinea]);
+
+  const esGrande = resumen !== null && resumen.total > FOLIOS_PAQUETE_GRANDE;
+
   const descargar = async () => {
+    if (
+      esGrande &&
+      resumen &&
+      !window.confirm(
+        `Este paquete trae ${resumen.total} folios (~${formatearPesoPaquete(resumen.bytes_aprox)}). ` +
+          'Conviene descargarlo con WiFi, o elegir un municipio para reducirlo. ¿Descargar de todos modos?'
+      )
+    ) {
+      return;
+    }
     setError(null);
     setMensaje(null);
     setTrabajando(true);
@@ -173,6 +215,30 @@ export default function PrepararEntrega() {
             ))}
           </select>
         </div>
+
+        {enLinea && (
+          <div
+            className={`mensaje ${esGrande ? 'aviso' : 'info'}`}
+            role="status"
+            data-testid="entrega-resumen"
+          >
+            {resumenFallo ? (
+              'No se pudo calcular cuántos folios trae este filtro. Puedes descargar de todos modos.'
+            ) : resumen === null ? (
+              'Calculando cuántos folios traería…'
+            ) : (
+              <>
+                Con este filtro se descargarían <strong>{resumen.total}</strong> folios (~
+                {formatearPesoPaquete(resumen.bytes_aprox)})
+                {resumen.por_concepto.length > 0 &&
+                  `: ${resumen.por_concepto.map((c) => `${c.total} ${c.tipo_apoyo_nombre}`).join(', ')}`}
+                .
+                {esGrande &&
+                  ' Es un paquete grande: conviene WiFi, o elige un municipio para reducirlo.'}
+              </>
+            )}
+          </div>
+        )}
 
         <button
           type="button"

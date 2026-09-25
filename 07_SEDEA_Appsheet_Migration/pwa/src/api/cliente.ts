@@ -33,6 +33,7 @@ import type {
   SesionEscaneoCreada,
   ResultadoReinicioDatos,
   PaqueteEventoEntrega,
+  ResumenEventoEntrega,
   RespuestaEntregaApoyo,
   PlazoAlta,
   PlazoSolicitudes,
@@ -242,7 +243,24 @@ export const api = {
     const parametros = new URLSearchParams();
     if (regionalId) parametros.set('regional_id', String(regionalId));
     if (municipioId) parametros.set('municipio_id', String(municipioId));
-    return peticion<PaqueteEventoEntrega>(`/entregas/preparar-evento?${parametros.toString()}`);
+    // Un paquete grande (varios cientos de folios) por senal movil tarda mas
+    // que el tope general de 30 s: se le da 3 minutos.
+    return peticion<PaqueteEventoEntrega>(
+      `/entregas/preparar-evento?${parametros.toString()}`,
+      {},
+      180_000
+    );
+  },
+
+  /** Cuantos folios (y cuanto pesaria) el paquete, sin descargarlo. */
+  async resumenEventoEntrega(
+    regionalId?: number | null,
+    municipioId?: number | null
+  ): Promise<ResumenEventoEntrega> {
+    const parametros = new URLSearchParams({ resumen: '1' });
+    if (regionalId) parametros.set('regional_id', String(regionalId));
+    if (municipioId) parametros.set('municipio_id', String(municipioId));
+    return peticion<ResumenEventoEntrega>(`/entregas/preparar-evento?${parametros.toString()}`);
   },
 
   async auditoriaCapturas(parametros: URLSearchParams): Promise<{ data: any[]; total: number }> {

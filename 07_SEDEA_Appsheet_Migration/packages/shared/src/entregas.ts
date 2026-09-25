@@ -119,6 +119,15 @@ export interface ConteoPorConcepto {
   total: number;
 }
 
+/** Respuesta de GET /api/entregas/preparar-evento?resumen=1: cuanto traeria el paquete, sin descargarlo. */
+export interface ResumenEventoEntrega {
+  total: number;
+  por_concepto: ConteoPorConcepto[];
+  /** Tamano aproximado del paquete en bytes (JSON sin comprimir). */
+  bytes_aprox: number;
+  filtro: PaqueteEventoEntrega['filtro'];
+}
+
 /** Respuesta de GET /api/entregas/preparar-evento. */
 export interface PaqueteEventoEntrega {
   /** Momento en que el servidor armo el paquete (ISO 8601). */

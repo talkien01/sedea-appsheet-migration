@@ -403,6 +403,17 @@ export default async function rutasEntregas(app: FastifyInstance): Promise<void>
         conceptos
       };
 
+      // Solo el resumen (?resumen=1): cuantos folios y cuanto pesaria, para que
+      // la pantalla avise ANTES de bajar un paquete grande (ej. todo el estado).
+      if (q.resumen === '1') {
+        return respuesta.status(200).send({
+          total: paquete.total,
+          por_concepto: paquete.por_concepto,
+          bytes_aprox: Buffer.byteLength(JSON.stringify(paquete.conceptos)),
+          filtro: paquete.filtro
+        });
+      }
+
       return respuesta.status(200).send(paquete);
     }
   );

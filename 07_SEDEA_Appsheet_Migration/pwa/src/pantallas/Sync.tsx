@@ -17,6 +17,7 @@ import {
 } from '../db/repositorios';
 import { reintentarTodasLasCapturas, reintentarTodasLasEntregas } from '../sync/cola';
 import { alCambiarCola, obtenerEstadoMotor, reiniciarMotor, sincronizarPendientes } from '../sync/motor';
+import { ejecutarPruebaConexion, type LineaPrueba } from '../sync/pruebaConexion';
 import { useEstadoRed } from '../sync/estadoRed';
 import { fijarEnvioPausado, useEnvioPausado } from '../sync/pausaEnvio';
 
@@ -61,6 +62,7 @@ export default function Sync() {
   // Diagnostico en vivo del motor de envio (ver sync/motor.ts, guardian).
   const [detalleCola, setDetalleCola] = useState<Awaited<ReturnType<typeof detalleColaEnvio>> | null>(null);
   const [, setLatidoUI] = useState(0);
+  const [prueba, setPrueba] = useState<LineaPrueba[] | 'corriendo' | null>(null);
   const pausado = useEnvioPausado();
   // Confirmacion antes de subir con el envio pausado (puede usar datos moviles).
   const [confirmandoEnvio, setConfirmandoEnvio] = useState<{
@@ -305,7 +307,28 @@ export default function Sync() {
               }}
             >
               Reiniciar envío
+            </button>{' '}
+            <button
+              type="button"
+              className="secundario"
+              data-testid="btn-probar-conexion"
+              disabled={prueba === 'corriendo'}
+              onClick={async () => {
+                setPrueba('corriendo');
+                setPrueba(await ejecutarPruebaConexion());
+              }}
+            >
+              {prueba === 'corriendo' ? 'Probando…' : 'Probar conexión y fotos'}
             </button>
+            {Array.isArray(prueba) && (
+              <ul data-testid="resultado-prueba-conexion" style={{ margin: '8px 0', paddingLeft: 18 }}>
+                {prueba.map((l) => (
+                  <li key={l.texto}>
+                    {l.ok ? '✅' : '❌'} {l.texto}
+                  </li>
+                ))}
+              </ul>
+            )}
           </details>
         )}
 

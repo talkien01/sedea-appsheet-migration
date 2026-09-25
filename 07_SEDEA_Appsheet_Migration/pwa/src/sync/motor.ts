@@ -16,6 +16,14 @@ import { estaEnLinea } from './estadoRed';
 import { envioPausado } from './pausaEnvio';
 
 const MAX_INTENTOS = 5;
+/**
+ * Intentos por item DENTRO de un mismo ciclo. Antes eran 5 seguidos con espera
+ * creciente: si el servidor no contesta (subida que se queda colgada hasta el
+ * tope de 60 s), UNA sola entrega ocupaba mas de 5 minutos y las demas nunca
+ * llegaban a intentarse (caso Jose Antonio, 122 entregas). Con 2 por ciclo un
+ * item problematico no bloquea la fila; el ciclo de 20 s lo vuelve a intentar.
+ */
+const INTENTOS_POR_CICLO = 2;
 
 /**
  * Blindaje para fotos que ya quedaron encoladas ANTES del fix de compresion
@@ -215,7 +223,10 @@ export async function sincronizarPendientes(
       let ultimoError = '';
       let errorPermanente = false;
 
-      while (!enviado && intentos < MAX_INTENTOS) {
+      let intentosEnCiclo = 0;
+      while (!enviado && intentos < MAX_INTENTOS && intentosEnCiclo < INTENTOS_POR_CICLO) {
+        intentosEnCiclo++;
+        latido(`intento ${intentosEnCiclo} de subida (max ${INTENTOS_POR_CICLO} por ciclo)`);
         try {
           const respuesta = await api.subirCaptura(formulario);
           // Al exito se libera el Blob de IndexedDB y se guarda la URL remota.
@@ -359,7 +370,10 @@ async function enviarEntregas(resultado: ResultadoSync, miGeneracion: number): P
     let ultimoError = '';
     let errorPermanente = false;
 
-    while (!enviado && intentos < MAX_INTENTOS) {
+    let intentosEnCiclo = 0;
+    while (!enviado && intentos < MAX_INTENTOS && intentosEnCiclo < INTENTOS_POR_CICLO) {
+      intentosEnCiclo++;
+      latido(`intento ${intentosEnCiclo} de subida (max ${INTENTOS_POR_CICLO} por ciclo)`);
       try {
         const respuesta = await api.subirEntrega(formulario);
         await db.entregas.update(entrega.uuid, {
